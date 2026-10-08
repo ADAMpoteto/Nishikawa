@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>西川記録｜トリマ・ランニング・経県値</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+
+<nav>
+  <div class="nav-top">
+    <div class="nav-brand">西川記録</div>
+  </div>
+  <div class="nav-links">
+    <button class="nav-btn active" data-nav="torima" onclick="goto('torima')">トリマ</button>
+    <button class="nav-btn" data-nav="run" onclick="goto('run')">ランニング</button>
+    <button class="nav-btn" data-nav="keiken" onclick="goto('keiken')">経県値</button>
+  </div>
+</nav>
+
+<!-- ========== トリマ ========== -->
+<div id="torima" class="page active">
+<div class="container">
+  <div class="trip-selbox">
+    <select id="tm-month-sel" aria-label="月を選ぶ"><option>読み込み中…</option></select>
+  </div>
+  <div class="hero" id="tm-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="card-section">
+    <div class="sec-title">目標まで、1日あと何ポイント？</div>
+    <div class="tgt-grid" id="tm-targets"></div>
+    <p class="kk-note-s" id="tm-target-note"></p>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">日々の獲得ポイント</div>
+    <div id="tm-daily"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">月ごとの記録</div>
+    <div id="tm-overall"></div>
+    <div class="mlist" id="tm-months"></div>
+  </div>
+</div>
+</div>
+
+<!-- ========== ランニング ========== -->
+<div id="run" class="page">
+<div class="container">
+  <div class="page-header"><h1>ランニング</h1><p>走った記録と、自分の中のランキング</p></div>
+  <div class="hero" id="run-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="card-section">
+    <div class="sec-title">ランキング TOP10</div>
+    <div class="day-tabs" id="run-tabs"></div>
+    <div id="run-rank"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">ペースの推移（直近10回）</div>
+    <div id="run-trend"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">月ごとの距離</div>
+    <div class="mlist" id="run-months"></div>
+  </div>
+</div>
+</div>
+
+<!-- ========== 経県値マップ ========== -->
+<div id="keiken" class="page">
+<div class="container">
+  <div class="page-header"><h1>経県値マップ</h1><p>日本の市区町村、どこまで行った？</p></div>
+
+  <div class="card-section">
+    <div class="sec-title">全国</div>
+    <div class="stats-row" id="kk-nation-stats"></div>
+    <div id="kk-nation"><div class="loading">読み込み中…</div></div>
+    <div class="kk-note" id="kk-note" hidden></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title" id="kk-pref-anchor">都道府県</div>
+    <div class="trip-selbox"><select id="kk-pref-sel" aria-label="都道府県を選ぶ"></select></div>
+    <div class="stats-row" id="kk-stats"></div>
+    <div class="kk-legend" id="kk-legend" role="group" aria-label="レベルで絞り込む"></div>
+    <div class="kk-mapwrap" id="kk-mapwrap">
+      <div class="kk-ctrl" role="group" aria-label="地図の拡大・縮小">
+        <button type="button" data-z="in" aria-label="拡大" title="拡大">＋</button>
+        <button type="button" data-z="out" aria-label="縮小" title="縮小">－</button>
+        <button type="button" data-z="home" aria-label="元の表示に戻す" title="元の表示に戻す">⟲</button>
+      </div>
+      <div class="kk-map" id="kk-map"><div class="loading">読み込み中…</div></div>
+      <div class="kk-tip" id="kk-tip" hidden></div>
+    </div>
+    <div class="kk-info" id="kk-info" aria-live="polite"><p class="kk-info-empty">地図の市区町村をタップすると、ここに記録が表示されます。</p></div>
+    <div class="kk-sub">市区町村の一覧</div>
+    <div id="kk-list"></div>
+  </div>
+</div>
+</div>
+
+<footer class="foot">
+  西川記録<br>
+  データはGoogleスプレッドシートから取得しています。
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
