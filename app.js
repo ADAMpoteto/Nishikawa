@@ -293,7 +293,7 @@ function tmRenderOverall(){
   const bestM=mo.reduce((b,m)=>(!b||m.total>b.total)?m:b,null);
   document.getElementById("tm-months").innerHTML=mo.slice().reverse().map(m=>`
     <button type="button" class="mlist-row" data-m="${m.key}">
-      <span class="mlist-name">${m.label}${m===bestM&&mo.length>1?'<em>ベスト</em>':""}</span>
+      <span class="mlist-name"><span class="mlist-y">${m.y}年</span><span class="mlist-m">${m.m}月</span>${m===bestM&&mo.length>1?'<em>ベスト</em>':""}</span>
       <span class="mlist-bar"><span style="width:${m.total/maxT*100}%"></span></span>
       <span class="mlist-val">${nf(m.total)} P<small>平均 ${nf(m.avg)}／${m.entered}日</small></span>
     </button>`).join("");
@@ -434,14 +434,22 @@ function runRenderRanking(){
   const latest=RUN.list[RUN.list.length-1];
   const medal=["🥇","🥈","🥉"];
   const showRank=s.key!=="date";
+  /* 並び替えの基準になっている項目を強調する */
+  const hl={pace:"pace", dist:"dist", time:"time", date:""}[s.key];
+  const cell=(k,label,val)=>`<div class="rk-cell${k===hl?" hl":""}"><dt>${label}</dt><dd>${val}</dd></div>`;
   document.getElementById("run-rank").innerHTML=L.map((r,i)=>`
     <div class="rk${showRank&&i<3?" top top"+(i+1):""}">
       <div class="rk-pos">${showRank?(i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:`${i+1}`):`#${r.no}`}</div>
       <div class="rk-body">
         <div class="rk-date">${r.dt.getFullYear()}/${fmtMD(r.dt)}${r===latest?'<span class="rk-new">NEW</span>':""}</div>
-        <div class="rk-sub">${r.km.toFixed(2)}km・${fmtDur(r.sec)}・${fmtPace(r.pace)}/km・フル換算 ${fmtDur(r.pace*42.195)}</div>
+        <dl class="rk-grid">
+          ${cell("dist","距離",`${r.km.toFixed(2)}<small>km</small>`)}
+          ${cell("time","タイム",fmtDur(r.sec))}
+          ${cell("pace","1kmあたり",`${fmtPace(r.pace)}<small>/km</small>`)}
+          ${cell("half","ハーフ換算",fmtDur(r.pace*21.0975))}
+          ${cell("full","フル換算",fmtDur(r.pace*42.195))}
+        </dl>
       </div>
-      <div class="rk-val">${s.val(r)}<small>${s.unit}</small></div>
     </div>`).join("");
 }
 
@@ -465,7 +473,7 @@ function runRenderMonths(){
   const scale=Math.max(max, RUN_MONTH_GOAL);
   document.getElementById("run-months").innerHTML=mo.map(m=>`
     <div class="mlist-row static">
-      <span class="mlist-name">${m.y}年${m.m}月${m.km>=RUN_MONTH_GOAL?`<em>${RUN_MONTH_GOAL}km達成</em>`:m.km===max&&mo.length>1?'<em>ベスト</em>':""}</span>
+      <span class="mlist-name"><span class="mlist-y">${m.y}年</span><span class="mlist-m">${m.m}月</span>${m.km>=RUN_MONTH_GOAL?`<em>${RUN_MONTH_GOAL}km達成</em>`:m.km===max&&mo.length>1?'<em>ベスト</em>':""}</span>
       <span class="mlist-bar goal"><span style="width:${m.km/scale*100}%"></span><i style="left:${RUN_MONTH_GOAL/scale*100}%"></i></span>
       <span class="mlist-val">${m.km.toFixed(2)} km<small>${m.n}本・平均 ${fmtPace(m.sec/m.km)}/km</small></span>
     </div>`).join("");
