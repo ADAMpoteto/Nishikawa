@@ -10,6 +10,9 @@ const URL_RUN    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5
 /* トリマの月間目標（ここを書き換えれば目標が変わります） */
 const TM_TARGETS = [10000, 50000, 100000, 300000];
 
+/* ランニングの月間距離目標（km） */
+const RUN_MONTH_GOAL = 100;
+
 /* ランニングの累計距離マイルストーン（km） */
 const RUN_MILESTONES = [
   [10, "10km"],
@@ -139,11 +142,48 @@ async function loadTorima(){
              isCur:k===curKey, isPast:k<curKey };
   });
 
+  tmRenderMissing(byKey);
   const sel=document.getElementById("tm-month-sel");
   sel.innerHTML=TM.months.slice().reverse().map(m=>`<option value="${m.key}">${m.label}${m.isCur?"（今月）":""}</option>`).join("");
   sel.onchange=()=>tmShow(sel.value);
   tmShow(curKey);
   tmRenderOverall();
+}
+
+/* 未入力日のお知らせ（最初の記録日〜昨日のうち、ポイントが空欄の日） */
+function tmRenderMissing(byKey){
+  const el=document.getElementById("tm-alert");
+  const ent=TM.days.filter(d=>d.p!=null);
+  if(!ent.length){ el.hidden=true; return; }
+  const t=today0(), miss=[];
+  for(let d=new Date(ent[0].dt); d<t; d.setDate(d.getDate()+1)){
+    const hit=byKey[d.toDateString()];
+    if(!hit || hit.p==null) miss.push(new Date(d));
+  }
+  if(!miss.length){ el.hidden=true; return; }
+  const show=miss.slice(-5).reverse().map(fmtMD).join("、");
+  el.innerHTML=`<strong>未入力の日があります</strong>${escHtml(show)}${miss.length>5?` ほか${miss.length-5}日`:""}
+    <small>入力すると「1日あと何P」の計算が正しくなります。</small>`;
+  el.hidden=false;
+}
+
+/* 先月の同じ日との比較 */
+function tmCompareHtml(mo){
+  const pd0=new Date(mo.y, mo.m-2, 1), prev=TM.months.find(m=>m.key===ymKey(pd0));
+  if(!prev || !prev.entered) return "";
+  let diff, label;
+  if(mo.isCur){
+    let lastDay=0; mo.days.forEach((d,i)=>{ if(d.p!=null) lastDay=i+1; });
+    if(!lastDay) return "";
+    const upto=Math.min(lastDay, prev.days.length);
+    const prevCum=prev.days.slice(0,upto).reduce((s,d)=>s+(d.p||0),0);
+    diff=mo.total-prevCum;
+    label=`先月の同じ日（${prev.m}/${upto}）時点より`;
+  }else{
+    diff=mo.total-prev.total; label="先月より";
+  }
+  const cls=diff>0?"up":diff<0?"down":"";
+  return `<span class="hero-chip cmp ${cls}">${label} <strong>${diff>0?"+":diff<0?"−":"±"}${nf(Math.abs(diff))}</strong> P</span>`;
 }
 
 /* 今月の残り日数：今日の分がまだ未入力なら今日も数える */
@@ -173,6 +213,7 @@ function tmShow(key){
     <div class="tm-big">${nf(mo.total)}<small>P</small></div>
     <div class="hero-meta">
       ${progressTxt?`<span class="hero-chip accent">${progressTxt}</span>`:""}
+      ${tmCompareHtml(mo)}
       <span class="hero-chip">1日平均 <strong>${nf(mo.avg)}</strong> P</span>
       ${mo.isCur && mo.entered?`<span class="hero-chip">このペースの月末予測 <strong>${nf(forecast)}</strong> P</span>`:""}
     </div>`;
@@ -295,6 +336,33 @@ async function loadRun(){
   runRenderRanking();
   runRenderTrend();
   runRenderMonths();
+  runRenderGoal();
+}
+
+/* 今月の距離目標 */
+function runRenderGoal(){
+  const t=today0(), key=ymKey(t), G=RUN_MONTH_GOAL;
+  const runs=RUN.list.filter(r=>ymKey(r.dt)===key);
+  const km=runs.reduce((s,r)=>s+r.km,0);
+  const last=daysInMonth(t.getFullYear(), t.getMonth());
+  let rem=last-t.getDate()+1; if(runs.some(r=>sameDay(r.dt,t))) rem--;
+  rem=Math.max(0,rem);
+  const left=Math.max(0,G-km), pct=Math.min(100,km/G*100);
+  let main, sub, cls="";
+  if(km>=G){ cls="done"; main="達成！"; sub=`今月 ${km.toFixed(2)} km`; }
+  else if(rem>0){
+    const per=left/rem;
+    main=`あと <strong>${left.toFixed(2)}</strong> km`;
+    sub=`残り ${rem} 日 → 1日 ${per.toFixed(2)} km／5kmランなら あと ${Math.ceil(left/5)} 回`;
+    cls = per<=2 ? "ok" : per<=5 ? "push" : "far";
+  }else{ cls="miss"; main="未達"; sub=`今月 ${km.toFixed(2)} km`; }
+  document.getElementById("run-goal").innerHTML=`
+    <div class="tgt goal-wide ${cls}">
+      <div class="tgt-head"><span class="tgt-goal">${t.getMonth()+1}月の目標 ${G} km</span><span class="tgt-goal">${km.toFixed(2)} km・${runs.length}本</span></div>
+      <div class="tgt-main">${main}</div>
+      <div class="tgt-bar"><span style="width:${pct}%"></span></div>
+      <div class="tgt-sub">${sub}</div>
+    </div>`;
 }
 
 function runRenderHero(){
@@ -308,6 +376,24 @@ function runRenderHero(){
   if(n===1) headline="記念すべき1本目！";
   else if(rank===1) headline=`最新ラン（${fmtMD(latest.dt)}）で自己ベスト更新！`;
   else headline=`最新ラン（${fmtMD(latest.dt)}）はペース <strong>${rank}位</strong> / ${n}本`;
+
+  /* 前回との比較・自己ベストまで（秒/km） */
+  let cmpHtml="";
+  if(n>1){
+    const prev=L[n-2], d=Math.round(latest.pace-prev.pace);
+    const prevTxt = d<0 ? `前回（${fmtMD(prev.dt)}）より <strong>${-d}秒/km</strong> 速い`
+                  : d>0 ? `前回（${fmtMD(prev.dt)}）より <strong>${d}秒/km</strong> 遅い`
+                  : `前回（${fmtMD(prev.dt)}）と同じペース`;
+    let bestTxt;
+    if(rank===1){
+      const oldBest=Math.min(...L.slice(0,n-1).map(r=>r.pace));
+      bestTxt=`これまでのベストを <strong>${Math.round(oldBest-latest.pace)}秒/km</strong> 更新`;
+    }else{
+      const gap=Math.round(latest.pace-byPace[0].pace);
+      bestTxt= gap<=0 ? `ベスト（${fmtPace(byPace[0].pace)}）と同タイム` : `ベスト（${fmtPace(byPace[0].pace)}）まで あと <strong>${gap}秒/km</strong>`;
+    }
+    cmpHtml=`<div class="run-cmp"><span class="${d<0?"up":d>0?"down":""}">${prevTxt}</span><span>${bestTxt}</span></div>`;
+  }
 
   /* マイルストーン */
   const done=RUN_MILESTONES.filter(([d])=>km>=d);
@@ -324,6 +410,7 @@ function runRenderHero(){
     <div class="tm-hero-label">これまでの累計距離</div>
     <div class="tm-big">${km.toFixed(2)}<small>km</small></div>
     <div class="run-headline${rank===1&&n>1?" pb":""}">${headline}</div>
+    ${cmpHtml}
     <div class="hero-meta">
       <span class="hero-chip">${n} 本</span>
       <span class="hero-chip accent">ベスト <strong>${fmtPace(byPace[0].pace)}</strong>/km</span>
@@ -375,10 +462,11 @@ function runRenderMonths(){
   RUN.list.forEach(r=>{ const k=ymKey(r.dt); (mm[k]=mm[k]||{key:k, y:r.dt.getFullYear(), m:r.dt.getMonth()+1, km:0, n:0, sec:0}); mm[k].km+=r.km; mm[k].n++; mm[k].sec+=r.sec; });
   const mo=Object.values(mm).sort((a,b)=>a.key<b.key?1:-1);
   const max=Math.max(...mo.map(m=>m.km));
+  const scale=Math.max(max, RUN_MONTH_GOAL);
   document.getElementById("run-months").innerHTML=mo.map(m=>`
     <div class="mlist-row static">
-      <span class="mlist-name">${m.y}年${m.m}月${m.km===max&&mo.length>1?'<em>ベスト</em>':""}</span>
-      <span class="mlist-bar"><span style="width:${m.km/max*100}%"></span></span>
+      <span class="mlist-name">${m.y}年${m.m}月${m.km>=RUN_MONTH_GOAL?`<em>${RUN_MONTH_GOAL}km達成</em>`:m.km===max&&mo.length>1?'<em>ベスト</em>':""}</span>
+      <span class="mlist-bar goal"><span style="width:${m.km/scale*100}%"></span><i style="left:${RUN_MONTH_GOAL/scale*100}%"></i></span>
       <span class="mlist-val">${m.km.toFixed(2)} km<small>${m.n}本・平均 ${fmtPace(m.sec/m.km)}/km</small></span>
     </div>`).join("");
 }

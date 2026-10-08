@@ -299,3 +299,20 @@ details.kk-group[open] summary::after{content:"－";}
 .rk-val small{font-size:11px;color:var(--text2);margin-left:2px;font-weight:700;letter-spacing:0;}
 .rk.top1{background:linear-gradient(90deg,rgba(242,182,50,.16),transparent 70%);}
 .rk.top1 .rk-val{font-size:22px;}
+
+/* 追加：未入力のお知らせ・比較 */
+.tm-alert{margin-bottom:16px;padding:10px 12px;border-radius:var(--rl);background:#fff6df;border:1.5px solid #f2b632;font-size:12px;line-height:1.55;}
+.tm-alert strong{display:block;font-size:13px;font-weight:800;}
+.tm-alert small{display:block;color:var(--text2);font-size:11px;margin-top:2px;}
+.hero-chip.cmp.up{border-left-color:#2e8b57;}
+.hero-chip.cmp.up strong{color:#2e7d4f;}
+.hero-chip.cmp.down{border-left-color:#d9453f;}
+.hero-chip.cmp.down strong{color:#d9453f;}
+.run-cmp{display:flex;flex-direction:column;gap:3px;margin-top:10px;font-size:12px;color:var(--text2);}
+.run-cmp strong{color:var(--text);font-weight:800;}
+.run-cmp .up strong{color:#2e7d4f;}
+.run-cmp .down strong{color:#d9453f;}
+.goal-wide .tgt-main strong{font-size:26px;}
+.mlist-bar.goal{position:relative;overflow:visible;}
+.mlist-bar.goal > span{border-radius:99px;}
+.mlist-bar.goal i{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:#d9453f;border-radius:2px;}

@@ -26,6 +26,7 @@
   <div class="trip-selbox">
     <select id="tm-month-sel" aria-label="月を選ぶ"><option>読み込み中…</option></select>
   </div>
+  <div class="tm-alert" id="tm-alert" role="status" hidden></div>
   <div class="hero" id="tm-hero"><div class="loading">読み込み中…</div></div>
 
   <div class="card-section">
@@ -54,6 +55,11 @@
   <div class="hero" id="run-hero"><div class="loading">読み込み中…</div></div>
 
   <div class="card-section">
+    <div class="sec-title">今月の距離目標</div>
+    <div id="run-goal"></div>
+  </div>
+
+  <div class="card-section">
     <div class="sec-title">ランキング TOP10</div>
     <div class="day-tabs" id="run-tabs"></div>
     <div id="run-rank"></div>
@@ -66,6 +72,7 @@
 
   <div class="card-section">
     <div class="sec-title">月ごとの距離</div>
+    <p class="kk-note-s" style="margin:-6px 0 4px">棒の縦線が月間目標（100km）</p>
     <div class="mlist" id="run-months"></div>
   </div>
 </div>
