@@ -13,18 +13,6 @@ const TM_TARGETS = [10000, 50000, 100000, 300000];
 /* ランニングの月間距離目標（km） */
 const RUN_MONTH_GOAL = 100;
 
-/* ランニングの累計距離マイルストーン（km） */
-const RUN_MILESTONES = [
-  [10, "10km"],
-  [42.195, "フルマラソン1本分"],
-  [100, "100km"],
-  [217.1, "箱根駅伝（往路＋復路）"],
-  [500, "500km"],
-  [552.6, "東京→新大阪（新幹線の営業キロ）"],
-  [1000, "1,000km"],
-  [2000, "2,000km"]
-];
-
 /* ---------- ユーティリティ ---------- */
 const WD=["日","月","火","水","木","金","土"];
 function pd(s){ if(!s) return null; const m=String(s).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/); return m?new Date(+m[1], +m[2]-1, +m[3]):null; }
@@ -395,17 +383,6 @@ function runRenderHero(){
     cmpHtml=`<div class="run-cmp"><span class="${d<0?"up":d>0?"down":""}">${prevTxt}</span><span>${bestTxt}</span></div>`;
   }
 
-  /* マイルストーン */
-  const done=RUN_MILESTONES.filter(([d])=>km>=d);
-  const next=RUN_MILESTONES.find(([d])=>km<d);
-  const prevD=done.length?done[done.length-1][0]:0;
-  const msHtml=next ? `
-    <div class="ms">
-      <div class="ms-top"><span>次の目標：<strong>${escHtml(next[1])}</strong></span><span>あと ${(next[0]-km).toFixed(1)} km</span></div>
-      <div class="tgt-bar"><span style="width:${Math.min(100,(km-prevD)/(next[0]-prevD)*100)}%"></span></div>
-      ${done.length?`<div class="ms-done">${done.map(([,l])=>`<span>✓ ${escHtml(l)}</span>`).join("")}</div>`:""}
-    </div>` : `<div class="ms"><div class="ms-top"><span>全マイルストーン達成！</span></div></div>`;
-
   document.getElementById("run-hero").innerHTML=`
     <div class="tm-hero-label">これまでの累計距離</div>
     <div class="tm-big">${km.toFixed(2)}<small>km</small></div>
@@ -414,8 +391,7 @@ function runRenderHero(){
     <div class="hero-meta">
       <span class="hero-chip">${n} 本</span>
       <span class="hero-chip accent">ベスト <strong>${fmtPace(byPace[0].pace)}</strong>/km</span>
-    </div>
-    ${msHtml}`;
+    </div>`;
 }
 
 function runRenderTabs(){
