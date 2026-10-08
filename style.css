@@ -316,3 +316,20 @@ details.kk-group[open] summary::after{content:"－";}
 .mlist-bar.goal{position:relative;overflow:visible;}
 .mlist-bar.goal > span{border-radius:99px;}
 .mlist-bar.goal i{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:#d9453f;border-radius:2px;}
+
+/* 追加：月名を「年」「月」の2行に */
+.mlist-y{font-size:10px;font-weight:700;color:var(--text2);line-height:1.2;}
+.mlist-m{font-size:15px;font-weight:800;line-height:1.2;}
+.mlist-row{grid-template-columns:64px 1fr auto;}
+@media(max-width:480px){ .mlist-row{grid-template-columns:52px 1fr auto;} }
+
+/* 追加：ランキングの項目ラベル付き表示 */
+.rk{align-items:start;}
+.rk-pos{padding-top:2px;}
+.rk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px;margin-top:8px;}
+@media(min-width:600px){ .rk-grid{grid-template-columns:repeat(5,minmax(0,1fr));} }
+.rk-cell dt{font-size:10px;font-weight:700;color:var(--text3);white-space:nowrap;}
+.rk-cell dd{font-size:14px;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.01em;}
+.rk-cell dd small{font-size:10px;font-weight:600;margin-left:1px;}
+.rk-cell.hl dt{color:var(--text);}
+.rk-cell.hl dd{font-size:18px;font-weight:800;color:var(--text);}
