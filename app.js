@@ -598,7 +598,7 @@ function kkSetMode(mode){
   const changed=KK.mode!==mode;
   KK.mode=mode;
   document.getElementById("kk-nation-title").textContent = "全国";
-  document.getElementById("kk-pref-anchor").textContent = mode==="gourmet" ? "グルメ地図" : "都道府県";
+  document.getElementById("kk-pref-anchor").textContent = "都道府県";
   box.classList.toggle("gm-mode", mode==="gourmet");
   document.getElementById("kk-info").innerHTML=`<p class="kk-info-empty">地図の市区町村をタップすると、ここに${mode==="gourmet"?"お店の一覧":"記録"}が表示されます。</p>`;
   if(!changed || !KK.ready) return;
@@ -1019,7 +1019,10 @@ function kkRenderPref(){
     const shops=real.reduce((n,f)=>n+(GM.byCode[f.code]||[]).length,0);
     const rated=[].concat(...real.map(f=>GM.byCode[f.code]||[])).filter(r=>r.my!=null);
     const avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:0;
-    document.getElementById("kk-stats").innerHTML=`<p class="gm-pref-sum">${escHtml(KK.pref)}：<strong>${shops}</strong>軒・${visited}市区町村${rated.length?`・平均 ${avg.toFixed(2)}`:""}</p>`;
+    document.getElementById("kk-stats").innerHTML=`
+    <div class="stat-chip">${escHtml(KK.pref)}で食べたお店 <strong>${shops}</strong> 軒</div>
+    <div class="stat-chip">市区町村 <strong>${visited}</strong> / ${total}</div>
+    ${rated.length?`<div class="stat-chip">評価の平均 <strong>${avg.toFixed(2)}</strong></div>`:""}`;
   }else document.getElementById("kk-stats").innerHTML=`
     <div class="stat-chip">${escHtml(KK.pref)}の経県値 <strong>${score}</strong> / ${total*KK_MAX}点</div>
     <div class="stat-chip">足を運んだ <strong>${visited}</strong> / ${total} 市区町村</div>

@@ -372,6 +372,4 @@ details.kk-group[open] summary::after{content:"－";}
 .gm-genre-n{text-align:right;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text2);}
 .gm-pref-sum{font-size:13px;color:var(--text2);margin:-4px 0 12px;}
 .gm-pref-sum strong{color:var(--text);font-size:16px;}
-#kk-shared.gm-mode #kk-nation-card,
-#kk-shared.gm-mode .kk-sub,
-#kk-shared.gm-mode #kk-list{display:none;}
+.gm-map-title{font-size:16px;border-bottom:2px solid var(--text);margin-bottom:18px;}
