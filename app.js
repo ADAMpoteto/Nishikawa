@@ -597,7 +597,9 @@ function kkSetMode(mode){
   if(slot && box && box.parentNode!==slot) slot.appendChild(box);
   const changed=KK.mode!==mode;
   KK.mode=mode;
-  document.getElementById("kk-nation-title").textContent = mode==="gourmet" ? "グルメ地図（全国）" : "全国";
+  document.getElementById("kk-nation-title").textContent = "全国";
+  document.getElementById("kk-pref-anchor").textContent = mode==="gourmet" ? "グルメ地図" : "都道府県";
+  box.classList.toggle("gm-mode", mode==="gourmet");
   document.getElementById("kk-info").innerHTML=`<p class="kk-info-empty">地図の市区町村をタップすると、ここに${mode==="gourmet"?"お店の一覧":"記録"}が表示されます。</p>`;
   if(!changed || !KK.ready) return;
   KK.filter=null; KK.selected=null;
@@ -1017,10 +1019,7 @@ function kkRenderPref(){
     const shops=real.reduce((n,f)=>n+(GM.byCode[f.code]||[]).length,0);
     const rated=[].concat(...real.map(f=>GM.byCode[f.code]||[])).filter(r=>r.my!=null);
     const avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:0;
-    document.getElementById("kk-stats").innerHTML=`
-    <div class="stat-chip">${escHtml(KK.pref)}で食べたお店 <strong>${shops}</strong> 軒</div>
-    <div class="stat-chip">市区町村 <strong>${visited}</strong> / ${total}</div>
-    ${rated.length?`<div class="stat-chip">自分の評価の平均 <strong>${avg.toFixed(2)}</strong></div>`:""}`;
+    document.getElementById("kk-stats").innerHTML=`<p class="gm-pref-sum">${escHtml(KK.pref)}：<strong>${shops}</strong>軒・${visited}市区町村${rated.length?`・平均 ${avg.toFixed(2)}`:""}</p>`;
   }else document.getElementById("kk-stats").innerHTML=`
     <div class="stat-chip">${escHtml(KK.pref)}の経県値 <strong>${score}</strong> / ${total*KK_MAX}点</div>
     <div class="stat-chip">足を運んだ <strong>${visited}</strong> / ${total} 市区町村</div>
@@ -1132,7 +1131,7 @@ async function loadGourmet(){
   GM.note = noMap ? `地図に載せられなかったお店が ${noMap} 軒あります（都道府県名・市区町村名を確認してください）。` : "";
 
   if(!GM.list.length){ document.getElementById("gm-hero").innerHTML=errBox("まだ記録がありません。"); return; }
-  gmRenderHero(); gmRenderTabs(); gmRenderRank(); gmRenderGenre(); gmRenderYears();
+  gmRenderHero(); gmRenderTabs(); gmRenderRank(); gmRenderGenre();
   if(KK.mode==="gourmet" && KK.ready){ kkRenderNation(); if(document.getElementById("kk-svg")) kkRenderPref(); }
 }
 
@@ -1140,18 +1139,10 @@ function gmRenderHero(){
   const L=GM.list, rated=L.filter(r=>r.my!=null);
   const avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:0;
   const prefs=Object.keys(GM.byPref).length, munis=Object.keys(GM.byCode).length;
-  const y=new Date().getFullYear(), thisYear=L.filter(r=>r.ym && r.ym.getFullYear()===y).length;
-  const latest=L.filter(r=>r.ym).sort((a,b)=>b.ym-a.ym)[0];
   document.getElementById("gm-hero").innerHTML=`
     <div class="tm-hero-label">これまでに投稿したお店</div>
     <div class="tm-big">${nf(L.length)}<small>軒</small></div>
-    ${latest?`<div class="run-headline">最新：<strong>${escHtml(latest.name)}</strong>（${gmFmtDate(latest)}・${escHtml(latest.muni||latest.pref)}）</div>`:""}
-    <div class="hero-meta">
-      <span class="hero-chip">${y}年 <strong>${thisYear}</strong> 軒</span>
-      <span class="hero-chip">都道府県 <strong>${prefs}</strong> / 47</span>
-      <span class="hero-chip">市区町村 <strong>${munis}</strong></span>
-      ${rated.length?`<span class="hero-chip accent">自分の評価の平均 <strong>${avg.toFixed(2)}</strong></span>`:""}
-    </div>`;
+    <div class="gm-hero-sub">${prefs}都道府県・${munis}市区町村${rated.length?`・評価の平均 ${avg.toFixed(2)}`:""}</div>`;
 }
 
 /* ジャンルの集計（1軒に複数ジャンルがあれば、それぞれに数える） */
@@ -1172,17 +1163,16 @@ function gmRenderTabs(){
   });
 }
 
-function gmShopHtml(r, rank, cells){
+function gmShopHtml(r, rank){
   const medal=["🥇","🥈","🥉"];
-  const pos = rank==null ? "" : (rank<3?`<span class="rk-medal" aria-label="${rank+1}位">${medal[rank]}</span>`:`${rank+1}`);
-  const nameHtml = escHtml(r.name);
-  return `<div class="rk${rank!=null&&rank<3?" top top"+(rank+1):""}">
-    <div class="rk-pos">${pos}</div>
-    <div class="rk-body">
-      <div class="rk-date gm-name">${nameHtml}</div>
-      <div class="rk-sub">${escHtml([r.pref+(r.muni||""), r.genres.slice(0,2).join("・")].filter(Boolean).join("／"))}</div>
-      <dl class="rk-grid">${cells.map(([k,label,val])=>`<div class="rk-cell${k?" hl":""}"><dt>${label}</dt><dd>${val}</dd></div>`).join("")}</dl>
+  const pos = rank<3 ? `<span class="rk-medal" aria-label="${rank+1}位">${medal[rank]}</span>` : `${rank+1}`;
+  return `<div class="gm-row">
+    <div class="gm-pos">${pos}</div>
+    <div class="gm-main">
+      <div class="gm-title">${escHtml(r.name)}</div>
+      <div class="gm-meta">${escHtml([r.muni||r.pref, r.genres[0]].filter(Boolean).join("・"))}</div>
     </div>
+    <div class="gm-score">${gmScore(r.my)}</div>
   </div>`;
 }
 const gmScore=v=>v==null?"-":v.toFixed(1);     // 自分の評価（1桁）
@@ -1190,32 +1180,16 @@ const gmScore=v=>v==null?"-":v.toFixed(1);     // 自分の評価（1桁）
 function gmRenderRank(){
   const L=GM.list.filter(r=>r.my!=null && (GM.tab==="すべて" || r.genres.includes(GM.tab)))
     .sort((a,b)=>b.my-a.my || (b.ym||0)-(a.ym||0)).slice(0,10);
-  document.getElementById("gm-rank").innerHTML = L.length ? L.map((r,i)=>gmShopHtml(r, i, [
-    [1,"評価", gmScore(r.my)],
-    [0,"行った日", gmFmtDate(r)||"-"]
-  ])).join("") : errBox("このジャンルの記録はまだありません。");
+  document.getElementById("gm-rank").innerHTML = L.length ? L.map((r,i)=>gmShopHtml(r, i)).join("") : errBox("このジャンルの記録はまだありません。");
 }
 
 function gmRenderGenre(){
-  const S=gmGenreStats().slice(0,10), max=Math.max(1,...S.map(s=>s.n));
+  const S=gmGenreStats().slice(0,5), max=Math.max(1,...S.map(s=>s.n));
   document.getElementById("gm-genre").innerHTML=S.map(s=>`
-    <div class="mlist-row static gm-genre-row">
-      <span class="mlist-name gm-genre-name">${escHtml(s.g)}</span>
-      <span class="mlist-bar gm"><span style="width:${s.n/max*100}%"></span></span>
-      <span class="mlist-val">${s.n} 軒<small>${s.rn?`平均 ${(s.sum/s.rn).toFixed(2)}`:""}</small></span>
-    </div>`).join("");
-}
-
-function gmRenderYears(){
-  const m={};
-  GM.list.forEach(r=>{ if(!r.ym) return; const y=r.ym.getFullYear(); const s=(m[y]=m[y]||{y, n:0, sum:0, rn:0, prefs:new Set()}); s.n++; if(r.my!=null){ s.sum+=r.my; s.rn++; } if(r.pref) s.prefs.add(r.pref); });
-  const Y=Object.values(m).sort((a,b)=>b.y-a.y), max=Math.max(1,...Y.map(s=>s.n));
-  const best=Y.reduce((b,s)=>(!b||s.n>b.n)?s:b,null);
-  document.getElementById("gm-years").innerHTML=Y.map(s=>`
-    <div class="mlist-row static">
-      <span class="mlist-name"><span class="mlist-m">${s.y}年</span>${s===best&&Y.length>1?'<em>ベスト</em>':""}</span>
-      <span class="mlist-bar gm"><span style="width:${s.n/max*100}%"></span></span>
-      <span class="mlist-val">${s.n} 軒<small>${s.prefs.size}都道府県${s.rn?`・平均 ${(s.sum/s.rn).toFixed(2)}`:""}</small></span>
+    <div class="gm-genre">
+      <span class="gm-genre-name">${escHtml(s.g)}</span>
+      <span class="gm-genre-bar"><span style="width:${s.n/max*100}%"></span></span>
+      <span class="gm-genre-n">${s.n}</span>
     </div>`).join("");
 }
 
@@ -1286,7 +1260,7 @@ async function loadBike(){
   }).filter(Boolean).sort((a,b)=>a.dt-b.dt);
   BK.list.forEach((r,i)=>r.no=i+1);
   if(!BK.list.length){ document.getElementById("bk-hero").innerHTML=errBox("まだ記録がありません。"); return; }
-  bkRenderHero(); bkRenderRank(); bkRenderYears(); bkRenderDest();
+  bkRenderHero(); bkRenderRank(); bkRenderYears();
 }
 const bkDate=d=>`${d.getFullYear()}/${fmtMD(d)}`;
 
@@ -1334,18 +1308,6 @@ function bkRenderYears(){
       <span class="mlist-name"><span class="mlist-m">${s.y}年</span>${s.km===max&&Y.length>1?'<em>ベスト</em>':""}</span>
       <span class="mlist-bar bk"><span style="width:${s.km/max*100}%"></span></span>
       <span class="mlist-val">${s.km.toFixed(1)} km<small>${s.n}回</small></span>
-    </div>`).join("");
-}
-
-function bkRenderDest(){
-  const m={};
-  BK.list.forEach(r=>{ const k=r.dest||"（なし）"; const s=(m[k]=m[k]||{k,n:0,km:0}); s.n++; s.km+=r.km; });
-  const D=Object.values(m).sort((a,b)=>b.n-a.n||b.km-a.km), max=Math.max(...D.map(d=>d.n));
-  document.getElementById("bk-dest").innerHTML=D.map(d=>`
-    <div class="mlist-row static gm-genre-row">
-      <span class="mlist-name gm-genre-name">${escHtml(d.k)}</span>
-      <span class="mlist-bar bk"><span style="width:${d.n/max*100}%"></span></span>
-      <span class="mlist-val">${d.n} 回<small>計 ${d.km.toFixed(1)} km</small></span>
     </div>`).join("");
 }
 

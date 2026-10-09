@@ -355,3 +355,23 @@ details.kk-group[open] summary::after{content:"－";}
 @media(max-width:480px){ .mlist-row.gm-genre-row{grid-template-columns:92px 1fr auto;} }
 .gm-more summary{font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;padding:8px 0 2px;}
 .mlist-bar.bk span{background:#2e7d8f;}
+
+/* グルメ：すっきり版 */
+.gm-hero-sub{font-size:13px;color:var(--text2);margin-top:6px;font-variant-numeric:tabular-nums;}
+.gm-row{display:grid;grid-template-columns:32px 1fr auto;align-items:center;gap:10px;padding:10px 2px;border-bottom:.5px solid var(--border);}
+.gm-pos{text-align:center;font-size:13px;font-weight:800;color:var(--text3);font-variant-numeric:tabular-nums;}
+.gm-pos .rk-medal{font-size:20px;}
+.gm-main{min-width:0;}
+.gm-title{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gm-meta{font-size:11px;color:var(--text2);margin-top:1px;}
+.gm-score{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;color:#b8401c;}
+.gm-genre{display:grid;grid-template-columns:96px 1fr 36px;align-items:center;gap:10px;padding:6px 0;font-size:13px;}
+.gm-genre-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gm-genre-bar{height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;}
+.gm-genre-bar span{display:block;height:100%;background:#ea7a3b;border-radius:99px;}
+.gm-genre-n{text-align:right;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text2);}
+.gm-pref-sum{font-size:13px;color:var(--text2);margin:-4px 0 12px;}
+.gm-pref-sum strong{color:var(--text);font-size:16px;}
+#kk-shared.gm-mode #kk-nation-card,
+#kk-shared.gm-mode .kk-sub,
+#kk-shared.gm-mode #kk-list{display:none;}
