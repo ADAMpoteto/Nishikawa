@@ -16,7 +16,9 @@
   <div class="nav-links">
     <button class="nav-btn active" data-nav="torima" onclick="goto('torima')">トリマ</button>
     <button class="nav-btn" data-nav="run" onclick="goto('run')">ランニング</button>
+    <button class="nav-btn" data-nav="bike" onclick="goto('bike')">自転車</button>
     <button class="nav-btn" data-nav="keiken" onclick="goto('keiken')">経県値</button>
+    <button class="nav-btn" data-nav="gourmet" onclick="goto('gourmet')">グルメ</button>
   </div>
 </nav>
 
@@ -78,13 +80,34 @@
 </div>
 </div>
 
+<!-- ========== 自転車 ========== -->
+<div id="bike" class="page">
+<div class="container">
+  <div class="page-header"><h1>自転車</h1><p>走った距離と行き先の記録</p></div>
+  <div class="hero" id="bk-hero"><div class="loading">読み込み中…</div></div>
+  <div class="card-section">
+    <div class="sec-title">距離ランキング TOP10</div>
+    <div id="bk-rank"></div>
+  </div>
+  <div class="card-section">
+    <div class="sec-title">年ごとの距離</div>
+    <div class="mlist" id="bk-years"></div>
+  </div>
+  <div class="card-section">
+    <div class="sec-title">よく行く行き先</div>
+    <div class="mlist" id="bk-dest"></div>
+  </div>
+</div>
+</div>
+
 <!-- ========== 経県値マップ ========== -->
 <div id="keiken" class="page">
 <div class="container">
   <div class="page-header"><h1>経県値マップ</h1><p>日本の市区町村、どこまで行った？</p></div>
-
+  <div id="kk-slot-keiken">
+  <div id="kk-shared">
   <div class="card-section">
-    <div class="sec-title">全国</div>
+    <div class="sec-title" id="kk-nation-title">全国</div>
     <div class="stats-row" id="kk-nation-stats"></div>
     <div id="kk-nation"><div class="loading">読み込み中…</div></div>
     <div class="kk-note" id="kk-note" hidden></div>
@@ -108,6 +131,34 @@
     <div class="kk-sub">市区町村の一覧</div>
     <div id="kk-list"></div>
   </div>
+  </div>
+  </div>
+</div>
+</div>
+
+<!-- ========== グルメ（食べログ） ========== -->
+<div id="gourmet" class="page">
+<div class="container">
+  <div class="page-header"><h1>グルメ</h1><p>食べログに投稿したお店の記録</p></div>
+  <div class="hero" id="gm-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="card-section">
+    <div class="sec-title">自分の評価ランキング TOP10</div>
+    <div class="day-tabs" id="gm-tabs"></div>
+    <div id="gm-rank"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">よく食べるジャンル</div>
+    <div class="mlist" id="gm-genre"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">年ごとの投稿数</div>
+    <div class="mlist" id="gm-years"></div>
+  </div>
+
+  <div id="kk-slot-gourmet"></div>
 </div>
 </div>
 

@@ -333,3 +333,25 @@ details.kk-group[open] summary::after{content:"－";}
 .rk-cell dd small{font-size:10px;font-weight:600;margin-left:1px;}
 .rk-cell.hl dt{color:var(--text);}
 .rk-cell.hl dd{font-size:18px;font-weight:800;color:var(--text);}
+
+/* =====================================================================
+   グルメ（食べログ）
+   ===================================================================== */
+.gm-name a{color:var(--text);text-decoration:underline;text-decoration-color:var(--border2);text-underline-offset:3px;}
+.gm-name a:hover{text-decoration-color:var(--text);}
+.mlist-bar.gm span{background:#ea7a3b;}
+.gm-genre-name{font-size:13px;}
+.kk-chip-n{display:inline-block;margin-left:5px;font-size:10px;font-weight:800;color:#b8401c;}
+.kk-leg.static{cursor:default;}
+.gm-pref-legend{margin-top:10px;}
+.gm-shops{list-style:none;margin-top:10px;display:flex;flex-direction:column;}
+.gm-shops li{padding:9px 0;border-top:.5px solid var(--border);}
+.gm-shop-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:14px;font-weight:800;}
+.gm-shop-top a{color:var(--text);text-decoration:underline;text-decoration-color:var(--border2);text-underline-offset:3px;}
+.gm-my{font-size:16px;font-weight:800;color:#b8401c;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.gm-shop-sub{font-size:11px;color:var(--text2);margin-top:2px;}
+.gm-shop-title{font-size:12px;color:var(--text2);margin-top:3px;}
+.mlist-row.gm-genre-row{grid-template-columns:110px 1fr auto;}
+@media(max-width:480px){ .mlist-row.gm-genre-row{grid-template-columns:92px 1fr auto;} }
+.gm-more summary{font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;padding:8px 0 2px;}
+.mlist-bar.bk span{background:#2e7d8f;}

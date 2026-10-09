@@ -38,6 +38,8 @@ function fetchCSVRaw(url){
 /* "1,234" "1234P" → 1234 / 空欄 → null（0 は 0 のまま） */
 function num(s){ const t=String(s==null?"":s).replace(/[０-９．]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/[,，\sPpｐ円km]/gi,""); if(t==="") return null; const n=Number(t); return isFinite(n)?n:null; }
 const nf=n=>Math.round(n).toLocaleString("ja-JP");
+/* トリマは10ポイント単位なので、計算で出た値は10の位に切り上げる */
+const ceil10=n=>Math.ceil(n/10)*10;
 function today0(){ const t=new Date(); t.setHours(0,0,0,0); return t; }
 function sameDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
 function ymKey(dt){ return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`; }
@@ -78,12 +80,13 @@ function bindBarChart(id, items, defIdx){
 }
 
 /* ---------- ルーティング（戻る/進む・直リンク対応） ---------- */
-const PAGES=["torima","run","keiken"];
+const PAGES=["torima","run","bike","keiken","gourmet"];
 function applyPage(page){
   if(!PAGES.includes(page)) page=PAGES[0];
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
   document.getElementById(page).classList.add("active");
   document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active", b.dataset.nav===page));
+  if(page==="keiken"||page==="gourmet") kkSetMode(page);
   window.scrollTo(0,0);
 }
 function goto(page, push){
@@ -202,8 +205,8 @@ function tmShow(key){
     <div class="hero-meta">
       ${progressTxt?`<span class="hero-chip accent">${progressTxt}</span>`:""}
       ${tmCompareHtml(mo)}
-      <span class="hero-chip">1日平均 <strong>${nf(mo.avg)}</strong> P</span>
-      ${mo.isCur && mo.entered?`<span class="hero-chip">このペースの月末予測 <strong>${nf(forecast)}</strong> P</span>`:""}
+      <span class="hero-chip">1日平均 <strong>${nf(ceil10(mo.avg))}</strong> P</span>
+      ${mo.isCur && mo.entered?`<span class="hero-chip">このペースの月末予測 <strong>${nf(ceil10(forecast))}</strong> P</span>`:""}
     </div>`;
 
   /* 目標カード */
@@ -216,11 +219,11 @@ function tmShow(key){
       let c=0, hitDay=null; for(const d of mo.days){ if(d.p!=null){ c+=d.p; if(c>=T){ hitDay=d.dt; break; } } }
       cls="done"; main="達成！"; sub=hitDay?`${fmtMD(hitDay)} に到達`:"";
     }else if(mo.isCur && rem>0){
-      const left=T-mo.total, per=Math.ceil(left/rem);
+      const left=T-mo.total, per=ceil10(left/rem);
       main=`1日 <strong>${nf(per)}</strong> P`;
       if(forecast>=T){ cls="ok"; sub=`あと ${nf(left)} P／今のペースなら届く`; }
       else{
-        const up=per-mo.avg;
+        const up=ceil10(per-mo.avg);
         cls= per>mo.avg*3 ? "far" : "push";
         sub=`あと ${nf(left)} P／平均より +${nf(up)} P/日`;
       }
@@ -246,9 +249,9 @@ function tmShow(key){
       cls:[d.p==null?(future?"future":"blank"):"", wk===0?"sun":wk===6?"sat":"", sameDay(d.dt,t)?"today":""].join(" "),
       tip:`${fmtMD(d.dt)}　${d.p==null?(future?"これから":"未入力"):`<strong>${nf(d.p)}</strong> P`}` };
   });
-  const lines=[{value:mo.avg, label:`平均 ${nf(mo.avg)}`, cls:"avg"}];
+  const lines=[{value:mo.avg, label:`平均 ${nf(ceil10(mo.avg))}`, cls:"avg"}];
   if(mo.isCur && rem>0 && nextIdx>=0){
-    const per=Math.ceil((TM_TARGETS[nextIdx]-mo.total)/rem);
+    const per=ceil10((TM_TARGETS[nextIdx]-mo.total)/rem);
     const maxDay=Math.max(0,...mo.days.map(d=>d.p||0));
     if(per<=Math.max(maxDay,1)*1.6) lines.push({value:per, label:`${nf(TM_TARGETS[nextIdx])}P に必要 ${nf(per)}`, cls:"need"});
   }
@@ -283,7 +286,7 @@ function tmRenderOverall(){
     <button type="button" class="mlist-row" data-m="${m.key}">
       <span class="mlist-name"><span class="mlist-y">${m.y}年</span><span class="mlist-m">${m.m}月</span>${m===bestM&&mo.length>1?'<em>ベスト</em>':""}</span>
       <span class="mlist-bar"><span style="width:${m.total/maxT*100}%"></span></span>
-      <span class="mlist-val">${nf(m.total)} P<small>平均 ${nf(m.avg)}／${m.entered}日</small></span>
+      <span class="mlist-val">${nf(m.total)} P<small>平均 ${nf(ceil10(m.avg))}／${m.entered}日</small></span>
     </button>`).join("");
   document.querySelectorAll("#tm-months .mlist-row").forEach(r=>r.onclick=()=>{
     tmShow(r.dataset.m);
@@ -484,7 +487,7 @@ const KK_LEVELS=[
 KK_LEVELS.forEach(l=>l.tag=`${l.lv}：${l.label}`);
 const KK_MAX=KK_LEVELS[0].lv;
 const KK_BY_LV={}; KK_LEVELS.forEach(l=>KK_BY_LV[l.lv]=l);
-const KK={ rows:[], note:"", pref:null, feats:[], byCode:{}, rec:{}, selected:null, filter:null,
+const KK={ mode:"keiken", ready:false, rows:[], note:"", pref:null, feats:[], byCode:{}, rec:{}, selected:null, filter:null,
            home:null, limit:null, minW:1, view:null, anim:0, geoCache:{}, token:0 };
 
 const kkZen2Han=s=>String(s||"").replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
@@ -583,12 +586,28 @@ async function loadKeiken(){
     }
     catch(e){ KK.note="経県値シートを読み込めませんでした。シートが「ウェブに公開」されているか、URLが正しいかを確認してください。"; }
   }
+  KK.ready=true;
   kkRenderNation();
   kkShowPref(KK_PREF_IDX[KK_PREF_DEFAULT]!=null ? KK_PREF_DEFAULT : "東京都");
 }
 
+/* 経県値ページとグルメページで同じ地図を使い回す（表示中のページへ地図ごと移動） */
+function kkSetMode(mode){
+  const slot=document.getElementById("kk-slot-"+mode), box=document.getElementById("kk-shared");
+  if(slot && box && box.parentNode!==slot) slot.appendChild(box);
+  const changed=KK.mode!==mode;
+  KK.mode=mode;
+  document.getElementById("kk-nation-title").textContent = mode==="gourmet" ? "グルメ地図（全国）" : "全国";
+  document.getElementById("kk-info").innerHTML=`<p class="kk-info-empty">地図の市区町村をタップすると、ここに${mode==="gourmet"?"お店の一覧":"記録"}が表示されます。</p>`;
+  if(!changed || !KK.ready) return;
+  KK.filter=null; KK.selected=null;
+  kkRenderNation();
+  if(document.getElementById("kk-svg")) kkRenderPref();
+}
+
 /* ---- 全国のまとめ（都道府県ごとの最高レベル＝本家の経県値） ---- */
 function kkRenderNation(){
+  if(KK.mode==="gourmet") return gmRenderNation();
   let nationScore=0, prefVisited=0, muniVisited=0, muniTotal=0;
   const tiles=KK_PREFS.map(([pref,total])=>{
     const {byCode,byName}=kkPrefRecords(pref, null);
@@ -738,7 +757,7 @@ function kkBuildMap(geo, border){
     ? `<path class="kk-muni" data-code="${f.code}" d="${f.d}" tabindex="0" role="button" aria-label="${escHtml(f.name)}"></path>`
     : `<path class="kk-muni kk-void" d="${f.d}" aria-hidden="true"></path>`).join("");
   document.getElementById("kk-map").innerHTML=
-    `<svg id="kk-svg" viewBox="${KK.view.join(" ")}" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="${escHtml(KK.pref)}の市区町村 経県値マップ">
+    `<svg id="kk-svg" viewBox="${KK.view.join(" ")}" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="${escHtml(KK.pref)}の市区町村 ${KK.mode==="gourmet"?"グルメ地図":"経県値マップ"}">
       <g id="kk-munis">${paths}</g>
       ${borderD?`<path class="kk-border" d="${borderD}"></path>`:""}
       <g id="kk-labels" class="kk-labels" aria-hidden="true">${feats.filter(f=>f.label).map(f=>
@@ -767,8 +786,9 @@ function kkBindMap(){
   svg.addEventListener("pointermove", e=>{
     const c=codeOf(e.target);
     if(e.pointerType!=="mouse" || !c){ tip.hidden=true; return; }
-    const f=KK.byCode[c], l=KK_BY_LV[kkLv(c)];
-    tip.innerHTML=`<span class="kk-sw" style="background:${l.color}"></span>${escHtml(f.name)}<em>${l.tag}</em>`;
+    const f=KK.byCode[c], l=kkByLv(kkLv(c));
+    const tag=KK.mode==="gourmet" ? `${(GM.byCode[c]||[]).length}軒` : l.tag;
+    tip.innerHTML=`<span class="kk-sw" style="background:${l.color}"></span>${escHtml(f.name)}<em>${tag}</em>`;
     const r=wrap.getBoundingClientRect();
     tip.hidden=false;
     tip.style.left=Math.max(6, Math.min(e.clientX-r.left+14, r.width-tip.offsetWidth-6))+"px";
@@ -971,29 +991,42 @@ function kkZoomTo(target){
 }
 
 /* ---- 都道府県ごとの描画 ---- */
-function kkLv(code){ return (KK.rec[code]||{}).lv||0; }
+function kkLevels(){ return KK.mode==="gourmet" ? GM_LEVELS : KK_LEVELS; }
+function kkByLv(lv){ return kkLevels().find(l=>l.lv===lv)||kkLevels()[kkLevels().length-1]; }
+function kkLv(code){
+  if(KK.mode==="gourmet") return gmBucket((GM.byCode[code]||[]).length);
+  return (KK.rec[code]||{}).lv||0;
+}
 
 function kkRenderPref(){
   const real=KK.feats.filter(f=>f.real);
   const total=real.length;
-  const count={}; KK_LEVELS.forEach(l=>count[l.lv]=0);
+  const count={}; kkLevels().forEach(l=>count[l.lv]=0);
   let score=0;
   real.forEach(f=>{ const lv=kkLv(f.code); count[lv]++; score+=lv; });
   const visited=total-count[0];
 
   document.querySelectorAll("#kk-svg .kk-muni[data-code]").forEach(p=>{
-    const c=p.dataset.code, l=KK_BY_LV[kkLv(c)];
+    const c=p.dataset.code, l=kkByLv(kkLv(c));
     p.style.fill=l.color;
-    p.setAttribute("aria-label", `${KK.byCode[c].name}、${l.tag}`);
+    p.setAttribute("aria-label", `${KK.byCode[c].name}、${KK.mode==="gourmet"?(GM.byCode[c]||[]).length+"軒":l.tag}`);
     p.classList.toggle("dim", KK.filter!=null && kkLv(c)!==KK.filter);
   });
 
-  document.getElementById("kk-stats").innerHTML=`
+  if(KK.mode==="gourmet"){
+    const shops=real.reduce((n,f)=>n+(GM.byCode[f.code]||[]).length,0);
+    const rated=[].concat(...real.map(f=>GM.byCode[f.code]||[])).filter(r=>r.my!=null);
+    const avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:0;
+    document.getElementById("kk-stats").innerHTML=`
+    <div class="stat-chip">${escHtml(KK.pref)}で食べたお店 <strong>${shops}</strong> 軒</div>
+    <div class="stat-chip">市区町村 <strong>${visited}</strong> / ${total}</div>
+    ${rated.length?`<div class="stat-chip">自分の評価の平均 <strong>${avg.toFixed(2)}</strong></div>`:""}`;
+  }else document.getElementById("kk-stats").innerHTML=`
     <div class="stat-chip">${escHtml(KK.pref)}の経県値 <strong>${score}</strong> / ${total*KK_MAX}点</div>
     <div class="stat-chip">足を運んだ <strong>${visited}</strong> / ${total} 市区町村</div>
     <div class="stat-chip">制覇率 <strong>${total?Math.round(visited/total*100):0}%</strong></div>`;
 
-  document.getElementById("kk-legend").innerHTML=KK_LEVELS.slice().reverse().map(l=>`
+  document.getElementById("kk-legend").innerHTML=kkLevels().slice().reverse().map(l=>`
     <button type="button" class="kk-leg${KK.filter===l.lv?" active":""}" data-lv="${l.lv}" aria-pressed="${KK.filter===l.lv}" title="${l.note}">
       <span class="kk-sw" style="background:${l.color}"></span>${l.tag}<span class="kk-leg-n">${count[l.lv]}</span>
     </button>`).join("");
@@ -1004,9 +1037,10 @@ function kkRenderPref(){
   });
 
   // 一覧（レベルの高い順。未踏は折りたたみ）
-  const chip=f=>`<button type="button" class="kk-chip" data-code="${f.code}">${escHtml(f.name)}</button>`;
-  document.getElementById("kk-list").innerHTML=KK_LEVELS.map(l=>{
-    const fs=real.filter(f=>kkLv(f.code)===l.lv).sort((a,b)=>a.code<b.code?-1:1);
+  const gmN=f=>(GM.byCode[f.code]||[]).length;
+  const chip=f=>`<button type="button" class="kk-chip" data-code="${f.code}">${escHtml(f.name)}${KK.mode==="gourmet"&&gmN(f)?`<span class="kk-chip-n">${gmN(f)}</span>`:""}</button>`;
+  document.getElementById("kk-list").innerHTML=kkLevels().map(l=>{
+    const fs=real.filter(f=>kkLv(f.code)===l.lv).sort((a,b)=>KK.mode==="gourmet"&&gmN(b)!==gmN(a)?gmN(b)-gmN(a):(a.code<b.code?-1:1));
     if(!fs.length) return "";
     const head=`<span class="kk-sw" style="background:${l.color}"></span>${l.tag}<span class="kk-leg-n">${fs.length}</span>`;
     const body=`<div class="kk-chips">${fs.map(chip).join("")}</div>`;
@@ -1032,6 +1066,7 @@ function kkSelect(code){
   g.querySelectorAll(".kk-muni.sel").forEach(p=>p.classList.remove("sel"));
   const p=g.querySelector(`.kk-muni[data-code="${code}"]`);
   if(p){ p.classList.add("sel"); g.appendChild(p); p.focus({preventScroll:true}); }
+  if(KK.mode==="gourmet"){ gmRenderInfo(code, f); return; }
   const r=KK.rec[code]||{}, l=KK_BY_LV[r.lv||0];
   document.getElementById("kk-info").innerHTML=`
     <div class="kk-info-head">
@@ -1042,10 +1077,283 @@ function kkSelect(code){
     ${r.memo?`<div class="kk-info-memo">${escHtml(r.memo)}</div>`:""}`;
 }
 
+/* =====================================================================
+   グルメ（食べログ）
+   列 : No / 日付 / 曜日 / 店名 / 都道府県 / 市区町村 / 評価 / Instagram（投稿対象・投稿済）/ ジャンル
+   ・都道府県＋市区町村を経県値シートの市区町村一覧と照らし合わせて地図に反映します
+     （政令市は「神戸市中央区」のように区まで、郡名は付けない）
+   ・ジャンルは「、」区切りで複数でも、1つでもOK
+   ===================================================================== */
+const URL_GOURMET = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1336707621&single=true&output=csv";
+
+/* 市区町村の色分け（軒数）。経県値と見分けがつくよう、食べ物らしい橙系 */
+const GM_LEVELS=[
+  {lv:4, label:"10軒〜",  tag:"10軒〜",  note:"10軒以上", color:"#b8401c"},
+  {lv:3, label:"5〜9軒",  tag:"5〜9軒",  note:"5〜9軒",   color:"#ea7a3b"},
+  {lv:2, label:"2〜4軒",  tag:"2〜4軒",  note:"2〜4軒",   color:"#f8b765"},
+  {lv:1, label:"1軒",     tag:"1軒",     note:"1軒",      color:"#fde1ad"},
+  {lv:0, label:"0軒",     tag:"0軒",     note:"まだ食べていない", color:"#ffffff"}
+];
+const gmBucket=n=> n>=10?4 : n>=5?3 : n>=2?2 : n>=1?1 : 0;
+const gmPrefBucket=n=> n>=50?4 : n>=20?3 : n>=5?2 : n>=1?1 : 0;
+const GM={ list:[], byCode:{}, byPref:{}, tab:"すべて", note:"" };
+
+function gmParseYM(s){ const m=String(s||"").match(/(\d{4})\D+(\d{1,2})/); return m?new Date(+m[1], +m[2]-1, 1):null; }
+function gmFmtYM(d){ return d?`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}`:""; }
+function gmFmtDate(r){ return r.dt?`${r.dt.getFullYear()}/${fmtMD(r.dt)}`:gmFmtYM(r.ym); }
+
+async function loadGourmet(){
+  let rows=[];
+  try{ rows=cleanRows((await fetchCSV(URL_GOURMET)).data); }
+  catch(e){ document.getElementById("gm-hero").innerHTML=errBox("食べログのデータを読み込めませんでした。"); return; }
+
+  /* 名前 → 団体コード（経県値シートの全市区町村を辞書として使う） */
+  const nameIdx={}; KK.rows.forEach(r=>{ if(r.code && r.pref) nameIdx[r.pref+"\u0001"+r.name]=r.code; });
+
+  GM.list=rows.map(o=>{
+    const name=F(o,"店名"); if(!name) return null;
+    /* 列名は「都道府県／市区町村」「都道府県名／市区町村名」のどちらでも読めるようにする */
+    const pf=F(o,"都道府県")||F(o,"都道府県名"), mu=F(o,"市区町村")||F(o,"市区町村名");
+    const k=kkNormRow({ "団体コード":F(o,"団体コード"), "都道府県名":pf, "市区町村名":mu })||{code:"",pref:"",name:""};
+    let code=k.code;
+    if(!code && k.pref && k.name) code=nameIdx[k.pref+"\u0001"+k.name]||"";
+    const dt=pd(F(o,"日付"));
+    return { code, pref:k.pref, muni:mu, name, genre:F(o,"ジャンル"),
+      genres:F(o,"ジャンル").split(/[、,，]/).map(x=>x.trim()).filter(Boolean),
+      dt, ym:dt||gmParseYM(F(o,"訪問月")), my:num(F(o,"評価")||F(o,"自分の評価")) };
+  }).filter(Boolean);
+
+  GM.byCode={}; GM.byPref={};
+  GM.list.forEach(r=>{
+    if(r.code) (GM.byCode[r.code]=GM.byCode[r.code]||[]).push(r);
+    if(r.pref) (GM.byPref[r.pref]=GM.byPref[r.pref]||[]).push(r);
+  });
+  const noMap=GM.list.filter(r=>!r.code).length;
+  GM.note = noMap ? `地図に載せられなかったお店が ${noMap} 軒あります（都道府県名・市区町村名を確認してください）。` : "";
+
+  if(!GM.list.length){ document.getElementById("gm-hero").innerHTML=errBox("まだ記録がありません。"); return; }
+  gmRenderHero(); gmRenderTabs(); gmRenderRank(); gmRenderGenre(); gmRenderYears();
+  if(KK.mode==="gourmet" && KK.ready){ kkRenderNation(); if(document.getElementById("kk-svg")) kkRenderPref(); }
+}
+
+function gmRenderHero(){
+  const L=GM.list, rated=L.filter(r=>r.my!=null);
+  const avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:0;
+  const prefs=Object.keys(GM.byPref).length, munis=Object.keys(GM.byCode).length;
+  const y=new Date().getFullYear(), thisYear=L.filter(r=>r.ym && r.ym.getFullYear()===y).length;
+  const latest=L.filter(r=>r.ym).sort((a,b)=>b.ym-a.ym)[0];
+  document.getElementById("gm-hero").innerHTML=`
+    <div class="tm-hero-label">これまでに投稿したお店</div>
+    <div class="tm-big">${nf(L.length)}<small>軒</small></div>
+    ${latest?`<div class="run-headline">最新：<strong>${escHtml(latest.name)}</strong>（${gmFmtDate(latest)}・${escHtml(latest.muni||latest.pref)}）</div>`:""}
+    <div class="hero-meta">
+      <span class="hero-chip">${y}年 <strong>${thisYear}</strong> 軒</span>
+      <span class="hero-chip">都道府県 <strong>${prefs}</strong> / 47</span>
+      <span class="hero-chip">市区町村 <strong>${munis}</strong></span>
+      ${rated.length?`<span class="hero-chip accent">自分の評価の平均 <strong>${avg.toFixed(2)}</strong></span>`:""}
+    </div>`;
+}
+
+/* ジャンルの集計（1軒に複数ジャンルがあれば、それぞれに数える） */
+function gmGenreStats(){
+  const m={};
+  GM.list.forEach(r=>r.genres.forEach(g=>{ const s=(m[g]=m[g]||{g, n:0, sum:0, rn:0}); s.n++; if(r.my!=null){ s.sum+=r.my; s.rn++; } }));
+  return Object.values(m).sort((a,b)=>b.n-a.n);
+}
+
+function gmRenderTabs(){
+  const tabs=["すべて"].concat(gmGenreStats().slice(0,5).map(s=>s.g));
+  document.getElementById("gm-tabs").innerHTML=tabs.map(t=>
+    `<button type="button" class="day-tab${t===GM.tab?" active":""}" data-t="${escHtml(t)}">${escHtml(t)}</button>`).join("");
+  document.querySelectorAll("#gm-tabs .day-tab").forEach(b=>b.onclick=()=>{
+    GM.tab=b.dataset.t;
+    document.querySelectorAll("#gm-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
+    gmRenderRank();
+  });
+}
+
+function gmShopHtml(r, rank, cells){
+  const medal=["🥇","🥈","🥉"];
+  const pos = rank==null ? "" : (rank<3?`<span class="rk-medal" aria-label="${rank+1}位">${medal[rank]}</span>`:`${rank+1}`);
+  const nameHtml = escHtml(r.name);
+  return `<div class="rk${rank!=null&&rank<3?" top top"+(rank+1):""}">
+    <div class="rk-pos">${pos}</div>
+    <div class="rk-body">
+      <div class="rk-date gm-name">${nameHtml}</div>
+      <div class="rk-sub">${escHtml([r.pref+(r.muni||""), r.genres.slice(0,2).join("・")].filter(Boolean).join("／"))}</div>
+      <dl class="rk-grid">${cells.map(([k,label,val])=>`<div class="rk-cell${k?" hl":""}"><dt>${label}</dt><dd>${val}</dd></div>`).join("")}</dl>
+    </div>
+  </div>`;
+}
+const gmScore=v=>v==null?"-":v.toFixed(1);     // 自分の評価（1桁）
+
+function gmRenderRank(){
+  const L=GM.list.filter(r=>r.my!=null && (GM.tab==="すべて" || r.genres.includes(GM.tab)))
+    .sort((a,b)=>b.my-a.my || (b.ym||0)-(a.ym||0)).slice(0,10);
+  document.getElementById("gm-rank").innerHTML = L.length ? L.map((r,i)=>gmShopHtml(r, i, [
+    [1,"評価", gmScore(r.my)],
+    [0,"行った日", gmFmtDate(r)||"-"]
+  ])).join("") : errBox("このジャンルの記録はまだありません。");
+}
+
+function gmRenderGenre(){
+  const S=gmGenreStats().slice(0,10), max=Math.max(1,...S.map(s=>s.n));
+  document.getElementById("gm-genre").innerHTML=S.map(s=>`
+    <div class="mlist-row static gm-genre-row">
+      <span class="mlist-name gm-genre-name">${escHtml(s.g)}</span>
+      <span class="mlist-bar gm"><span style="width:${s.n/max*100}%"></span></span>
+      <span class="mlist-val">${s.n} 軒<small>${s.rn?`平均 ${(s.sum/s.rn).toFixed(2)}`:""}</small></span>
+    </div>`).join("");
+}
+
+function gmRenderYears(){
+  const m={};
+  GM.list.forEach(r=>{ if(!r.ym) return; const y=r.ym.getFullYear(); const s=(m[y]=m[y]||{y, n:0, sum:0, rn:0, prefs:new Set()}); s.n++; if(r.my!=null){ s.sum+=r.my; s.rn++; } if(r.pref) s.prefs.add(r.pref); });
+  const Y=Object.values(m).sort((a,b)=>b.y-a.y), max=Math.max(1,...Y.map(s=>s.n));
+  const best=Y.reduce((b,s)=>(!b||s.n>b.n)?s:b,null);
+  document.getElementById("gm-years").innerHTML=Y.map(s=>`
+    <div class="mlist-row static">
+      <span class="mlist-name"><span class="mlist-m">${s.y}年</span>${s===best&&Y.length>1?'<em>ベスト</em>':""}</span>
+      <span class="mlist-bar gm"><span style="width:${s.n/max*100}%"></span></span>
+      <span class="mlist-val">${s.n} 軒<small>${s.prefs.size}都道府県${s.rn?`・平均 ${(s.sum/s.rn).toFixed(2)}`:""}</small></span>
+    </div>`).join("");
+}
+
+/* 全国タイル（グルメ版）：都道府県ごとの軒数 */
+function gmRenderNation(){
+  const prefs=Object.keys(GM.byPref).length, munis=Object.keys(GM.byCode).length;
+  document.getElementById("kk-nation-stats").innerHTML=`
+    <div class="stat-chip">お店 <strong>${nf(GM.list.length)}</strong> 軒</div>
+    <div class="stat-chip">都道府県 <strong>${prefs}</strong> / ${KK_PREFS.length}</div>
+    <div class="stat-chip">市区町村 <strong>${munis}</strong></div>`;
+  document.getElementById("kk-nation").innerHTML=KK_REGIONS.map(([rg,a,b])=>`
+    <div class="kk-region">
+      <div class="kk-region-name">${rg}</div>
+      <div class="kk-tiles">${KK_PREFS.slice(a,b).map(([p])=>{
+        const n=(GM.byPref[p]||[]).length, l=kkByLv(gmPrefBucket(n));
+        return `<button type="button" class="kk-tile${p===KK.pref?" active":""}" data-pref="${p}" aria-label="${p}：${n}軒">
+          <span class="kk-sw" style="background:${l.color}"></span><span class="kk-tile-name">${p}</span><span class="kk-tile-n">${n?n+"軒":"-"}</span>
+        </button>`; }).join("")}</div>
+    </div>`).join("")
+    + `<div class="kk-legend gm-pref-legend" aria-hidden="true">${[[1,"1〜4軒"],[2,"5〜19軒"],[3,"20〜49軒"],[4,"50軒〜"]].map(([lv,t])=>
+        `<span class="kk-leg static"><span class="kk-sw" style="background:${kkByLv(lv).color}"></span>${t}</span>`).join("")}</div>`;
+  document.querySelectorAll(".kk-tile").forEach(b=>b.onclick=()=>{
+    kkShowPref(b.dataset.pref);
+    const a=document.getElementById("kk-pref-anchor"), nav=document.querySelector("nav");
+    window.scrollTo({ top:Math.max(0, window.scrollY+a.getBoundingClientRect().top-(nav?nav.offsetHeight:0)-8), behavior:prefersReduced()?"auto":"smooth" });
+  });
+  const noteEl=document.getElementById("kk-note");
+  noteEl.hidden=!GM.note; noteEl.textContent=GM.note||"";
+}
+
+/* 市区町村をタップしたとき：その町で食べたお店の一覧 */
+function gmRenderInfo(code, f){
+  const L=(GM.byCode[code]||[]).slice().sort((a,b)=>(b.my||0)-(a.my||0) || (b.ym||0)-(a.ym||0));
+  const l=kkByLv(gmBucket(L.length));
+  document.getElementById("kk-info").innerHTML=`
+    <div class="kk-info-head">
+      <span class="kk-info-name">${escHtml(f.name)}</span>
+      <span class="kk-badge" style="--c:${l.color}">${L.length}軒</span>
+    </div>
+    ${L.length ? gmShopList(L.slice(0,10)) + (L.length>10?`<details class="gm-more"><summary>残り ${L.length-10} 軒を見る</summary>${gmShopList(L.slice(10))}</details>`:"") : `<p class="kk-info-empty">まだこの町のお店の記録はありません。</p>`}`;
+}
+function gmShopList(L){
+  return `<ul class="gm-shops">${L.map(r=>`
+      <li>
+        <div class="gm-shop-top">
+          <span>${escHtml(r.name)}</span>
+          ${r.my!=null?`<span class="gm-my">${gmScore(r.my)}</span>`:""}
+        </div>
+        <div class="gm-shop-sub">${escHtml([r.genres.slice(0,2).join("・"), gmFmtDate(r)].filter(Boolean).join("／"))}</div>
+      </li>`).join("")}</ul>`;
+}
+
+/* =====================================================================
+   自転車
+   列 : No / 日付 / 曜日 / 行き先 / 距離 / 累計（累計はサイト側で計算し直します）
+   ===================================================================== */
+const URL_BIKE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1988798954&single=true&output=csv";
+const BK={ list:[] };
+
+async function loadBike(){
+  let rows=[];
+  try{ rows=cleanRows((await fetchCSV(URL_BIKE)).data); }
+  catch(e){ document.getElementById("bk-hero").innerHTML=errBox("自転車のデータを読み込めませんでした。"); return; }
+  BK.list=rows.map(o=>{
+    const dt=pd(F(o,"日付")), km=num(F(o,"距離"));
+    if(!dt||!km) return null;
+    return { dt, km, dest:F(o,"行き先") };
+  }).filter(Boolean).sort((a,b)=>a.dt-b.dt);
+  BK.list.forEach((r,i)=>r.no=i+1);
+  if(!BK.list.length){ document.getElementById("bk-hero").innerHTML=errBox("まだ記録がありません。"); return; }
+  bkRenderHero(); bkRenderRank(); bkRenderYears(); bkRenderDest();
+}
+const bkDate=d=>`${d.getFullYear()}/${fmtMD(d)}`;
+
+function bkRenderHero(){
+  const L=BK.list, km=L.reduce((a,r)=>a+r.km,0);
+  const latest=L[L.length-1], best=L.reduce((b,r)=>(!b||r.km>b.km)?r:b,null);
+  const rank=L.slice().sort((a,b)=>b.km-a.km).indexOf(latest)+1;
+  const y=new Date().getFullYear(), yKm=L.filter(r=>r.dt.getFullYear()===y).reduce((a,r)=>a+r.km,0);
+  document.getElementById("bk-hero").innerHTML=`
+    <div class="tm-hero-label">これまでの累計距離</div>
+    <div class="tm-big">${nf(km)}<small>km</small></div>
+    <div class="run-headline${rank===1&&L.length>1?" pb":""}">${rank===1&&L.length>1
+      ? `最新ライド（${fmtMD(latest.dt)}・${escHtml(latest.dest)}）で最長記録！`
+      : `最新ライド：${escHtml(latest.dest)} ${latest.km.toFixed(2)}km（${bkDate(latest.dt)}）`}</div>
+    <div class="hero-meta">
+      <span class="hero-chip">${L.length} 回</span>
+      <span class="hero-chip">${y}年 <strong>${yKm.toFixed(1)}</strong> km</span>
+      <span class="hero-chip">1回平均 <strong>${(km/L.length).toFixed(1)}</strong> km</span>
+      <span class="hero-chip accent">最長 <strong>${best.km.toFixed(1)}</strong> km</span>
+    </div>`;
+}
+
+function bkRenderRank(){
+  const L=BK.list.slice().sort((a,b)=>b.km-a.km).slice(0,10), latest=BK.list[BK.list.length-1];
+  const medal=["🥇","🥈","🥉"];
+  document.getElementById("bk-rank").innerHTML=L.map((r,i)=>`
+    <div class="rk${i<3?" top top"+(i+1):""}">
+      <div class="rk-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:i+1}</div>
+      <div class="rk-body">
+        <div class="rk-date">${escHtml(r.dest||"（行き先なし）")}${r===latest?'<span class="rk-new">NEW</span>':""}</div>
+        <dl class="rk-grid">
+          <div class="rk-cell hl"><dt>距離</dt><dd>${r.km.toFixed(2)}<small>km</small></dd></div>
+          <div class="rk-cell"><dt>日付</dt><dd>${bkDate(r.dt)}</dd></div>
+        </dl>
+      </div>
+    </div>`).join("");
+}
+
+function bkRenderYears(){
+  const m={};
+  BK.list.forEach(r=>{ const y=r.dt.getFullYear(); const s=(m[y]=m[y]||{y,km:0,n:0}); s.km+=r.km; s.n++; });
+  const Y=Object.values(m).sort((a,b)=>b.y-a.y), max=Math.max(...Y.map(s=>s.km));
+  document.getElementById("bk-years").innerHTML=Y.map(s=>`
+    <div class="mlist-row static">
+      <span class="mlist-name"><span class="mlist-m">${s.y}年</span>${s.km===max&&Y.length>1?'<em>ベスト</em>':""}</span>
+      <span class="mlist-bar bk"><span style="width:${s.km/max*100}%"></span></span>
+      <span class="mlist-val">${s.km.toFixed(1)} km<small>${s.n}回</small></span>
+    </div>`).join("");
+}
+
+function bkRenderDest(){
+  const m={};
+  BK.list.forEach(r=>{ const k=r.dest||"（なし）"; const s=(m[k]=m[k]||{k,n:0,km:0}); s.n++; s.km+=r.km; });
+  const D=Object.values(m).sort((a,b)=>b.n-a.n||b.km-a.km), max=Math.max(...D.map(d=>d.n));
+  document.getElementById("bk-dest").innerHTML=D.map(d=>`
+    <div class="mlist-row static gm-genre-row">
+      <span class="mlist-name gm-genre-name">${escHtml(d.k)}</span>
+      <span class="mlist-bar bk"><span style="width:${d.n/max*100}%"></span></span>
+      <span class="mlist-val">${d.n} 回<small>計 ${d.km.toFixed(1)} km</small></span>
+    </div>`).join("");
+}
+
 /* ---------- 初期化 ---------- */
 loadTorima();
 loadRun();
-loadKeiken();
+loadBike();
+loadKeiken().then(loadGourmet);
 (function initRouting(){
   const st=parseHash();
   history.replaceState({page:st.page}, "", location.hash||"#"+PAGES[0]);
