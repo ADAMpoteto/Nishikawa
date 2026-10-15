@@ -1691,14 +1691,19 @@ function esRenderB9(){
          : ES.b9==="amateur" ? "プロ野球選手にならなかった卒業生の中で、卒業時の★が一番高い選手（守備は卒業時）。"
          : "卒業時の★が一番高い選手（守備は卒業時）。";
   }
-  document.getElementById("es-b9").innerHTML=`<div class="es-b9">${picks.map(x=>`
-    <div class="es-b9-row${x.g?"":" empty"}">
+  document.getElementById("es-b9").innerHTML=`<div class="es-b9">${picks.map(x=>{
+    const inner=`
       <span class="es-pos lg ${esPosCls(x.p)}">${x.p}</span>
       <span class="es-b9-main">${x.g?`<span class="es-b9-name">${escHtml(x.g.name)}${esTags(x.g)}</span>
         <span class="es-b9-meta">${escHtml(esGradMeta(x.g))}</span>`:`<span class="es-b9-meta">該当なし</span>`}</span>
-      <span class="es-b9-val">${x.g?val(x):""}</span>
-    </div>`).join("")}</div>`;
-  document.getElementById("es-b9-note").textContent=note;
+      <span class="es-b9-val">${x.g?val(x):""}</span>`;
+    return x.g ? esPl("es-b9-row", inner, x.g) : `<div class="es-b9-row empty">${inner}</div>`;
+  }).join("")}</div>`;
+  document.getElementById("es-b9-note").textContent=note+" 選手をタップすると通算成績が見られます。";
+}
+/* 選手の行をタップで開けるようにする（中身は卒業生カード） */
+function esPl(cls, inner, g){
+  return `<details class="es-pl"><summary class="${cls}">${inner}</summary>${esCareerHtml(g)}</details>`;
 }
 function esTags(g){ return (g.tensei?`<span class="es-tag t">転生</span>`:"") + (g.scout?`<span class="es-tag">スカウト</span>`:""); }
 function esGradMeta(g){
@@ -1735,16 +1740,14 @@ function esRenderRk(){
   if(!R){ document.getElementById("es-rk").innerHTML=errBox("まだ卒業生の記録がありません。"); return; }
   const L=ES.grads.filter(g=>R.get(g)!=null).sort((a,b)=>R.asc?R.get(a)-R.get(b):R.get(b)-R.get(a)).slice(0,10);
   const medal=["🥇","🥈","🥉"];
-  document.getElementById("es-rk").innerHTML=L.map((g,i)=>`
-    <div class="gm-row">
+  document.getElementById("es-rk").innerHTML=L.map((g,i)=>esPl("gm-row", `
       <div class="gm-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:i+1}</div>
       <div class="gm-main">
         <div class="gm-title">${escHtml(g.name)}<span class="es-pos sm ${esPosCls(g.pos)}">${escHtml(g.pos)}</span>${esTags(g)}</div>
         <div class="gm-meta">${escHtml(esGradMeta(g))}</div>
       </div>
-      <div class="gm-score es-val">${R.fmt(R.get(g))}</div>
-    </div>`).join("");
-  document.getElementById("es-rk-note").textContent=R.note||"";
+      <div class="gm-score es-val">${R.fmt(R.get(g))}</div>`, g)).join("");
+  document.getElementById("es-rk-note").textContent=[R.note, "選手をタップすると通算成績が見られます。"].filter(Boolean).join("　");
 }
 
 /* ---------- 記録 ---------- */
@@ -1859,15 +1862,13 @@ function esRenderDraft(){
     el.querySelectorAll(".mlist-row[data-team]").forEach(b=>b.classList.toggle("on", b.dataset.team===ES.draftTeam));
     const L=P.filter(g=>ES.draftTeam==="すべて" || (ES.draftTeam==="1位" ? g.rank==="1" : g.team===ES.draftTeam))
       .sort((a,b)=>(a.year||0)-(b.year||0) || (+a.rank||99)-(+b.rank||99));
-    document.getElementById("es-draft-list").innerHTML=L.length?esFoldList(L, g=>`
-      <div class="gm-row es-dr">
+    document.getElementById("es-draft-list").innerHTML=L.length?esFoldList(L, g=>esPl("gm-row es-dr", `
         <div class="gm-pos es-dr-rank">${g.rank?`${escHtml(g.rank)}<small>位</small>`:"-"}</div>
         <div class="gm-main">
           <div class="gm-title">${escHtml(g.name)}<span class="es-pos sm ${esPosCls(g.pos)}">${escHtml(g.pos)}</span>${esTags(g)}</div>
           <div class="gm-meta">${escHtml([g.year?`${g.year}年度入学`:"", g.from, ES.draftTeam==="すべて"||ES.draftTeam==="1位"?g.team:""].filter(Boolean).join("・"))}</div>
         </div>
-        <div class="gm-score es-val">${g.star!=null?`${g.star}<small>★</small>`:""}</div>
-      </div>`, 10, "人"):errBox("該当する選手がいません。");
+        <div class="gm-score es-val">${g.star!=null?`${g.star}<small>★</small>`:""}</div>`, g), 10, "人"):errBox("該当する選手がいません。");
   };
   sel.onchange=()=>{ ES.draftTeam=sel.value; draw(); };
   el.querySelectorAll(".mlist-row[data-team]").forEach(b=>b.onclick=()=>{
