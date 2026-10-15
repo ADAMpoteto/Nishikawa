@@ -1598,13 +1598,22 @@ function esFindGrad(l){
   if(c.length>1){ const c2=c.filter(g=>esPosN(l.pos)===esPosN(g.pos) || esPosN(l.pos)===esPosN(g.pos0)); if(c2.length) c=c2; }
   return c[0]||null;
 }
-/* スタメンの右に出す通算成績（卒業生シートから）。その試合で投手なら投手成績、それ以外は打撃成績 */
-function esStatLine(l, g){
-  if(!g) return "";
-  const pit = l.pos==="投" && (g.era!=null || g.w!=null || g.k!=null);
-  if(pit) return [g.era!=null?`防 ${g.era.toFixed(2)}`:"", g.w!=null?`${g.w}勝${g.l||0}敗`:"", g.k!=null?`${g.k}K`:""].filter(Boolean).join(" ");
-  if(g.avg!=null) return [esAvgFmt(g.avg), `${g.hr||0}本`, `${g.rbi||0}点`].join(" ");
-  return "";
+/* 背番号を丸数字に（1〜50。それ以上は #番号） */
+function esCircled(n){
+  n=+n; if(!n) return "";
+  if(n<=20) return String.fromCharCode(0x2460+n-1);
+  if(n<=35) return String.fromCharCode(0x3251+n-21);
+  if(n<=50) return String.fromCharCode(0x32B1+n-36);
+  return `#${n}`;
+}
+/* スタメンの右に縦に並べる通算成績（卒業生シートから）。その試合で投手なら投手成績、それ以外は打撃成績 */
+function esStatRows(l, g){
+  if(!g) return [];
+  if(l.pos==="投" && (g.era!=null || g.w!=null || g.k!=null))
+    return [["防御率", g.era!=null?g.era.toFixed(2):"-"], ["勝敗", g.w!=null?`${g.w}-${g.l||0}`:"-"], ["奪三振", g.k!=null?g.k:"-"], ["投球回", g.ip!=null?esIPfmt(g.ip):"-"]];
+  if(g.avg!=null)
+    return [["打率", esAvgFmt(g.avg)], ["本塁打", g.hr||0], ["打点", g.rbi||0], ["盗塁", g.sb||0]];
+  return [];
 }
 function esCareerHtml(g){
   if(!g) return `<p class="es-car-none">卒業生シートに見つかりませんでした（名前・学年を確認してください）。</p>`;
@@ -1621,13 +1630,13 @@ function esCareerHtml(g){
     </dl></div>`;
 }
 function esLuRow(l, starter){
-  const g=esFindGrad(l), line=esStatLine(l, g);
+  const g=esFindGrad(l), st=esStatRows(l, g);
   return `<details class="es-lu-row${starter?"":" bench"}">
     <summary>
       <span class="es-lu-no">${starter?escHtml(l.order):"控"}</span>
       <span class="es-pos">${escHtml(l.pos)}</span>
-      <span class="es-lu-main"><span class="es-lu-name">${escHtml(g?g.name:l.name)}</span><span class="es-lu-meta">${l.grade?escHtml(l.grade)+"年":""}${l.num?`・#${escHtml(l.num)}`:""}${g&&g.star!=null?`・卒業時★${g.star}`:""}</span></span>
-      <span class="es-lu-stat">${escHtml(line)}</span>
+      <span class="es-lu-main"><span class="es-lu-name">${escHtml(g?g.name:l.name)}</span><span class="es-lu-meta">${[l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ")}</span></span>
+      <span class="es-lu-stat">${st.map(([k,v])=>`<span class="es-st"><span class="es-st-k">${k}</span><span class="es-st-v">${escHtml(v)}</span></span>`).join("")}</span>
     </summary>
     ${esCareerHtml(g)}
   </details>`;
@@ -1635,7 +1644,7 @@ function esLuRow(l, starter){
 function esRenderLineup(){
   const L=ES.lineup.filter(l=>l.year===ES.sel && l.season===ES.lineupSeason);
   const starters=L.filter(l=>/^\d+$/.test(l.order)).sort((a,b)=>+a.order-+b.order), bench=L.filter(l=>!/^\d+$/.test(l.order));
-  const hasStats=L.some(l=>esStatLine(l, esFindGrad(l)));
+  const hasStats=L.some(l=>esStatRows(l, esFindGrad(l)).length);
   document.getElementById("es-lu").innerHTML=`
     <div class="es-lu">${starters.map(l=>esLuRow(l,true)).join("")}</div>
     ${bench.length?`<div class="es-bench-lbl">控え</div><div class="es-lu">${bench.map(l=>esLuRow(l,false)).join("")}</div>`:""}
