@@ -478,3 +478,7 @@ details.kk-group[open] summary::after{content:"－";}
 .nav-links{justify-content:flex-start;}
 .nav-links > .nav-btn:first-child{margin-left:auto;}
 .nav-links > .nav-btn:last-child{margin-right:auto;}
+
+/* ヘッダーのタブ間隔を詰める */
+.nav-btn{padding:5px 8px;}
+@media(max-width:480px){ .nav-btn{padding:5px 6px;} nav{padding:0 8px;} }
