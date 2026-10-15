@@ -1335,7 +1335,7 @@ const ES_TAIKAI = [
   {k:"神宮大会", s:"神宮"}, {k:"春の甲子園", s:"春・甲子園"}
 ];
 const ES_B9_SLOTS = ["投","捕","一","二","三","遊","外","外","外"];
-const ES = { games:[], inn:{}, lineup:[], grads:[], years:[], sel:null, b9:"star", team:"", rk:"star", lineupSeason:"夏", oppPref:"", draftTeam:"" };
+const ES = { games:[], inn:{}, lineup:[], grads:[], years:[], sel:null, b9:"star", team:"", rk:"star", lineupSeason:"夏", oppPref:"", draftTeam:"", decade:null, pane:"year" };
 
 /* 全角数字→半角、"－" などは空扱い */
 const esHalf = s => String(s==null?"":s).replace(/[０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
@@ -1412,6 +1412,7 @@ async function loadEikan(){
   }).filter(Boolean);
 
   esBuildYears();
+  esInitSubnav();
   esRenderHero(); esRenderYears(); esInitYearSel(); esRenderB9Tabs(); esRenderB9();
   esRenderRkTabs(); esRenderRk(); esRenderRecords(); esRenderRivals(); esRenderDraft();
 }
@@ -1481,18 +1482,38 @@ function esRenderHero(){
     </div>`;
 }
 
-/* ---------- 年度別成績（表） ---------- */
+/* ---------- 表示の切り替え（年度／選手／記録・対戦校） ---------- */
+function esInitSubnav(){
+  const tabs=document.querySelectorAll("#es-subnav .day-tab");
+  tabs.forEach(b=>b.onclick=()=>{
+    ES.pane=b.dataset.pane;
+    tabs.forEach(x=>{ const on=x===b; x.classList.toggle("active", on); x.setAttribute("aria-selected", on?"true":"false"); });
+    document.querySelectorAll("#eikan .es-pane").forEach(p=>p.hidden = p.dataset.pane!==ES.pane);
+  });
+}
+
+/* ---------- 年度別成績（年代ごとに表示） ---------- */
 function esRenderYears(){
   const el=document.getElementById("es-years");
   if(!ES.years.length){ el.innerHTML=errBox("まだ試合の記録がありません。"); return; }
-  el.innerHTML=`<div class="es-tbl-wrap"><table class="es-tbl">
+  const decades=[...new Set(ES.years.map(Y=>Math.floor(Y.y/10)*10))].sort((a,b)=>b-a);
+  if(ES.decade==null || !decades.includes(ES.decade)) ES.decade=decades[0];
+  const D=ES.years.filter(Y=>Math.floor(Y.y/10)*10===ES.decade);
+  const v=D.reduce((a,Y)=>a+ES_TAIKAI.filter(t=>Y.res[t.k]==="優勝").length,0);
+  el.innerHTML=`
+    ${decades.length>1?`<div class="day-tabs es-dec" id="es-dec">${decades.map(d=>{
+      const n=ES.years.filter(Y=>Math.floor(Y.y/10)*10===d).length;
+      return `<button type="button" class="day-tab${d===ES.decade?" active":""}" data-d="${d}">${d}年代<span class="tab-sub">${n}</span></button>`; }).join("")}</div>`:""}
+    <div class="es-tbl-wrap"><table class="es-tbl">
     <thead><tr><th class="es-sticky">年度</th>${ES_TAIKAI.map(t=>`<th>${t.s}</th>`).join("")}<th>勝敗</th></tr></thead>
-    <tbody>${ES.years.map(Y=>`
-      <tr data-y="${Y.y}" tabindex="0" aria-label="${Y.y}年度の記録を見る">
+    <tbody>${D.map(Y=>`
+      <tr data-y="${Y.y}" tabindex="0" aria-label="${Y.y}年度の記録を見る"${Y.y===ES.sel?' class="on"':""}>
         <th class="es-sticky"><span class="es-y">${Y.y}</span><span class="es-pref">${escHtml(Y.pref)}</span></th>
         ${ES_TAIKAI.map(t=>{ const r=Y.res[t.k]; return `<td>${r?`<span class="es-res ${esBadgeCls(r)}">${escHtml(r)}</span>`:`<span class="es-none">－</span>`}</td>`; }).join("")}
         <td class="es-wl">${Y.w}-${Y.l}</td>
-      </tr>`).join("")}</tbody></table></div>`;
+      </tr>`).join("")}</tbody></table></div>
+    <p class="kk-note-s">${ES.decade}年代：${D.length}年度・優勝 ${v} 回。年度をタップすると下に詳しい記録が出ます</p>`;
+  el.querySelectorAll("#es-dec .day-tab").forEach(b=>b.onclick=()=>{ ES.decade=+b.dataset.d; esRenderYears(); });
   el.querySelectorAll("tbody tr").forEach(tr=>{
     const go=()=>{ esShowYear(+tr.dataset.y);
       const a=document.getElementById("es-year-anchor"), nav=document.querySelector("nav");
@@ -1513,6 +1534,8 @@ function esInitYearSel(){
 function esShowYear(y){
   ES.sel=y;
   document.getElementById("es-year-sel").value=String(y);
+  const dec=Math.floor(y/10)*10;
+  if(ES.decade!=null && dec!==ES.decade){ ES.decade=dec; esRenderYears(); }
   document.querySelectorAll(".es-tbl tbody tr").forEach(tr=>tr.classList.toggle("on", +tr.dataset.y===y));
   const Y=ES.years.find(v=>v.y===y); if(!Y) return;
   const groups=ES_TAIKAI.map(t=>({t, G:Y.games.filter(g=>g.taikai===t.k)})).filter(x=>x.G.length);
@@ -1526,14 +1549,20 @@ function esShowYear(y){
       <div class="stat-chip">得点 <strong>${Y.rs}</strong>／失点 <strong>${Y.ra}</strong></div>
       ${Y.pref?`<div class="stat-chip">${escHtml(Y.pref)}代表</div>`:""}
     </div>
-    ${groups.length?groups.map(({t,G})=>{ const r=esResult(G, t.k); return `
-      <div class="es-tk">
-        <div class="es-tk-head"><span>${escHtml(t.k)}</span>${r?`<span class="es-res ${esBadgeCls(r)}">${escHtml(r)}</span>`:""}</div>
-        ${G.map(esGameHtml).join("")}
-      </div>`; }).join(""):errBox("この年度の試合はまだありません。")}
-    <div class="kk-sub es-sub">スタメン</div>
-    ${seasons.length?`<div class="day-tabs" id="es-lu-tabs">${seasons.map(s=>`<button type="button" class="day-tab${s===ES.lineupSeason?" active":""}" data-s="${s}">${s==="夏"?"夏":"秋・春"}</button>`).join("")}</div>
-      <div id="es-lu"></div>`:`<p class="kk-info-empty">この年度のスタメンはまだありません。</p>`}`;
+    <div class="es-fold">
+    ${groups.length?groups.map(({t,G})=>{ const r=esResult(G, t.k), w=G.filter(g=>g.wl==="勝").length, l=G.filter(g=>g.wl==="負").length; return `
+      <details class="es-tk">
+        <summary class="es-tk-head"><span class="es-tk-name">${escHtml(t.k)}</span><span class="es-tk-wl">${w}勝${l}敗</span>${r?`<span class="es-res ${esBadgeCls(r)}">${escHtml(r)}</span>`:""}</summary>
+        <div class="es-tk-body">${G.map(esGameHtml).join("")}</div>
+      </details>`; }).join(""):errBox("この年度の試合はまだありません。")}
+      <details class="es-tk">
+        <summary class="es-tk-head"><span class="es-tk-name">スタメン</span><span class="es-tk-wl">${seasons.length?seasons.map(s=>s==="夏"?"夏":"秋・春").join("／"):"記録なし"}</span></summary>
+        <div class="es-tk-body">
+        ${seasons.length?`<div class="day-tabs" id="es-lu-tabs">${seasons.map(s=>`<button type="button" class="day-tab${s===ES.lineupSeason?" active":""}" data-s="${s}">${s==="夏"?"夏":"秋・春"}</button>`).join("")}</div>
+          <div id="es-lu"></div>`:`<p class="kk-info-empty">この年度のスタメンはまだありません。</p>`}
+        </div>
+      </details>
+    </div>`;
   document.querySelectorAll("#es-lu-tabs .day-tab").forEach(b=>b.onclick=()=>{
     ES.lineupSeason=b.dataset.s;
     document.querySelectorAll("#es-lu-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));

@@ -486,3 +486,20 @@ details.kk-group[open] summary::after{content:"－";}
 .es-dr-rank{font-size:16px;color:var(--text);}
 .es-dr-rank small{font-size:10px;color:var(--text2);margin-left:1px;}
 .mlist-row.es-riv[data-team]{width:100%;}
+
+/* 栄冠ナイン：すっきり表示 */
+.es-subnav{position:sticky;top:calc(env(safe-area-inset-top, 0px) + 66px);z-index:50;background:var(--bg);padding:8px 0;margin:-8px 0 18px;border-bottom:.5px solid var(--border);}
+.es-subnav .day-tab{flex:1 1 0;justify-content:center;}
+.es-dec{margin-bottom:12px;}
+.es-fold{display:flex;flex-direction:column;border-top:1.5px solid var(--text);}
+.es-tk{margin:0;border-bottom:.5px solid var(--border2);}
+.es-tk > summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:1fr auto auto 14px;align-items:center;gap:10px;padding:11px 2px;border-bottom:none;font-size:13px;font-weight:800;}
+.es-tk > summary::-webkit-details-marker{display:none;}
+.es-tk > summary::after{content:"▸";color:var(--text3);font-size:11px;text-align:center;}
+.es-tk[open] > summary::after{content:"▾";}
+.es-tk > summary:hover{background:var(--bg2);}
+.es-tk-name{min-width:0;}
+.es-tk-wl{font-size:12px;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+.es-tk-body{padding:0 0 12px;}
+.es-tk-body > .es-game:last-child{border-bottom:none;}
+.es-tk-body .day-tabs{margin:4px 0 10px;}
