@@ -1391,7 +1391,7 @@ async function loadEikan(){
   /* 選手成績（1試合×1選手） */
   ES.box=(got.box||[]).map(o=>{
     const no=esInt(F(o,"試合No")), name=F(o,"名前"); if(!no||!name) return null;
-    const dec=F(o,"勝敗");
+    const dec=F(o,"決定")||F(o,"勝敗");
     return { no, name, ab:esInt(F(o,"打数")), h:esInt(F(o,"安打")), hr:esInt(F(o,"本塁打")), rbi:esInt(F(o,"打点")), sb:esInt(F(o,"盗塁")), bb:esInt(F(o,"四死球")),
       ip:esIP(F(o,"投球回")), ha:esInt(F(o,"被安打")), er:esInt(F(o,"自責点")), k:esInt(F(o,"奪三振")), pbb:esInt(F(o,"与四死球")),
       dec: /^(勝|敗|S|Ｓ|セーブ)$/.test(dec) ? (dec==="勝"||dec==="敗"?dec:"S") : "" };
@@ -1659,7 +1659,7 @@ function esFillFromBox(g){
   B.forEach(b=>{
     if(b.ip==null) return;
     const P=ES.box.filter(x=>x.no===b.no && x.ip!=null), gm=ES.gameByNo[b.no];
-    const sp=gm && ES.lineup.find(l=>l.year===gm.year && l.season===gm.season && /^\d+$/.test(l.order) && l.pos==="投");
+    const sp=gm && ES.lineup.find(l=>l.year===gm.year && l.season===gm.season && (/^\d+$/.test(l.order)||l.order==="投") && l.pos==="投");
     const starter=(sp && P.find(x=>esSameName(x.name, sp.name))) || P[0];
     if(starter===b) gs++;
     if(P.length===1){ cg++; if(gm && gm.ra===0) sho++; if(b.ha===0) nh++; }
@@ -1769,7 +1769,7 @@ function esLuRow(l, starter){
   const g=esFindGrad(l);
   return `<details class="es-lu-row${starter?"":" bench"}">
     <summary>
-      <span class="es-lu-no">${starter?escHtml(l.order):"控"}</span>
+      <span class="es-lu-no">${starter?escHtml(l.order==="投"?"先":l.order):"控"}</span>
       <span class="es-pos ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>
       <span class="es-lu-main"><span class="es-lu-name">${escHtml(g?g.name:l.name)}${g?esTags(g):""}</span><span class="es-lu-meta">${[l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ")}</span></span>
       <span class="es-lu-chev" aria-hidden="true"></span>
@@ -1779,7 +1779,9 @@ function esLuRow(l, starter){
 }
 function esRenderLineup(){
   const L=ES.lineup.filter(l=>l.year===ES.sel && l.season===ES.lineupSeason);
-  const starters=L.filter(l=>/^\d+$/.test(l.order)).sort((a,b)=>+a.order-+b.order), bench=L.filter(l=>!/^\d+$/.test(l.order));
+  /* 指名打者（DH）制：先発投手は打順「投」で入力 → 9番の後ろに並べる */
+  const isSt=l=>/^\d+$/.test(l.order)||l.order==="投", ord=l=>l.order==="投"?99:+l.order;
+  const starters=L.filter(isSt).sort((a,b)=>ord(a)-ord(b)), bench=L.filter(l=>!isSt(l));
   document.getElementById("es-lu").innerHTML=`
     <div class="es-lu">${starters.map(l=>esLuRow(l,true)).join("")}</div>
     ${bench.length?`<div class="es-bench-lbl">控え</div><div class="es-lu">${bench.map(l=>esLuRow(l,false)).join("")}</div>`:""}
