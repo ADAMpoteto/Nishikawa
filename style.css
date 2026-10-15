@@ -482,3 +482,7 @@ details.kk-group[open] summary::after{content:"－";}
 /* ヘッダーのタブ間隔を詰める */
 .nav-btn{padding:5px 8px;}
 @media(max-width:480px){ .nav-btn{padding:5px 6px;} nav{padding:0 8px;} }
+.es-sub0{margin-top:0;}
+.es-dr-rank{font-size:16px;color:var(--text);}
+.es-dr-rank small{font-size:10px;color:var(--text2);margin-left:1px;}
+.mlist-row.es-riv[data-team]{width:100%;}
