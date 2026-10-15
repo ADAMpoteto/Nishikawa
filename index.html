@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>西川記録｜トリマ・ランニング・経県値</title>
+<title>西川記録｜トリマ・ランニング・経県値・栄冠ナイン</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -19,6 +19,7 @@
     <button class="nav-btn" data-nav="bike" onclick="goto('bike')">自転車</button>
     <button class="nav-btn" data-nav="keiken" onclick="goto('keiken')">経県値</button>
     <button class="nav-btn" data-nav="gourmet" onclick="goto('gourmet')">グルメ</button>
+    <button class="nav-btn" data-nav="eikan" onclick="goto('eikan')">栄冠ナイン</button>
   </div>
 </nav>
 
@@ -151,6 +152,56 @@
 
   <div class="sec-title gm-map-title">グルメ地図</div>
   <div id="kk-slot-gourmet"></div>
+</div>
+</div>
+
+<!-- ========== 栄冠ナイン ========== -->
+<div id="eikan" class="page">
+<div class="container">
+  <div class="page-header"><h1>栄冠ナイン</h1><p>試合・スタメン・卒業生の記録</p></div>
+  <div class="hero" id="es-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="card-section">
+    <div class="sec-title">年度別成績</div>
+    <p class="kk-note-s" style="margin:-6px 0 10px">年度をタップすると、その年の試合とスタメンが見られます</p>
+    <div id="es-years"><div class="loading">読み込み中…</div></div>
+  </div>
+
+  <div class="card-section" id="es-year-anchor">
+    <div class="sec-title">年度の記録</div>
+    <div class="trip-selbox"><select id="es-year-sel" aria-label="年度を選ぶ"><option>読み込み中…</option></select></div>
+    <div id="es-year"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">歴代ベスト9</div>
+    <div class="day-tabs" id="es-b9-tabs"></div>
+    <div class="trip-selbox" id="es-b9-team" hidden><select id="es-team-sel" aria-label="球団を選ぶ"></select></div>
+    <div id="es-b9"></div>
+    <p class="kk-note-s" id="es-b9-note"></p>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">歴代ランキング TOP10</div>
+    <div class="day-tabs" id="es-rk-tabs"></div>
+    <div id="es-rk"></div>
+    <p class="kk-note-s" id="es-rk-note"></p>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">記録</div>
+    <div id="es-records"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">よく戦った高校</div>
+    <div id="es-rivals"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">ドラフト</div>
+    <div id="es-draft"></div>
+  </div>
 </div>
 </div>
 

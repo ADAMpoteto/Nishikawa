@@ -80,7 +80,7 @@ function bindBarChart(id, items, defIdx){
 }
 
 /* ---------- ルーティング（戻る/進む・直リンク対応） ---------- */
-const PAGES=["torima","run","bike","keiken","gourmet"];
+const PAGES=["torima","run","bike","keiken","gourmet","eikan"];
 function applyPage(page){
   if(!PAGES.includes(page)) page=PAGES[0];
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
@@ -1314,11 +1314,427 @@ function bkRenderYears(){
     </div>`).join("");
 }
 
+/* =====================================================================
+   栄冠ナイン
+   スプレッドシートの4シート（試合ログ／イニングスコア／スタメン／卒業生）を読み込みます。
+   どのURLがどのシートかは、1行目の見出しから自動で判定するので、順番は気にしなくてOK。
+   ===================================================================== */
+const URL_EIKAN = [
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=773705402&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=2012687169&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=397796211&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=667454139&single=true&output=csv"
+];
+const ES_SCHOOL = "東洋大姫路";   // 自校名（ページの見出しに使います）
+const ES_BAT_MIN = 30;           // 打者ランキングの規定試合数
+const ES_PIT_IP_MIN = 50;        // 投手ランキングの規定投球回（投球回が空欄の選手は登板・試合10以上で判定）
+
+const ES_TAIKAI = [
+  {k:"夏の都道府県大会", s:"夏・県"}, {k:"夏の甲子園", s:"夏・甲子園"},
+  {k:"秋の都道府県大会", s:"秋・県"}, {k:"秋の地区大会", s:"秋・地区"},
+  {k:"神宮大会", s:"神宮"}, {k:"春の甲子園", s:"春・甲子園"}
+];
+const ES_B9_SLOTS = ["投","捕","一","二","三","遊","外","外","外"];
+const ES = { games:[], inn:{}, lineup:[], grads:[], years:[], sel:null, b9:"star", team:"", rk:"star", lineupSeason:"夏" };
+
+/* 全角数字→半角、"－" などは空扱い */
+const esHalf = s => String(s==null?"":s).replace(/[０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+function esNum(s){ const t=esHalf(s).replace(/[，,]/g,".").replace(/[^\d.\-]/g,""); if(t===""||t==="-"||t==="."||/^-?\.?$/.test(t)) return null; const n=Number(t); return isFinite(n)?n:null; }
+function esInt(s){ const t=esHalf(s).replace(/[,，\s]/g,""); if(!/^-?\d+(\.\d+)?$/.test(t)) return null; return Number(t); }
+const esYear = s => { const m=esHalf(s).match(/(\d{4})/); return m?+m[1]:null; };
+const esMark = s => /[〇○◯●✓✔1]/.test(String(s||""));
+function esIP(s){ const t=esHalf(s).trim(); if(!t) return null; const m=t.match(/^(\d+)(?:\.(\d))?$/); if(!m) return esNum(t); return +m[1] + (m[2]?(+m[2])/3:0); }
+const esIPfmt = v => { const w=Math.floor(v+1e-9), f=Math.round((v-w)*3); return f?`${w}.${f}`:`${w}`; };
+const esAvgFmt = v => v.toFixed(3).replace(/^0/,"");
+
+/* 見出しからシートの種類を判定 */
+function esKind(fields){
+  const has = k => fields.includes(k);
+  if(has("打順")) return "lineup";
+  if(has("試合No") && (has("1") || has("R"))) return "inn";
+  if(has("相手校") && has("得点")) return "games";
+  if(has("卒業時★") || (has("入学年度") && has("名前"))) return "grads";
+  return null;
+}
+
+async function loadEikan(){
+  const hero=document.getElementById("es-hero");
+  const res=await Promise.allSettled(URL_EIKAN.map(u=>fetchCSV(u)));
+  const got={};
+  res.forEach(r=>{
+    if(r.status!=="fulfilled") return;
+    const fields=(r.value.meta.fields||[]).map(k=>String(k).replace(/^﻿/,"").replace(/\s+/g,"").trim());
+    const kind=esKind(fields);
+    if(kind && !got[kind]) got[kind]=cleanRows(r.value.data);
+  });
+  if(!got.games && !got.grads){ hero.innerHTML=errBox("栄冠ナインのデータを読み込めませんでした（シートの見出しを確認してください）。"); return; }
+
+  /* 試合ログ */
+  ES.games=(got.games||[]).map((o,i)=>{
+    const year=esYear(F(o,"年度")), opp=F(o,"相手校"), rs=esInt(F(o,"得点")), ra=esInt(F(o,"失点"));
+    if(!year || !opp || rs==null || ra==null) return null;
+    let wl=F(o,"勝敗"); if(!/^[勝負分]$/.test(wl)) wl = rs>ra?"勝":rs<ra?"負":"分";
+    return { no:esInt(F(o,"No"))||i+1, year, taikai:F(o,"大会"), round:esHalf(F(o,"回戦")), myPref:F(o,"自校都道府県"),
+      side:F(o,"先攻後攻"), opp, oppPref:F(o,"相手都道府県"), power:F(o,"相手戦力").toUpperCase(), rs, ra, wl, note:F(o,"補足") };
+  }).filter(Boolean).sort((a,b)=>a.no-b.no);
+
+  /* イニングスコア */
+  ES.inn={};
+  (got.inn||[]).forEach(o=>{
+    const no=esInt(F(o,"試合No")); if(!no) return;
+    const inns=[]; for(let k=1;k<=15;k++) inns.push(F(o,String(k)));
+    (ES.inn[no]=ES.inn[no]||[]).push({ side:F(o,"先攻後攻"), team:F(o,"高校名"), inns, R:F(o,"R"), H:F(o,"H"), E:F(o,"E") });
+  });
+
+  /* スタメン */
+  ES.lineup=(got.lineup||[]).map(o=>{
+    const year=esYear(F(o,"年度")), name=F(o,"名前"); if(!year||!name) return null;
+    return { year, season:F(o,"時期")||"夏", order:esHalf(F(o,"打順")), name, grade:esHalf(F(o,"学年")), num:esHalf(F(o,"背番号")), pos:F(o,"守備") };
+  }).filter(Boolean);
+
+  /* 卒業生 */
+  ES.grads=(got.grads||[]).map(o=>{
+    const name=F(o,"名前"); if(!name) return null;
+    const g={ name, year:esYear(F(o,"入学年度")), from:F(o,"出身"), scout:esMark(F(o,"スカウト")), tensei:esMark(F(o,"転生")),
+      pos0:F(o,"入学時守備"), star0:esInt(F(o,"入学時★")), pos:F(o,"卒業時守備")||F(o,"入学時守備"), star:esInt(F(o,"卒業時★")),
+      games:esInt(F(o,"試合")), avg:esNum(F(o,"打率")), hr:esInt(F(o,"本塁打")), rbi:esInt(F(o,"打点")), sb:esInt(F(o,"盗塁")),
+      app:esInt(F(o,"登板")), gs:esInt(F(o,"先発")), w:esInt(F(o,"勝")), l:esInt(F(o,"敗")), sv:esInt(F(o,"セーブ")),
+      cg:esInt(F(o,"完投")), sho:esInt(F(o,"完封")), nh:esInt(F(o,"ノーノー")), ip:esIP(F(o,"投球回")), k:esInt(F(o,"奪三振")),
+      bb:esInt(F(o,"与四死球")), era:esNum(F(o,"防御率")),
+      course:F(o,"進路"), team:F(o,"球団").replace(/^[-－ー]$/,""), rank:esHalf(F(o,"順位")).replace(/^[-－ー]$/,"") };
+    if(g.avg!=null && g.avg>1) g.avg=null;               // 打率の入力ミス（2.810 など）は除外
+    g.grow = (g.star!=null && g.star0!=null) ? g.star-g.star0 : null;
+    g.pro = g.course==="プロ野球選手" || !!g.team;
+    g.batScore = (g.games!=null && g.games>=ES_BAT_MIN && g.pos!=="投" && g.avg!=null)
+      ? g.avg*100 + (g.hr||0)*3 + (g.rbi||0) + (g.sb||0) : null;
+    g.pitQual = g.era!=null && (g.ip!=null ? g.ip>=ES_PIT_IP_MIN : ((g.app||g.games||0)>=10));
+    return g;
+  }).filter(Boolean);
+
+  esBuildYears();
+  esRenderHero(); esRenderYears(); esInitYearSel(); esRenderB9Tabs(); esRenderB9();
+  esRenderRkTabs(); esRenderRk(); esRenderRecords(); esRenderRivals(); esRenderDraft();
+}
+
+/* ---------- 集計 ---------- */
+/* 大会ごとの成績の呼び方。秋の県大会・地区大会はゲーム上2試合なので、2回戦が決勝扱い */
+const ES_FINAL = { "秋の都道府県大会":"2回戦", "秋の地区大会":"2回戦" };
+const ES_LOSS = {
+  "秋の都道府県大会": {"1回戦":"ベスト4", "2回戦":"準優勝"},
+  "秋の地区大会":     {"1回戦":"ベスト4", "2回戦":"準優勝"},
+  "神宮大会":         {"1回戦":"ベスト8", "2回戦":"ベスト8"},
+  "春の甲子園":       {"1回戦":"ベスト32", "2回戦":"ベスト16"},
+  "夏の甲子園":       {"1回戦":"1回戦敗退", "2回戦":"ベスト32", "3回戦":"ベスト16"}
+};
+function esResult(games, taikai){
+  if(!games.length) return "";
+  const last=games[games.length-1], r=last.round.replace(/\s/g,"");
+  const fin=ES_FINAL[taikai]||"決勝";
+  if(last.wl==="勝") return r===fin ? "優勝" : "勝ち上がり中";
+  if(r===fin) return "準優勝";
+  const m=ES_LOSS[taikai]||{};
+  if(m[r]) return m[r];
+  if(r==="準決勝") return "ベスト4";
+  if(r==="準々決勝") return "ベスト8";
+  return `${r}敗退`;
+}
+function esBuildYears(){
+  const m={};
+  ES.games.forEach(g=>{ (m[g.year]=m[g.year]||[]).push(g); });
+  ES.lineup.forEach(l=>{ m[l.year]=m[l.year]||[]; });
+  ES.years=Object.keys(m).map(Number).sort((a,b)=>b-a).map(y=>{
+    const G=m[y], res={};
+    ES_TAIKAI.forEach(t=>{ res[t.k]=esResult(G.filter(g=>g.taikai===t.k), t.k); });
+    const w=G.filter(g=>g.wl==="勝").length, l=G.filter(g=>g.wl==="負").length;
+    const pref=(G.find(g=>g.myPref)||{}).myPref||"";
+    return { y, games:G, res, w, l, pref, rs:G.reduce((a,g)=>a+g.rs,0), ra:G.reduce((a,g)=>a+g.ra,0) };
+  });
+}
+function esStreaks(){
+  let cur=0, best={n:0}, run=[];
+  ES.games.forEach(g=>{
+    if(g.wl==="勝"){ cur++; run.push(g); if(cur>best.n) best={n:cur, from:run[0], to:g, stop:null}; }
+    else { if(best.to && best.to===run[run.length-1] && !best.stop) best.stop=g; cur=0; run=[]; }
+  });
+  return { best, cur };
+}
+const esBadgeCls = r => r==="優勝"?"v" : r==="準優勝"?"s" : r==="ベスト4"?"b4" : r==="勝ち上がり中"?"live" : "";
+const esGameLbl = g => `${g.year}年度 ${g.taikai} ${g.round}`;
+
+/* ---------- ヒーロー ---------- */
+function esRenderHero(){
+  const G=ES.games, w=G.filter(g=>g.wl==="勝").length, l=G.filter(g=>g.wl==="負").length, d=G.length-w-l;
+  const cnt=k=>ES.years.filter(y=>y.res[k]==="優勝").length;
+  const st=esStreaks(), pro=ES.grads.filter(g=>g.pro).length;
+  const rs=G.reduce((a,g)=>a+g.rs,0), ra=G.reduce((a,g)=>a+g.ra,0);
+  document.getElementById("es-hero").innerHTML=`
+    <div class="tm-hero-label">${escHtml(ES_SCHOOL)}　通算成績</div>
+    <div class="tm-big es-big">${nf(w)}<small>勝</small>${nf(l)}<small>敗</small>${d?`${d}<small>分</small>`:""}</div>
+    <div class="gm-hero-sub">${G.length}試合・勝率 ${w+l?esAvgFmt(w/(w+l)):"-"}・総得点 ${nf(rs)}／総失点 ${nf(ra)}</div>
+    <div class="hero-meta">
+      <span class="hero-chip es-gold">夏の甲子園優勝 <strong>${cnt("夏の甲子園")}</strong> 回</span>
+      <span class="hero-chip es-gold">春の甲子園優勝 <strong>${cnt("春の甲子園")}</strong> 回</span>
+      <span class="hero-chip">神宮大会優勝 <strong>${cnt("神宮大会")}</strong> 回</span>
+      <span class="hero-chip accent">最長 <strong>${st.best.n}</strong> 連勝</span>
+      ${st.cur>1?`<span class="hero-chip">現在 <strong>${st.cur}</strong> 連勝中</span>`:""}
+      ${pro?`<span class="hero-chip">プロ入り <strong>${pro}</strong> 人</span>`:""}
+    </div>`;
+}
+
+/* ---------- 年度別成績（表） ---------- */
+function esRenderYears(){
+  const el=document.getElementById("es-years");
+  if(!ES.years.length){ el.innerHTML=errBox("まだ試合の記録がありません。"); return; }
+  el.innerHTML=`<div class="es-tbl-wrap"><table class="es-tbl">
+    <thead><tr><th class="es-sticky">年度</th>${ES_TAIKAI.map(t=>`<th>${t.s}</th>`).join("")}<th>勝敗</th></tr></thead>
+    <tbody>${ES.years.map(Y=>`
+      <tr data-y="${Y.y}" tabindex="0" aria-label="${Y.y}年度の記録を見る">
+        <th class="es-sticky"><span class="es-y">${Y.y}</span><span class="es-pref">${escHtml(Y.pref)}</span></th>
+        ${ES_TAIKAI.map(t=>{ const r=Y.res[t.k]; return `<td>${r?`<span class="es-res ${esBadgeCls(r)}">${escHtml(r)}</span>`:`<span class="es-none">－</span>`}</td>`; }).join("")}
+        <td class="es-wl">${Y.w}-${Y.l}</td>
+      </tr>`).join("")}</tbody></table></div>`;
+  el.querySelectorAll("tbody tr").forEach(tr=>{
+    const go=()=>{ esShowYear(+tr.dataset.y);
+      const a=document.getElementById("es-year-anchor"), nav=document.querySelector("nav");
+      window.scrollTo({ top:Math.max(0, window.scrollY+a.getBoundingClientRect().top-(nav?nav.offsetHeight:0)-8), behavior:prefersReduced()?"auto":"smooth" }); };
+    tr.addEventListener("click", go);
+    tr.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } });
+  });
+}
+
+/* ---------- 年度の記録 ---------- */
+function esInitYearSel(){
+  const sel=document.getElementById("es-year-sel");
+  if(!ES.years.length){ sel.innerHTML=""; document.getElementById("es-year").innerHTML=errBox("まだ記録がありません。"); return; }
+  sel.innerHTML=ES.years.map(Y=>`<option value="${Y.y}">${Y.y}年度${Y.pref?`（${escHtml(Y.pref)}）`:""}</option>`).join("");
+  sel.onchange=()=>esShowYear(+sel.value);
+  esShowYear(ES.years[0].y);
+}
+function esShowYear(y){
+  ES.sel=y;
+  document.getElementById("es-year-sel").value=String(y);
+  document.querySelectorAll(".es-tbl tbody tr").forEach(tr=>tr.classList.toggle("on", +tr.dataset.y===y));
+  const Y=ES.years.find(v=>v.y===y); if(!Y) return;
+  const groups=ES_TAIKAI.map(t=>({t, G:Y.games.filter(g=>g.taikai===t.k)})).filter(x=>x.G.length);
+  const other=Y.games.filter(g=>!ES_TAIKAI.some(t=>t.k===g.taikai));
+  if(other.length) groups.push({t:{k:"その他", s:"その他"}, G:other});
+  const seasons=["夏","秋春"].filter(s=>ES.lineup.some(l=>l.year===y && l.season===s));
+  if(!seasons.includes(ES.lineupSeason)) ES.lineupSeason=seasons[0]||"夏";
+  document.getElementById("es-year").innerHTML=`
+    <div class="stats-row">
+      <div class="stat-chip"><strong>${Y.w}</strong> 勝 <strong>${Y.l}</strong> 敗</div>
+      <div class="stat-chip">得点 <strong>${Y.rs}</strong>／失点 <strong>${Y.ra}</strong></div>
+      ${Y.pref?`<div class="stat-chip">${escHtml(Y.pref)}代表</div>`:""}
+    </div>
+    ${groups.length?groups.map(({t,G})=>{ const r=esResult(G, t.k); return `
+      <div class="es-tk">
+        <div class="es-tk-head"><span>${escHtml(t.k)}</span>${r?`<span class="es-res ${esBadgeCls(r)}">${escHtml(r)}</span>`:""}</div>
+        ${G.map(esGameHtml).join("")}
+      </div>`; }).join(""):errBox("この年度の試合はまだありません。")}
+    <div class="kk-sub es-sub">スタメン</div>
+    ${seasons.length?`<div class="day-tabs" id="es-lu-tabs">${seasons.map(s=>`<button type="button" class="day-tab${s===ES.lineupSeason?" active":""}" data-s="${s}">${s==="夏"?"夏":"秋・春"}</button>`).join("")}</div>
+      <div id="es-lu"></div>`:`<p class="kk-info-empty">この年度のスタメンはまだありません。</p>`}`;
+  document.querySelectorAll("#es-lu-tabs .day-tab").forEach(b=>b.onclick=()=>{
+    ES.lineupSeason=b.dataset.s;
+    document.querySelectorAll("#es-lu-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
+    esRenderLineup();
+  });
+  if(seasons.length) esRenderLineup();
+}
+function esGameHtml(g){
+  const ls=ES.inn[g.no];
+  const meta=[g.oppPref, g.power?`戦力${g.power}`:"", g.note].filter(Boolean).join("・");
+  const row=`<span class="es-rd">${escHtml(g.round)}</span>
+    <span class="es-opp"><span class="es-opp-name">${escHtml(g.opp)}</span><span class="es-opp-meta">${escHtml(meta)}</span></span>
+    <span class="es-score ${g.wl==="勝"?"w":g.wl==="負"?"l":""}"><span class="es-wlb">${g.wl}</span>${g.rs}-${g.ra}</span>`;
+  if(!ls || !ls.length) return `<div class="es-game">${row}</div>`;
+  return `<details class="es-game"><summary>${row}</summary>${esLineScore(ls)}</details>`;
+}
+function esLineScore(rows){
+  const ord=s=>s==="先攻"?0:s==="後攻"?1:2;
+  const R=rows.slice().sort((a,b)=>ord(a.side)-ord(b.side));
+  let n=9; R.forEach(r=>r.inns.forEach((v,i)=>{ if(v!=="" && i+1>n) n=i+1; }));
+  const cell=v=>{ const t=String(v||"").trim(); return /^[xX✕×]$/.test(t)?"✕":escHtml(esHalf(t)); };
+  return `<div class="es-ls-wrap"><table class="es-ls">
+    <thead><tr><th></th>${Array.from({length:n},(_,i)=>`<th>${i+1}</th>`).join("")}<th class="es-ls-r">R</th><th>H</th><th>E</th></tr></thead>
+    <tbody>${R.map(r=>`<tr class="${r.team===ES_SCHOOL?"me":""}"><th>${escHtml(r.team||r.side)}</th>${r.inns.slice(0,n).map(v=>`<td>${cell(v)}</td>`).join("")}
+      <td class="es-ls-r">${cell(r.R)}</td><td>${cell(r.H)}</td><td>${cell(r.E)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function esRenderLineup(){
+  const L=ES.lineup.filter(l=>l.year===ES.sel && l.season===ES.lineupSeason);
+  const starters=L.filter(l=>/^\d+$/.test(l.order)).sort((a,b)=>+a.order-+b.order), bench=L.filter(l=>!/^\d+$/.test(l.order));
+  document.getElementById("es-lu").innerHTML=`
+    <div class="es-lu">${starters.map(l=>`
+      <div class="es-lu-row"><span class="es-lu-no">${escHtml(l.order)}</span><span class="es-pos">${escHtml(l.pos)}</span>
+        <span class="es-lu-name">${escHtml(l.name)}</span><span class="es-lu-meta">${l.grade?escHtml(l.grade)+"年":""}${l.num?`・#${escHtml(l.num)}`:""}</span></div>`).join("")}</div>
+    ${bench.length?`<div class="es-bench"><span class="es-bench-lbl">控え</span>${bench.map(l=>`<span class="kk-chip">${escHtml(l.pos)} ${escHtml(l.name)}<small>${l.grade?escHtml(l.grade)+"年":""}</small></span>`).join("")}</div>`:""}`;
+}
+
+/* ---------- ベスト9 ---------- */
+function esRenderB9Tabs(){
+  const tabs=[["star","★"],["stats","成績"],["team","球団別"]];
+  document.getElementById("es-b9-tabs").innerHTML=tabs.map(([k,t])=>`<button type="button" class="day-tab${k===ES.b9?" active":""}" data-k="${k}">${t}</button>`).join("");
+  document.querySelectorAll("#es-b9-tabs .day-tab").forEach(b=>b.onclick=()=>{
+    ES.b9=b.dataset.k;
+    document.querySelectorAll("#es-b9-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
+    esRenderB9();
+  });
+  const teams=[...new Set(ES.grads.filter(g=>g.team).map(g=>g.team))]
+    .sort((a,b)=>ES.grads.filter(g=>g.team===b).length-ES.grads.filter(g=>g.team===a).length);
+  ES.team=teams[0]||"";
+  const sel=document.getElementById("es-team-sel");
+  sel.innerHTML=teams.map(t=>`<option value="${escHtml(t)}">${escHtml(t)}（${ES.grads.filter(g=>g.team===t).length}人）</option>`).join("");
+  sel.onchange=()=>{ ES.team=sel.value; esRenderB9(); };
+}
+function esPick(pool, key, asc){
+  const used=new Set();
+  return ES_B9_SLOTS.map(p=>{
+    const c=pool.filter(g=>g.pos===p && !used.has(g) && key(g)!=null).sort((a,b)=>asc?key(a)-key(b):key(b)-key(a))[0];
+    if(c) used.add(c); return {p, g:c||null};
+  });
+}
+function esRenderB9(){
+  document.getElementById("es-b9-team").hidden = ES.b9!=="team";
+  let picks, note="", val;
+  if(ES.b9==="stats"){
+    const bat=esPick(ES.grads.filter(g=>g.pos!=="投"), g=>g.batScore);
+    const pit=ES.grads.filter(g=>g.pos==="投" && g.pitQual).sort((a,b)=>a.era-b.era)[0]||null;
+    picks=bat.map(x=>x.p==="投"?{p:"投", g:pit}:x);
+    val=(x)=> x.p==="投" ? `<b>${x.g.era.toFixed(2)}</b><small>防御率</small>`
+      : `<b>${esAvgFmt(x.g.avg)}</b><small>${x.g.hr||0}本 ${x.g.rbi||0}点 ${x.g.sb||0}盗</small>`;
+    note=`打者は「打率×100＋本塁打×3＋打点＋盗塁」の点数で守備ごとに1位（${ES_BAT_MIN}試合以上）。投手は防御率1位（投球回${ES_PIT_IP_MIN}以上、投球回が空欄なら登板10以上）。`;
+  } else {
+    const pool = ES.b9==="team" ? ES.grads.filter(g=>g.team===ES.team) : ES.grads;
+    picks=esPick(pool, g=>g.star);
+    val=x=>`<b>${x.g.star}</b><small>★</small>`;
+    note = ES.b9==="team" ? "その球団に進んだ卒業生の中で、卒業時の★が一番高い選手（守備は卒業時）。" : "卒業時の★が一番高い選手（守備は卒業時）。";
+  }
+  document.getElementById("es-b9").innerHTML=`<div class="es-b9">${picks.map(x=>`
+    <div class="es-b9-row${x.g?"":" empty"}">
+      <span class="es-pos lg">${x.p}</span>
+      <span class="es-b9-main">${x.g?`<span class="es-b9-name">${escHtml(x.g.name)}${esTags(x.g)}</span>
+        <span class="es-b9-meta">${escHtml(esGradMeta(x.g))}</span>`:`<span class="es-b9-meta">該当なし</span>`}</span>
+      <span class="es-b9-val">${x.g?val(x):""}</span>
+    </div>`).join("")}</div>`;
+  document.getElementById("es-b9-note").textContent=note;
+}
+function esTags(g){ return (g.tensei?`<span class="es-tag t">転生</span>`:"") + (g.scout?`<span class="es-tag">スカウト</span>`:""); }
+function esGradMeta(g){
+  const pro = g.team ? `${g.team}${g.rank?` ${g.rank}位`:""}` : g.course;
+  return [g.year?`${g.year}年度入学`:"", g.from, pro].filter(Boolean).join("・");
+}
+
+/* ---------- 歴代ランキング ---------- */
+const ES_RK=[
+  {k:"star", t:"★", get:g=>g.star, fmt:v=>v},
+  {k:"grow", t:"★の伸び", get:g=>g.grow, fmt:v=>`+${v}`},
+  {k:"avg",  t:"打率", get:g=>(g.games>=ES_BAT_MIN && g.pos!=="投")?g.avg:null, fmt:esAvgFmt, note:`${ES_BAT_MIN}試合以上の野手`},
+  {k:"hr",   t:"本塁打", get:g=>g.hr||null, fmt:v=>`${v}<small>本</small>`},
+  {k:"rbi",  t:"打点", get:g=>g.rbi||null, fmt:v=>`${v}<small>点</small>`},
+  {k:"sb",   t:"盗塁", get:g=>g.sb||null, fmt:v=>`${v}<small>個</small>`},
+  {k:"era",  t:"防御率", get:g=>g.pitQual?g.era:null, fmt:v=>v.toFixed(2), asc:true, note:`投球回${ES_PIT_IP_MIN}以上（投球回が空欄なら登板10以上）`},
+  {k:"w",    t:"勝利", get:g=>g.w||null, fmt:v=>`${v}<small>勝</small>`},
+  {k:"k",    t:"奪三振", get:g=>g.k||null, fmt:v=>`${v}<small>個</small>`},
+  {k:"sv",   t:"セーブ", get:g=>g.sv||null, fmt:v=>`${v}<small>S</small>`},
+  {k:"ip",   t:"投球回", get:g=>g.ip||null, fmt:v=>esIPfmt(v)}
+];
+function esRenderRkTabs(){
+  const avail=ES_RK.filter(r=>ES.grads.some(g=>r.get(g)!=null));
+  if(!avail.some(r=>r.k===ES.rk)) ES.rk=(avail[0]||{}).k;
+  document.getElementById("es-rk-tabs").innerHTML=avail.map(r=>`<button type="button" class="day-tab${r.k===ES.rk?" active":""}" data-k="${r.k}">${r.t}</button>`).join("");
+  document.querySelectorAll("#es-rk-tabs .day-tab").forEach(b=>b.onclick=()=>{
+    ES.rk=b.dataset.k;
+    document.querySelectorAll("#es-rk-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
+    esRenderRk();
+  });
+}
+function esRenderRk(){
+  const R=ES_RK.find(r=>r.k===ES.rk);
+  if(!R){ document.getElementById("es-rk").innerHTML=errBox("まだ卒業生の記録がありません。"); return; }
+  const L=ES.grads.filter(g=>R.get(g)!=null).sort((a,b)=>R.asc?R.get(a)-R.get(b):R.get(b)-R.get(a)).slice(0,10);
+  const medal=["🥇","🥈","🥉"];
+  document.getElementById("es-rk").innerHTML=L.map((g,i)=>`
+    <div class="gm-row">
+      <div class="gm-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:i+1}</div>
+      <div class="gm-main">
+        <div class="gm-title">${escHtml(g.name)}<span class="es-pos sm">${escHtml(g.pos)}</span>${esTags(g)}</div>
+        <div class="gm-meta">${escHtml(esGradMeta(g))}</div>
+      </div>
+      <div class="gm-score es-val">${R.fmt(R.get(g))}</div>
+    </div>`).join("");
+  document.getElementById("es-rk-note").textContent=R.note||"";
+}
+
+/* ---------- 記録 ---------- */
+function esRenderRecords(){
+  const G=ES.games, el=document.getElementById("es-records");
+  if(!G.length){ el.innerHTML=errBox("まだ試合の記録がありません。"); return; }
+  const st=esStreaks().best;
+  const W=G.filter(g=>g.wl==="勝");
+  const most=G.slice().sort((a,b)=>b.rs-a.rs||a.no-b.no)[0];
+  const big=W.slice().sort((a,b)=>(b.rs-b.ra)-(a.rs-a.ra)||a.no-b.no)[0];
+  const has=(g,w)=>g.note.includes(w);
+  const ext=G.filter(g=>has(g,"延長")), sayo=G.filter(g=>has(g,"サヨナラ"));
+  const recs=[
+    {t:"最長連勝", v:`${st.n}<small>連勝</small>`, s: st.from?`${esGameLbl(st.from)}〜${st.to.year}年度 ${st.to.taikai} ${st.to.round}${st.stop?`／止めたのは ${st.stop.opp}`:"／継続中"}`:""},
+    {t:"最多得点", v:`${most.rs}<small>点</small>`, s:`vs ${most.opp}（${esGameLbl(most)}・${most.rs}-${most.ra}）`},
+    big?{t:"最大点差の勝利", v:`${big.rs-big.ra}<small>点差</small>`, s:`vs ${big.opp}（${esGameLbl(big)}・${big.rs}-${big.ra}）`}:null,
+    {t:"完封勝利", v:`${W.filter(g=>g.ra===0).length}<small>試合</small>`, s:"相手を0点に抑えた勝利"},
+    {t:"コールド勝ち", v:`${W.filter(g=>has(g,"コールド")).length}<small>試合</small>`, s:"補足に「コールド」とある試合"},
+    {t:"延長戦", v:`${ext.filter(g=>g.wl==="勝").length}<small>勝</small>${ext.filter(g=>g.wl==="負").length}<small>敗</small>`, s:"補足に「延長」とある試合"},
+    sayo.length?{t:"サヨナラ", v:`${sayo.filter(g=>g.wl==="勝").length}<small>勝</small>${sayo.filter(g=>g.wl==="負").length}<small>敗</small>`, s:"補足に「サヨナラ」とある試合"}:null,
+    {t:"戦力Sの相手", v:`${W.filter(g=>g.power==="S").length}<small>勝</small>${G.filter(g=>g.power==="S"&&g.wl==="負").length}<small>敗</small>`, s:"格上相手の成績"}
+  ].filter(Boolean);
+  el.innerHTML=`<div class="es-recs">${recs.map(r=>`
+    <div class="es-rec"><div class="es-rec-t">${r.t}</div><div class="es-rec-v">${r.v}</div><div class="es-rec-s">${escHtml(r.s)}</div></div>`).join("")}</div>`;
+}
+
+/* ---------- ライバル校 ---------- */
+function esRenderRivals(){
+  const el=document.getElementById("es-rivals"), m={};
+  ES.games.forEach(g=>{ const k=g.opp+"\u0001"+g.oppPref; const s=(m[k]=m[k]||{opp:g.opp, pref:g.oppPref, n:0, w:0, l:0}); s.n++; if(g.wl==="勝") s.w++; if(g.wl==="負") s.l++; });
+  const S=Object.values(m);
+  if(!S.length){ el.innerHTML=errBox("まだ試合の記録がありません。"); return; }
+  const top=S.slice().sort((a,b)=>b.n-a.n||b.l-a.l).slice(0,10), max=top[0].n;
+  const beat=S.filter(s=>s.l>0).sort((a,b)=>b.l-a.l||a.n-b.n);
+  el.innerHTML=`<div class="mlist">${top.map(s=>`
+      <div class="mlist-row static es-riv">
+        <span class="mlist-name"><span class="es-riv-name">${escHtml(s.opp)}</span><span class="mlist-y">${escHtml(s.pref)}</span></span>
+        <span class="mlist-bar es"><span style="width:${s.n/max*100}%"></span></span>
+        <span class="mlist-val">${s.n}戦<small>${s.w}勝${s.l}敗</small></span>
+      </div>`).join("")}</div>
+    ${beat.length?`<div class="kk-sub es-sub">黒星をつけられた高校</div>
+      <div class="kk-chips">${beat.map(s=>`<span class="kk-chip">${escHtml(s.opp)}<small>${escHtml(s.pref)}・${s.l}敗</small></span>`).join("")}</div>`:""}`;
+}
+
+/* ---------- ドラフト ---------- */
+function esRenderDraft(){
+  const el=document.getElementById("es-draft");
+  const P=ES.grads.filter(g=>g.team);
+  if(!P.length){ el.innerHTML=errBox("まだプロ入りした卒業生の記録がありません。"); return; }
+  const m={}; P.forEach(g=>{ const s=(m[g.team]=m[g.team]||{t:g.team, n:0, first:0}); s.n++; if(g.rank==="1") s.first++; });
+  const S=Object.values(m).sort((a,b)=>b.n-a.n||b.first-a.first), max=S[0].n;
+  const first=P.filter(g=>g.rank==="1").length;
+  el.innerHTML=`
+    <div class="stats-row">
+      <div class="stat-chip">プロ入り <strong>${P.length}</strong> 人</div>
+      <div class="stat-chip">ドラフト1位 <strong>${first}</strong> 人</div>
+      <div class="stat-chip">卒業生 <strong>${ES.grads.length}</strong> 人</div>
+    </div>
+    <div class="mlist">${S.map(s=>`
+      <div class="mlist-row static es-riv">
+        <span class="mlist-name"><span class="es-riv-name">${escHtml(s.t)}</span></span>
+        <span class="mlist-bar es"><span style="width:${s.n/max*100}%"></span></span>
+        <span class="mlist-val">${s.n}人<small>1位 ${s.first}人</small></span>
+      </div>`).join("")}</div>`;
+}
+
 /* ---------- 初期化 ---------- */
 loadTorima();
 loadRun();
 loadBike();
 loadKeiken().then(loadGourmet);
+loadEikan();
 (function initRouting(){
   const st=parseHash();
   history.replaceState({page:st.page}, "", location.hash||"#"+PAGES[0]);

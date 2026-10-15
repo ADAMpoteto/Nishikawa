@@ -373,3 +373,108 @@ details.kk-group[open] summary::after{content:"－";}
 .gm-pref-sum{font-size:13px;color:var(--text2);margin:-4px 0 12px;}
 .gm-pref-sum strong{color:var(--text);font-size:16px;}
 .gm-map-title{font-size:16px;border-bottom:2px solid var(--text);margin-bottom:18px;}
+
+/* ========== 栄冠ナイン ========== */
+:root{ --es:#1f6b45; --es-light:#e8f2ec; --es-gold:#b7861a; --es-gold-bg:#fbf1d6; }
+.es-big small{margin-right:10px;}
+.hero-chip.es-gold{border-left-color:var(--es-gold);}
+
+/* 年度別成績の表（横スクロール・年度列は固定） */
+.es-tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:.5px solid var(--border);border-radius:var(--rl);}
+.es-tbl{border-collapse:separate;border-spacing:0;width:100%;min-width:620px;font-size:12px;}
+.es-tbl th,.es-tbl td{padding:8px 6px;text-align:center;border-bottom:.5px solid var(--border);white-space:nowrap;background:var(--bg);}
+.es-tbl thead th{font-size:10px;font-weight:800;color:var(--text2);background:var(--bg2);position:sticky;top:0;}
+.es-tbl tbody tr{cursor:pointer;}
+.es-tbl tbody tr:hover td,.es-tbl tbody tr:hover th{background:var(--bg2);}
+.es-tbl tbody tr.on td,.es-tbl tbody tr.on th{background:var(--es-light);}
+.es-tbl tbody tr:last-child th,.es-tbl tbody tr:last-child td{border-bottom:none;}
+.es-sticky{position:sticky;left:0;z-index:1;text-align:left !important;box-shadow:1px 0 0 var(--border);}
+.es-tbl thead .es-sticky{z-index:2;}
+.es-y{display:block;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.2;}
+.es-pref{display:block;font-size:10px;font-weight:600;color:var(--text2);}
+.es-res{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px;background:var(--bg2);color:var(--text2);white-space:nowrap;}
+.es-res.v{background:var(--es-gold-bg);color:var(--es-gold);font-weight:800;box-shadow:inset 0 0 0 1px rgba(183,134,26,.35);}
+.es-res.s{background:#eef0f3;color:#4b5563;font-weight:800;}
+.es-res.b4{background:var(--es-light);color:var(--es);}
+.es-none{color:var(--text3);}
+.es-wl{font-weight:800;font-variant-numeric:tabular-nums;}
+
+/* 年度の記録：大会ごとの試合 */
+.es-tk{margin-bottom:18px;}
+.es-tk-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;font-weight:800;padding:6px 2px;border-bottom:1.5px solid var(--text);}
+.es-game{border-bottom:.5px solid var(--border);}
+.es-game > summary,.es-game:not(details){display:grid;grid-template-columns:64px 1fr auto;align-items:center;gap:10px;padding:9px 2px;}
+.es-game > summary{cursor:pointer;list-style:none;}
+.es-game > summary::-webkit-details-marker{display:none;}
+.es-game > summary:hover{background:var(--bg2);}
+.es-game > summary .es-rd::after{content:"▸";margin-left:4px;color:var(--text3);font-size:10px;}
+.es-game[open] > summary .es-rd::after{content:"▾";}
+.es-rd{font-size:12px;font-weight:700;color:var(--text2);white-space:nowrap;}
+.es-opp{min-width:0;display:flex;flex-direction:column;}
+.es-opp-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.es-opp-meta{font-size:11px;color:var(--text2);}
+.es-score{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:center;gap:6px;}
+.es-wlb{font-size:10px;font-weight:800;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--text2);}
+.es-score.w .es-wlb{background:var(--es);color:#fff;}
+.es-score.l .es-wlb{background:#d9453f;color:#fff;}
+.es-score.l{color:#d9453f;}
+
+/* スコアボード */
+.es-ls-wrap{overflow-x:auto;margin:2px 0 12px;}
+.es-ls{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;min-width:100%;background:#173b2a;color:#f3f7f4;border-radius:var(--r);overflow:hidden;}
+.es-ls th,.es-ls td{padding:6px 7px;text-align:center;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,.1);}
+.es-ls thead th{font-size:10px;color:rgba(255,255,255,.65);font-weight:700;}
+.es-ls tbody th{text-align:left;font-weight:700;max-width:120px;overflow:hidden;text-overflow:ellipsis;}
+.es-ls tr.me th,.es-ls tr.me td{color:#ffe29a;}
+.es-ls .es-ls-r{font-weight:800;border-left:1px solid rgba(255,255,255,.2);}
+
+/* スタメン */
+.es-sub{margin-top:22px;}
+.es-lu{display:flex;flex-direction:column;}
+.es-lu-row{display:grid;grid-template-columns:28px 30px 1fr auto;align-items:center;gap:10px;padding:8px 2px;border-bottom:.5px solid var(--border);}
+.es-lu-no{font-size:16px;font-weight:800;text-align:center;color:var(--text2);font-variant-numeric:tabular-nums;}
+.es-lu-name{font-size:14px;font-weight:700;}
+.es-lu-meta{font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums;}
+.es-pos{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;background:var(--es);color:#fff;font-size:12px;font-weight:800;}
+.es-pos.lg{width:34px;height:34px;font-size:15px;border-radius:8px;}
+.es-pos.sm{width:18px;height:18px;font-size:10px;border-radius:4px;margin-left:6px;vertical-align:1px;}
+.es-bench{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px;}
+.es-bench-lbl{font-size:11px;font-weight:800;color:var(--text2);margin-right:2px;}
+.es-bench .kk-chip small{margin-left:4px;color:var(--text3);}
+
+/* ベスト9 */
+.es-b9{display:flex;flex-direction:column;}
+.es-b9-row{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:12px;padding:9px 2px;border-bottom:.5px solid var(--border);}
+.es-b9-row.empty{opacity:.45;}
+.es-b9-main{min-width:0;display:flex;flex-direction:column;}
+.es-b9-name{font-size:15px;font-weight:800;}
+.es-b9-meta{font-size:11px;color:var(--text2);margin-top:1px;}
+.es-b9-val{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.es-b9-val b{display:block;font-size:18px;font-weight:800;color:var(--es);line-height:1.15;}
+.es-b9-val small{font-size:10px;color:var(--text2);font-weight:700;}
+.es-tag{display:inline-block;font-size:9px;font-weight:800;padding:1px 6px;border-radius:99px;background:var(--bg2);color:var(--text2);margin-left:6px;vertical-align:2px;}
+.es-tag.t{background:#7a3db8;color:#fff;}
+.es-val{color:var(--es);}
+.es-val small{font-size:11px;color:var(--text2);margin-left:1px;}
+
+/* 記録 */
+.es-recs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+@media(min-width:640px){ .es-recs{grid-template-columns:repeat(4,minmax(0,1fr));} }
+.es-rec{border:.5px solid var(--border2);border-radius:var(--rl);padding:12px;border-top:3px solid var(--es);}
+.es-rec-t{font-size:11px;font-weight:800;color:var(--text2);}
+.es-rec-v{font-size:26px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1.2;margin-top:2px;}
+.es-rec-v small{font-size:12px;color:var(--text2);margin:0 6px 0 2px;letter-spacing:0;}
+.es-rec-s{font-size:10px;color:var(--text2);margin-top:4px;line-height:1.5;}
+
+/* ライバル・ドラフト */
+.mlist-row.es-riv{grid-template-columns:120px 1fr auto;}
+@media(max-width:480px){ .mlist-row.es-riv{grid-template-columns:100px 1fr auto;} }
+.es-riv-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mlist-bar.es span{background:var(--es);}
+.trip-selbox[hidden]{display:none;}
+.es-res.live{background:#fff;color:#d9453f;box-shadow:inset 0 0 0 1px rgba(217,69,63,.4);}
+
+/* タブが画面幅を超えても左端まで横スクロールできるように（中央寄せは維持） */
+.nav-links{justify-content:flex-start;}
+.nav-links > .nav-btn:first-child{margin-left:auto;}
+.nav-links > .nav-btn:last-child{margin-right:auto;}
