@@ -570,3 +570,44 @@ details.kk-group[open] summary::after{content:"－";}
 .es-pl[open] > summary{background:var(--es-light);}
 .es-pl .es-car,.es-pl .es-car-none{padding-left:14px;}
 @media(min-width:481px){ .es-pl .es-car,.es-pl .es-car-none{padding-left:46px;} }
+
+/* 選手カード：その時期の成績・年度ごとの成績 */
+.es-car-sub{font-size:11px;font-weight:800;color:var(--es);margin-top:6px;}
+.es-car-sub:first-child{margin-top:0;}
+.es-cells{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;}
+.es-cell{background:var(--bg);border-radius:6px;padding:6px 4px;text-align:center;display:flex;flex-direction:column;gap:1px;}
+.es-cell span{font-size:10px;font-weight:700;color:var(--text2);}
+.es-cell b{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;}
+.es-st-tbl{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;background:var(--bg);border-radius:6px;overflow:hidden;}
+.es-st-tbl th,.es-st-tbl td{padding:5px 6px;text-align:right;border-bottom:.5px solid var(--border);white-space:nowrap;}
+.es-st-tbl thead th{font-size:10px;color:var(--text2);font-weight:700;}
+.es-st-tbl tbody th{text-align:left;font-weight:700;}
+.es-st-tbl tbody th small{font-size:10px;color:var(--text3);margin-left:4px;font-weight:600;}
+.es-st-tbl tr:last-child th,.es-st-tbl tr:last-child td{border-bottom:none;}
+.es-st-tbl tr.cur th,.es-st-tbl tr.cur td{background:var(--es-light);font-weight:800;}
+.es-car-note{font-size:10px;color:var(--text2);margin:2px 0 0;}
+.es-st-wrap{overflow-x:auto;border-radius:6px;}
+
+/* 試合ごとの成績・ボックススコア */
+.es-st-tbl td small{font-size:9px;color:var(--text3);margin-left:3px;font-weight:600;}
+.es-glog{background:var(--bg);border-radius:6px;margin-top:4px;}
+.es-glog > summary{list-style:none;cursor:pointer;font-size:12px;font-weight:800;padding:8px 10px;color:var(--text);}
+.es-glog > summary::-webkit-details-marker{display:none;}
+.es-glog > summary::after{content:" ▸";color:var(--text3);}
+.es-glog[open] > summary::after{content:" ▾";}
+.es-glog ul{list-style:none;margin:0;padding:0 10px 6px;max-height:320px;overflow-y:auto;}
+.es-glog li{display:flex;flex-direction:column;gap:1px;padding:6px 0;border-top:.5px solid var(--border);}
+.es-glog-g{font-size:11px;color:var(--text2);font-weight:700;}
+.es-glog-g small{margin-left:6px;font-weight:600;}
+.es-glog-s{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;}
+.es-glog-s b{color:#d9453f;}
+.es-dec{display:inline-block;font-size:10px;font-weight:800;padding:0 6px;border-radius:99px;margin-left:6px;color:#fff;background:var(--text3);}
+.es-dec.w{background:var(--es);} .es-dec.l{background:#d9453f;} .es-dec.s{background:#2f6fd1;}
+.es-box{display:flex;flex-direction:column;gap:8px;margin:0 0 12px;}
+.es-box-tbl{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;}
+.es-box-tbl th,.es-box-tbl td{padding:4px 6px;text-align:right;border-bottom:.5px solid var(--border);white-space:nowrap;}
+.es-box-tbl thead th{font-size:10px;color:var(--text2);font-weight:700;background:var(--bg2);}
+.es-box-tbl thead th:first-child,.es-box-tbl tbody th{text-align:left;}
+.es-box-tbl tbody th{font-weight:700;max-width:130px;overflow:hidden;text-overflow:ellipsis;}
+.es-box-tbl tr.tot th,.es-box-tbl tr.tot td{font-weight:800;border-top:1px solid var(--border2);}
+.es-auto{font-size:9px;font-weight:700;color:var(--text2);background:var(--bg);border-radius:99px;padding:1px 6px;margin-left:6px;}
