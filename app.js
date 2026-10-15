@@ -1389,9 +1389,7 @@ async function loadEikan(){
   /* スタメン */
   ES.lineup=(got.lineup||[]).map(o=>{
     const year=esYear(F(o,"年度")), name=F(o,"名前"); if(!year||!name) return null;
-    return { year, season:F(o,"時期")||"夏", order:esHalf(F(o,"打順")), name, grade:esHalf(F(o,"学年")), num:esHalf(F(o,"背番号")), pos:F(o,"守備"),
-      avg:esNum(F(o,"打率")), hr:esInt(F(o,"本塁打")), rbi:esInt(F(o,"打点")), sb:esInt(F(o,"盗塁")),
-      era:esNum(F(o,"防御率")), w:esInt(F(o,"勝")), l:esInt(F(o,"敗")), k:esInt(F(o,"奪三振")) };
+    return { year, season:F(o,"時期")||"夏", order:esHalf(F(o,"打順")), name, grade:esHalf(F(o,"学年")), num:esHalf(F(o,"背番号")), pos:F(o,"守備") };
   }).filter(Boolean);
 
   /* 卒業生 */
@@ -1600,11 +1598,12 @@ function esFindGrad(l){
   if(c.length>1){ const c2=c.filter(g=>esPosN(l.pos)===esPosN(g.pos) || esPosN(l.pos)===esPosN(g.pos0)); if(c2.length) c=c2; }
   return c[0]||null;
 }
-function esSeasonLine(l){
-  if(l.era!=null || l.w!=null || l.k!=null)
-    return [l.era!=null?`防 ${l.era.toFixed(2)}`:"", (l.w!=null||l.l!=null)?`${l.w||0}勝${l.l||0}敗`:"", l.k!=null?`${l.k}K`:""].filter(Boolean).join(" ");
-  if(l.avg!=null || l.hr!=null)
-    return [l.avg!=null?esAvgFmt(l.avg):"", l.hr!=null?`${l.hr}本`:"", l.rbi!=null?`${l.rbi}点`:"", l.sb?`${l.sb}盗`:""].filter(Boolean).join(" ");
+/* スタメンの右に出す通算成績（卒業生シートから）。その試合で投手なら投手成績、それ以外は打撃成績 */
+function esStatLine(l, g){
+  if(!g) return "";
+  const pit = l.pos==="投" && (g.era!=null || g.w!=null || g.k!=null);
+  if(pit) return [g.era!=null?`防 ${g.era.toFixed(2)}`:"", g.w!=null?`${g.w}勝${g.l||0}敗`:"", g.k!=null?`${g.k}K`:""].filter(Boolean).join(" ");
+  if(g.avg!=null) return [esAvgFmt(g.avg), `${g.hr||0}本`, `${g.rbi||0}点`].join(" ");
   return "";
 }
 function esCareerHtml(g){
@@ -1622,7 +1621,7 @@ function esCareerHtml(g){
     </dl></div>`;
 }
 function esLuRow(l, starter){
-  const g=esFindGrad(l), line=esSeasonLine(l);
+  const g=esFindGrad(l), line=esStatLine(l, g);
   return `<details class="es-lu-row${starter?"":" bench"}">
     <summary>
       <span class="es-lu-no">${starter?escHtml(l.order):"控"}</span>
@@ -1636,11 +1635,11 @@ function esLuRow(l, starter){
 function esRenderLineup(){
   const L=ES.lineup.filter(l=>l.year===ES.sel && l.season===ES.lineupSeason);
   const starters=L.filter(l=>/^\d+$/.test(l.order)).sort((a,b)=>+a.order-+b.order), bench=L.filter(l=>!/^\d+$/.test(l.order));
-  const hasStats=L.some(l=>esSeasonLine(l));
+  const hasStats=L.some(l=>esStatLine(l, esFindGrad(l)));
   document.getElementById("es-lu").innerHTML=`
     <div class="es-lu">${starters.map(l=>esLuRow(l,true)).join("")}</div>
     ${bench.length?`<div class="es-bench-lbl">控え</div><div class="es-lu">${bench.map(l=>esLuRow(l,false)).join("")}</div>`:""}
-    <p class="kk-note-s">${hasStats?"右の数字はこの時期の成績。":""}選手をタップすると、卒業時の★と通算成績が見られます。</p>`;
+    <p class="kk-note-s">${hasStats?"右の数字は卒業生シートの通算成績。":""}選手をタップすると、卒業時の★と通算成績が見られます。</p>`;
 }
 
 /* ---------- ベスト9 ---------- */
