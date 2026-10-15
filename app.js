@@ -1392,7 +1392,8 @@ async function loadEikan(){
   ES.box=(got.box||[]).map(o=>{
     const no=esInt(F(o,"試合No")), name=F(o,"名前"); if(!no||!name) return null;
     const dec=F(o,"決定")||F(o,"勝敗");
-    return { no, name, ab:esInt(F(o,"打数")), h:esInt(F(o,"安打")), hr:esInt(F(o,"本塁打")), rbi:esInt(F(o,"打点")), sb:esInt(F(o,"盗塁")), bb:esInt(F(o,"四死球")),
+    return { no, name, ab:esInt(F(o,"打数")), r:esInt(F(o,"得点")), h:esInt(F(o,"安打")), d2:esInt(F(o,"二塁打")), d3:esInt(F(o,"三塁打")), hr:esInt(F(o,"本塁打")), rbi:esInt(F(o,"打点")),
+      so:esInt(F(o,"三振")), bb:esInt(F(o,"四死球")), sh:esInt(F(o,"犠打")), sb:esInt(F(o,"盗塁")), dp:esInt(F(o,"併殺")), e:esInt(F(o,"失策")),
       ip:esIP(F(o,"投球回")), ha:esInt(F(o,"被安打")), er:esInt(F(o,"自責点")), k:esInt(F(o,"奪三振")), pbb:esInt(F(o,"与四死球")),
       dec: /^(勝|敗|S|Ｓ|セーブ)$/.test(dec) ? (dec==="勝"||dec==="敗"?dec:"S") : "" };
   }).filter(b=>b && (b.ab!=null || b.ip!=null));   // 数字が何も入っていない行（出場なし）は無視
@@ -1665,7 +1666,7 @@ function esFillFromBox(g){
     if(P.length===1){ cg++; if(gm && gm.ra===0) sho++; if(b.ha===0) nh++; }
   });
   const set=(k,v)=>{ if(g[k]==null && v!=null){ g[k]=v; g.auto=true; } };
-  if(t.bat){ set("games",t.g); set("avg",t.avg); set("hr",t.hr); set("rbi",t.rbi); set("sb",t.sb); }
+  if(t.bat){ set("games",t.g); set("avg",t.avg); set("hr",t.hr); set("rbi",t.rbi); set("sb",t.sb); set("ops",t.ops); }
   else set("games",t.g);
   if(t.pit){ set("app",t.app); set("gs",gs); set("w",t.w); set("l",t.l); set("sv",t.sv); set("cg",cg); set("sho",sho); set("nh",nh);
     set("ip",t.ip); set("k",t.k); set("bb",t.pbb); set("era",t.era); }
@@ -1676,14 +1677,19 @@ function esGradDerived(g){
   g.pitQual = g.era!=null && (g.ip!=null ? g.ip>=ES_PIT_IP_MIN : ((g.app||g.games||0)>=10));
 }
 function esAgg(B){
-  const t={ g:0, ab:0, h:0, hr:0, rbi:0, sb:0, bb:0, app:0, outs:0, ha:0, er:0, k:0, pbb:0, w:0, l:0, sv:0, bat:false, pit:false };
+  const t={ g:0, ab:0, r:0, h:0, d2:0, d3:0, hr:0, rbi:0, so:0, sb:0, bb:0, sh:0, dp:0, e:0, app:0, outs:0, ha:0, er:0, k:0, pbb:0, w:0, l:0, sv:0, bat:false, pit:false };
   B.forEach(b=>{
     t.g++;
-    if(b.ab!=null){ t.bat=true; t.ab+=b.ab; t.h+=b.h||0; t.hr+=b.hr||0; t.rbi+=b.rbi||0; t.sb+=b.sb||0; t.bb+=b.bb||0; }
+    if(b.ab!=null){ t.bat=true; t.ab+=b.ab; t.h+=b.h||0; t.hr+=b.hr||0; t.rbi+=b.rbi||0; t.sb+=b.sb||0; t.bb+=b.bb||0;
+      t.r+=b.r||0; t.d2+=b.d2||0; t.d3+=b.d3||0; t.so+=b.so||0; t.sh+=b.sh||0; t.dp+=b.dp||0; t.e+=b.e||0; }
     if(b.ip!=null){ t.pit=true; t.app++; t.outs+=Math.round(b.ip*3); t.ha+=b.ha||0; t.er+=b.er||0; t.k+=b.k||0; t.pbb+=b.pbb||0;
       if(b.dec==="勝") t.w++; else if(b.dec==="敗") t.l++; else if(b.dec==="S") t.sv++; }
   });
   t.avg = t.ab>0 ? t.h/t.ab : null;
+  /* 出塁率は (安打+四死球)/(打数+四死球)、長打率は 塁打/打数（犠飛は記録しないので含めない） */
+  t.obp = (t.ab+t.bb)>0 ? (t.h+t.bb)/(t.ab+t.bb) : null;
+  t.slg = t.ab>0 ? (t.h + t.d2 + t.d3*2 + t.hr*3)/t.ab : null;
+  t.ops = (t.obp!=null && t.slg!=null) ? t.obp+t.slg : null;
   t.era = t.outs>0 ? t.er*27/t.outs : null;
   t.ip = t.outs/3;
   return t;
@@ -1700,10 +1706,10 @@ function esPeriodTable(B, pit, curKey){
   const per={}; B.forEach(b=>{ const gm=ES.gameByNo[b.no], k=gm.year*2+(gm.season==="夏"?0:1); (per[k]=per[k]||{y:gm.year,s:gm.season,B:[]}).B.push(b); });
   const P=Object.keys(per).map(Number).sort((a,b)=>a-b).map(k=>({k, ...per[k], t:esAgg(per[k].B)}));
   if(!P.length) return "";
-  const head = pit ? ["登板","勝敗","投球回","奪三振","防御率"] : ["試合","打率","本","点","盗"];
+  const head = pit ? ["登板","勝敗","投球回","奪三振","防御率"] : ["試合","打率","OPS","本","点","盗"];
   const row = t => pit
     ? [t.app, `${t.w}-${t.l}${t.sv?` ${t.sv}S`:""}`, esIPfmt(t.ip), t.k, esF(t.era,v=>v.toFixed(2))]
-    : [t.g, `${esF(t.avg,esAvgFmt)}<small>${t.h}/${t.ab}</small>`, t.hr, t.rbi, t.sb];
+    : [t.g, `${esF(t.avg,esAvgFmt)}<small>${t.h}/${t.ab}</small>`, esF(t.ops,esAvgFmt), t.hr, t.rbi, t.sb];
   return `<div class="es-car-sub">時期ごとの成績</div>
     <div class="es-st-wrap"><table class="es-st-tbl"><thead><tr><th>時期</th>${head.map(h=>`<th>${h}</th>`).join("")}</tr></thead>
     <tbody>${P.map(p=>`<tr${p.k===curKey?' class="cur"':""}><th>${esPeriodLbl(p.y,p.s)}</th>${row(p.t).map(v=>`<td>${v}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
@@ -1713,7 +1719,7 @@ function esGameLog(B, pit, title){
   if(!B.length) return "";
   const line = b => pit && b.ip!=null
     ? `${esIPfmt(b.ip)}回 ${b.er!=null?b.er:"-"}自責 ${b.k!=null?b.k:"-"}K${b.dec?`<b class="es-dec ${b.dec==="勝"?"w":b.dec==="敗"?"l":"s"}">${b.dec}</b>`:""}`
-    : b.ab!=null ? `${b.ab}打数${b.h||0}安打${b.hr?` <b>${b.hr}本</b>`:""}${b.rbi?` ${b.rbi}打点`:""}${b.sb?` ${b.sb}盗塁`:""}` : "出場";
+    : b.ab!=null ? `${b.ab}打数${b.h||0}安打${b.hr?` <b>${b.hr}本</b>`:""}${b.d3?` 三塁打${b.d3>1?b.d3:""}`:""}${b.d2?` 二塁打${b.d2>1?b.d2:""}`:""}${b.rbi?` ${b.rbi}打点`:""}${b.bb?` ${b.bb}四死球`:""}${b.sb?` ${b.sb}盗塁`:""}` : "出場";
   return `<details class="es-glog"><summary>${escHtml(title)}（${B.length}試合）</summary>
     <ul>${B.map(b=>{ const gm=ES.gameByNo[b.no]; return `<li><span class="es-glog-g">${escHtml(`${gm.year} ${gm.taikai.replace(/^(夏の|秋の|春の)/,"")} ${gm.round}`)}<small>vs ${escHtml(gm.opp)}</small></span><span class="es-glog-s">${line(b)}</span></li>`; }).join("")}</ul></details>`;
 }
@@ -1757,10 +1763,12 @@ function esBoxScore(no){
   const B=ES.box.filter(b=>b.no===no); if(!B.length) return "";
   const bat=B.filter(b=>b.ab!=null), pit=B.filter(b=>b.ip!=null);
   const T=esAgg(bat);
+  /* [見出し, 項目, 0でも表示するか] */
+  const BC=[["打数","ab",1],["得点","r"],["安打","h",1],["二","d2"],["三","d3"],["本","hr"],["打点","rbi"],["三振","so"],["四死","bb"],["犠打","sh"],["盗塁","sb"],["併殺","dp"],["失策","e"]];
   return `<div class="es-box">
-    ${bat.length?`<table class="es-box-tbl"><thead><tr><th>打撃</th><th>打数</th><th>安打</th><th>本</th><th>点</th><th>盗</th></tr></thead>
-      <tbody>${bat.map(b=>`<tr><th>${escHtml(b.name)}</th><td>${b.ab}</td><td>${esF(b.h)}</td><td>${b.hr||""}</td><td>${b.rbi||""}</td><td>${b.sb||""}</td></tr>`).join("")}
-      <tr class="tot"><th>計</th><td>${T.ab}</td><td>${T.h}</td><td>${T.hr||""}</td><td>${T.rbi||""}</td><td>${T.sb||""}</td></tr></tbody></table>`:""}
+    ${bat.length?`<div class="es-st-wrap"><table class="es-box-tbl"><thead><tr><th>打撃</th>${BC.map(c=>`<th>${c[0]}</th>`).join("")}</tr></thead>
+      <tbody>${bat.map(b=>`<tr><th>${escHtml(b.name)}</th>${BC.map(c=>`<td>${c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}</tr>`).join("")}
+      <tr class="tot"><th>計</th>${BC.map(c=>`<td>${c[2]?T[c[1]]:(T[c[1]]||"")}</td>`).join("")}</tr></tbody></table></div>`:""}
     ${pit.length?`<table class="es-box-tbl"><thead><tr><th>投手</th><th>回</th><th>安</th><th>自責</th><th>三振</th><th></th></tr></thead>
       <tbody>${pit.map(b=>`<tr><th>${escHtml(b.name)}</th><td>${esIPfmt(b.ip)}</td><td>${esF(b.ha)}</td><td>${esF(b.er)}</td><td>${esF(b.k)}</td><td>${b.dec?`<b class="es-dec ${b.dec==="勝"?"w":b.dec==="敗"?"l":"s"}">${b.dec}</b>`:""}</td></tr>`).join("")}</tbody></table>`:""}
   </div>`;
@@ -1855,6 +1863,7 @@ const ES_RK=[
   {k:"star", t:"★", get:g=>g.star, fmt:v=>v},
   {k:"grow", t:"★の伸び", get:g=>g.grow, fmt:v=>`+${v}`},
   {k:"avg",  t:"打率", get:g=>(g.games>=ES_BAT_MIN && g.pos!=="投")?g.avg:null, fmt:esAvgFmt, note:`${ES_BAT_MIN}試合以上の野手`},
+  {k:"ops",  t:"OPS", get:g=>(g.games>=ES_BAT_MIN && g.pos!=="投")?g.ops:null, fmt:esAvgFmt, note:`${ES_BAT_MIN}試合以上の野手`},
   {k:"hr",   t:"本塁打", get:g=>g.hr||null, fmt:v=>`${v}<small>本</small>`},
   {k:"rbi",  t:"打点", get:g=>g.rbi||null, fmt:v=>`${v}<small>点</small>`},
   {k:"sb",   t:"盗塁", get:g=>g.sb||null, fmt:v=>`${v}<small>個</small>`},
