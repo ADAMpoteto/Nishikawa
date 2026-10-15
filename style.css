@@ -511,7 +511,6 @@ details.kk-group[open] summary::after{content:"－";}
 .es-lu-row > summary:hover{background:var(--bg2);}
 .es-lu-row[open] > summary{background:var(--es-light);}
 .es-lu-row.bench .es-lu-no{font-size:11px;color:var(--text3);}
-.es-lu-row.bench .es-pos{background:var(--bg3);color:var(--text2);}
 .es-lu-main{min-width:0;display:flex;flex-direction:column;}
 .es-lu-main .es-lu-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .es-lu-stat{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text);white-space:nowrap;text-align:right;}
@@ -540,3 +539,25 @@ details.kk-group[open] summary::after{content:"－";}
 /* スタメン：右端は開閉の印だけ */
 .es-lu-chev::after{content:"▸";color:var(--text3);font-size:11px;}
 .es-lu-row[open] .es-lu-chev::after{content:"▾";}
+
+/* 守備位置アイコンの色 */
+:root{ --pos-pit:#d1453b; --pos-cat:#2f6fd1; --pos-inf:#f2c230; --pos-inf-fg:#3d2f00; --pos-of:#2e8b57; --pos-etc:#7a7f87; }
+.es-pos.p-pit{background:var(--pos-pit);color:#fff;}
+.es-pos.p-cat{background:var(--pos-cat);color:#fff;}
+.es-pos.p-inf{background:var(--pos-inf);color:var(--pos-inf-fg);}
+.es-pos.p-of{background:var(--pos-of);color:#fff;}
+.es-pos.p-etc{background:var(--pos-etc);color:#fff;}
+.es-lu-row.bench .es-pos{opacity:.8;}
+
+/* 折りたたみリスト */
+.es-more > summary{list-style:none;cursor:pointer;text-align:center;font-size:12px;font-weight:800;color:var(--text2);padding:10px;border-bottom:.5px solid var(--border);}
+.es-more > summary::-webkit-details-marker{display:none;}
+.es-more > summary::after{content:" ▾";}
+.es-more[open] > summary{display:none;}
+.es-more > summary:hover{background:var(--bg2);color:var(--text);}
+/* チップの校名と県名の間を空ける */
+#es-rivals .kk-chip small{margin-left:5px;color:var(--text2);}
+/* ランキングのタブは1行で横スクロール */
+#es-rk-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
+#es-rk-tabs::-webkit-scrollbar{display:none;}
+#es-rk-tabs .day-tab{flex:0 0 auto;}

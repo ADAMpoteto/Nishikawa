@@ -1598,6 +1598,15 @@ function esFindGrad(l){
   if(c.length>1){ const c2=c.filter(g=>esPosN(l.pos)===esPosN(g.pos) || esPosN(l.pos)===esPosN(g.pos0)); if(c2.length) c=c2; }
   return c[0]||null;
 }
+/* 守備位置アイコンの色分け：投手=赤、捕手=青、内野=黄、外野=緑 */
+function esPosCls(p){
+  p=String(p||"");
+  if(p==="投") return "p-pit";
+  if(p==="捕") return "p-cat";
+  if(/^[一二三遊]$/.test(p)) return "p-inf";
+  if(/^[左中右外]$/.test(p)) return "p-of";
+  return "p-etc";
+}
 /* 背番号を丸数字に（1〜50。それ以上は #番号） */
 function esCircled(n){
   n=+n; if(!n) return "";
@@ -1624,7 +1633,7 @@ function esLuRow(l, starter){
   return `<details class="es-lu-row${starter?"":" bench"}">
     <summary>
       <span class="es-lu-no">${starter?escHtml(l.order):"控"}</span>
-      <span class="es-pos">${escHtml(l.pos)}</span>
+      <span class="es-pos ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>
       <span class="es-lu-main"><span class="es-lu-name">${escHtml(g?g.name:l.name)}${g?esTags(g):""}</span><span class="es-lu-meta">${[l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ")}</span></span>
       <span class="es-lu-chev" aria-hidden="true"></span>
     </summary>
@@ -1642,7 +1651,7 @@ function esRenderLineup(){
 
 /* ---------- ベスト9 ---------- */
 function esRenderB9Tabs(){
-  const tabs=[["star","★"],["stats","成績"],["team","球団別"]];
+  const tabs=[["star","★"],["stats","成績"],["team","球団別"],["amateur","プロ以外"]];
   document.getElementById("es-b9-tabs").innerHTML=tabs.map(([k,t])=>`<button type="button" class="day-tab${k===ES.b9?" active":""}" data-k="${k}">${t}</button>`).join("");
   document.querySelectorAll("#es-b9-tabs .day-tab").forEach(b=>b.onclick=()=>{
     ES.b9=b.dataset.k;
@@ -1674,14 +1683,17 @@ function esRenderB9(){
       : `<b>${esAvgFmt(x.g.avg)}</b><small>${x.g.hr||0}本 ${x.g.rbi||0}点 ${x.g.sb||0}盗</small>`;
     note=`打者は「打率×100＋本塁打×3＋打点＋盗塁」の点数で守備ごとに1位（${ES_BAT_MIN}試合以上）。投手は防御率1位（投球回${ES_PIT_IP_MIN}以上、投球回が空欄なら登板10以上）。`;
   } else {
-    const pool = ES.b9==="team" ? ES.grads.filter(g=>g.team===ES.team) : ES.grads;
+    const pool = ES.b9==="team" ? ES.grads.filter(g=>g.team===ES.team)
+               : ES.b9==="amateur" ? ES.grads.filter(g=>!g.pro) : ES.grads;
     picks=esPick(pool, g=>g.star);
     val=x=>`<b>${x.g.star}</b><small>★</small>`;
-    note = ES.b9==="team" ? "その球団に進んだ卒業生の中で、卒業時の★が一番高い選手（守備は卒業時）。" : "卒業時の★が一番高い選手（守備は卒業時）。";
+    note = ES.b9==="team" ? "その球団に進んだ卒業生の中で、卒業時の★が一番高い選手（守備は卒業時）。"
+         : ES.b9==="amateur" ? "プロ野球選手にならなかった卒業生の中で、卒業時の★が一番高い選手（守備は卒業時）。"
+         : "卒業時の★が一番高い選手（守備は卒業時）。";
   }
   document.getElementById("es-b9").innerHTML=`<div class="es-b9">${picks.map(x=>`
     <div class="es-b9-row${x.g?"":" empty"}">
-      <span class="es-pos lg">${x.p}</span>
+      <span class="es-pos lg ${esPosCls(x.p)}">${x.p}</span>
       <span class="es-b9-main">${x.g?`<span class="es-b9-name">${escHtml(x.g.name)}${esTags(x.g)}</span>
         <span class="es-b9-meta">${escHtml(esGradMeta(x.g))}</span>`:`<span class="es-b9-meta">該当なし</span>`}</span>
       <span class="es-b9-val">${x.g?val(x):""}</span>
@@ -1727,7 +1739,7 @@ function esRenderRk(){
     <div class="gm-row">
       <div class="gm-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:i+1}</div>
       <div class="gm-main">
-        <div class="gm-title">${escHtml(g.name)}<span class="es-pos sm">${escHtml(g.pos)}</span>${esTags(g)}</div>
+        <div class="gm-title">${escHtml(g.name)}<span class="es-pos sm ${esPosCls(g.pos)}">${escHtml(g.pos)}</span>${esTags(g)}</div>
         <div class="gm-meta">${escHtml(esGradMeta(g))}</div>
       </div>
       <div class="gm-score es-val">${R.fmt(R.get(g))}</div>
@@ -1759,6 +1771,13 @@ function esRenderRecords(){
     <div class="es-rec"><div class="es-rec-t">${r.t}</div><div class="es-rec-v">${r.v}</div><div class="es-rec-s">${escHtml(r.s)}</div></div>`).join("")}</div>`;
 }
 
+/* 長いリストは最初の10件だけ見せて、残りは折りたたむ */
+function esFoldList(items, render, n, unit){
+  n=n||10;
+  if(items.length<=n) return items.map(render).join("");
+  return items.slice(0,n).map(render).join("") +
+    `<details class="es-more"><summary>残り ${items.length-n} ${unit||"件"}を見る</summary>${items.slice(n).map(render).join("")}</details>`;
+}
 /* ---------- 対戦校 ---------- */
 const ES_PREF_ORDER=["北北海道","南北海道","北海道","青森","岩手","宮城","秋田","山形","福島","茨城","栃木","群馬","埼玉","千葉","東東京","西東京","東京","神奈川",
   "新潟","富山","石川","福井","山梨","長野","岐阜","静岡","愛知","三重","滋賀","京都","大阪","兵庫","奈良","和歌山","鳥取","島根","岡山","広島","山口",
@@ -1793,7 +1812,7 @@ function esRenderRivals(){
     const w=L.reduce((a,s)=>a+s.w,0), l=L.reduce((a,s)=>a+s.l,0);
     document.getElementById("es-opp-list").innerHTML=`
       <div class="stats-row"><div class="stat-chip">対戦校 <strong>${L.length}</strong> 校</div><div class="stat-chip"><strong>${w}</strong> 勝 <strong>${l}</strong> 敗</div></div>
-      <div class="mlist">${L.map(s=>esOppRow(s, mx, true)).join("")}</div>`;
+      <div class="mlist">${esFoldList(L, s=>esOppRow(s, mx, true), 10, "校")}</div>`;
   };
   document.getElementById("es-opp-sel").onchange=e=>{ ES.oppPref=e.target.value; draw(); };
   draw();
@@ -1814,7 +1833,7 @@ function esRenderDraft(){
   const m={}; P.forEach(g=>{ const s=(m[g.team]=m[g.team]||{t:g.team, n:0, first:0}); s.n++; if(g.rank==="1") s.first++; });
   const S=Object.values(m).sort((a,b)=>b.n-a.n||b.first-a.first), max=S[0].n;
   const first=P.filter(g=>g.rank==="1").length;
-  if(!ES.draftTeam) ES.draftTeam="すべて";
+  if(!ES.draftTeam) ES.draftTeam=S[0].t;
   el.innerHTML=`
     <div class="stats-row">
       <div class="stat-chip">プロ入り <strong>${P.length}</strong> 人</div>
@@ -1840,15 +1859,15 @@ function esRenderDraft(){
     el.querySelectorAll(".mlist-row[data-team]").forEach(b=>b.classList.toggle("on", b.dataset.team===ES.draftTeam));
     const L=P.filter(g=>ES.draftTeam==="すべて" || (ES.draftTeam==="1位" ? g.rank==="1" : g.team===ES.draftTeam))
       .sort((a,b)=>(a.year||0)-(b.year||0) || (+a.rank||99)-(+b.rank||99));
-    document.getElementById("es-draft-list").innerHTML=L.length?L.map(g=>`
+    document.getElementById("es-draft-list").innerHTML=L.length?esFoldList(L, g=>`
       <div class="gm-row es-dr">
         <div class="gm-pos es-dr-rank">${g.rank?`${escHtml(g.rank)}<small>位</small>`:"-"}</div>
         <div class="gm-main">
-          <div class="gm-title">${escHtml(g.name)}<span class="es-pos sm">${escHtml(g.pos)}</span>${esTags(g)}</div>
+          <div class="gm-title">${escHtml(g.name)}<span class="es-pos sm ${esPosCls(g.pos)}">${escHtml(g.pos)}</span>${esTags(g)}</div>
           <div class="gm-meta">${escHtml([g.year?`${g.year}年度入学`:"", g.from, ES.draftTeam==="すべて"||ES.draftTeam==="1位"?g.team:""].filter(Boolean).join("・"))}</div>
         </div>
         <div class="gm-score es-val">${g.star!=null?`${g.star}<small>★</small>`:""}</div>
-      </div>`).join(""):errBox("該当する選手がいません。");
+      </div>`, 10, "人"):errBox("該当する選手がいません。");
   };
   sel.onchange=()=>{ ES.draftTeam=sel.value; draw(); };
   el.querySelectorAll(".mlist-row[data-team]").forEach(b=>b.onclick=()=>{
