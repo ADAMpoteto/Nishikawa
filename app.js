@@ -1676,10 +1676,12 @@ function esFillFromBox(g){
     if(P.length===1){ cg++; if(gm && gm.ra===0) sho++; if(b.ha===0) nh++; }
   });
   const set=(k,v)=>{ if(g[k]==null && v!=null){ g[k]=v; g.auto=true; } };
-  if(t.bat){ set("games",t.g); set("avg",t.avg); set("hr",t.hr); set("rbi",t.rbi); set("sb",t.sb); set("ops",t.ops); }
+  if(t.bat){ set("games",t.g); set("avg",t.avg); set("hr",t.hr); set("rbi",t.rbi); set("sb",t.sb); set("ops",t.ops);
+    set("h",t.h); set("r",t.r); set("d2",t.d2); set("d3",t.d3); set("bbb",t.bb); set("sh",t.sh); set("obp",t.obp); set("slg",t.slg); }
   else set("games",t.g);
   if(t.pit){ set("app",t.app); set("gs",gs); set("w",t.w); set("l",t.l); set("sv",t.sv); set("cg",cg); set("sho",sho); set("nh",nh);
-    set("ip",t.ip); set("k",t.k); set("bb",t.pbb); set("era",t.era); }
+    set("ip",t.ip); set("k",t.k); set("bb",t.pbb); set("era",t.era); set("ha",t.ha);
+    if(t.outs>0){ set("k9",t.k*27/t.outs); set("whip",(t.ha+t.pbb)*3/t.outs); } }
 }
 function esGradDerived(g){
   g.batScore = (g.games!=null && g.games>=ES_BAT_MIN && g.pos!=="投" && g.avg!=null)
@@ -1884,27 +1886,54 @@ function esGradMeta(g){
 }
 
 /* ---------- 歴代ランキング ---------- */
+const esBatQ = g => g.games>=ES_BAT_MIN && g.pos!=="投";
+const ES_BAT_NOTE = `${ES_BAT_MIN}試合以上の野手`, ES_PIT_NOTE = `投球回${ES_PIT_IP_MIN}以上（投球回が空欄なら登板10以上）`;
+const esCnt = u => v => `${v}<small>${u}</small>`;
+/* g: 総合／打撃／投手 */
 const ES_RK=[
-  {k:"star", t:"★", get:g=>g.star, fmt:v=>v},
-  {k:"grow", t:"★の伸び", get:g=>g.grow, fmt:v=>`+${v}`},
-  {k:"avg",  t:"打率", get:g=>(g.games>=ES_BAT_MIN && g.pos!=="投")?g.avg:null, fmt:esAvgFmt, note:`${ES_BAT_MIN}試合以上の野手`},
-  {k:"ops",  t:"OPS", get:g=>(g.games>=ES_BAT_MIN && g.pos!=="投")?g.ops:null, fmt:esAvgFmt, note:`${ES_BAT_MIN}試合以上の野手`},
-  {k:"hr",   t:"本塁打", get:g=>g.hr||null, fmt:v=>`${v}<small>本</small>`},
-  {k:"rbi",  t:"打点", get:g=>g.rbi||null, fmt:v=>`${v}<small>点</small>`},
-  {k:"sb",   t:"盗塁", get:g=>g.sb||null, fmt:v=>`${v}<small>個</small>`},
-  {k:"era",  t:"防御率", get:g=>g.pitQual?g.era:null, fmt:v=>v.toFixed(2), asc:true, note:`投球回${ES_PIT_IP_MIN}以上（投球回が空欄なら登板10以上）`},
-  {k:"w",    t:"勝利", get:g=>g.w||null, fmt:v=>`${v}<small>勝</small>`},
-  {k:"k",    t:"奪三振", get:g=>g.k||null, fmt:v=>`${v}<small>個</small>`},
-  {k:"sv",   t:"セーブ", get:g=>g.sv||null, fmt:v=>`${v}<small>S</small>`},
-  {k:"ip",   t:"投球回", get:g=>g.ip||null, fmt:v=>esIPfmt(v)}
+  {g:"総合", k:"star", t:"★", get:g=>g.star, fmt:v=>v},
+  {g:"総合", k:"grow", t:"★の伸び", get:g=>g.grow, fmt:v=>`+${v}`},
+  {g:"総合", k:"games",t:"出場試合", get:g=>g.games||null, fmt:esCnt("試合")},
+  {g:"打撃", k:"avg",  t:"打率", get:g=>esBatQ(g)?g.avg:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
+  {g:"打撃", k:"ops",  t:"OPS", get:g=>esBatQ(g)?g.ops:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
+  {g:"打撃", k:"obp",  t:"出塁率", get:g=>esBatQ(g)?g.obp:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
+  {g:"打撃", k:"slg",  t:"長打率", get:g=>esBatQ(g)?g.slg:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
+  {g:"打撃", k:"h",    t:"安打", get:g=>g.h||null, fmt:esCnt("本")},
+  {g:"打撃", k:"hr",   t:"本塁打", get:g=>g.hr||null, fmt:esCnt("本")},
+  {g:"打撃", k:"d2",   t:"二塁打", get:g=>g.d2||null, fmt:esCnt("本")},
+  {g:"打撃", k:"d3",   t:"三塁打", get:g=>g.d3||null, fmt:esCnt("本")},
+  {g:"打撃", k:"rbi",  t:"打点", get:g=>g.rbi||null, fmt:esCnt("点")},
+  {g:"打撃", k:"r",    t:"得点", get:g=>g.r||null, fmt:esCnt("点")},
+  {g:"打撃", k:"sb",   t:"盗塁", get:g=>g.sb||null, fmt:esCnt("個")},
+  {g:"打撃", k:"bbb",  t:"四死球", get:g=>g.bbb||null, fmt:esCnt("個")},
+  {g:"打撃", k:"sh",   t:"犠打", get:g=>g.sh||null, fmt:esCnt("個")},
+  {g:"投手", k:"era",  t:"防御率", get:g=>g.pitQual?g.era:null, fmt:v=>v.toFixed(2), asc:true, note:ES_PIT_NOTE},
+  {g:"投手", k:"whip", t:"WHIP", get:g=>g.pitQual?g.whip:null, fmt:v=>v.toFixed(2), asc:true, note:`1イニングあたりに出した走者（被安打＋与四死球）。${ES_PIT_NOTE}`},
+  {g:"投手", k:"k9",   t:"奪三振率", get:g=>g.pitQual?g.k9:null, fmt:v=>v.toFixed(2), note:`9イニングあたりの奪三振。${ES_PIT_NOTE}`},
+  {g:"投手", k:"w",    t:"勝利", get:g=>g.w||null, fmt:esCnt("勝")},
+  {g:"投手", k:"k",    t:"奪三振", get:g=>g.k||null, fmt:esCnt("個")},
+  {g:"投手", k:"ip",   t:"投球回", get:g=>g.ip||null, fmt:v=>esIPfmt(v)},
+  {g:"投手", k:"cg",   t:"完投", get:g=>g.cg||null, fmt:esCnt("回")},
+  {g:"投手", k:"sho",  t:"完封", get:g=>g.sho||null, fmt:esCnt("回")},
+  {g:"投手", k:"nh",   t:"ノーノー", get:g=>g.nh||null, fmt:esCnt("回")},
+  {g:"投手", k:"sv",   t:"セーブ", get:g=>g.sv||null, fmt:esCnt("S")},
+  {g:"投手", k:"app",  t:"登板", get:g=>g.app||null, fmt:esCnt("試合")}
 ];
 function esRenderRkTabs(){
   const avail=ES_RK.filter(r=>ES.grads.some(g=>r.get(g)!=null));
   if(!avail.some(r=>r.k===ES.rk)) ES.rk=(avail[0]||{}).k;
-  document.getElementById("es-rk-tabs").innerHTML=avail.map(r=>`<button type="button" class="day-tab${r.k===ES.rk?" active":""}" data-k="${r.k}">${r.t}</button>`).join("");
-  document.querySelectorAll("#es-rk-tabs .day-tab").forEach(b=>b.onclick=()=>{
+  const cur=avail.find(r=>r.k===ES.rk), grp=cur?cur.g:"総合";
+  const groups=[...new Set(avail.map(r=>r.g))];
+  const box=document.getElementById("es-rk-tabs");
+  box.classList.add("es-rk-tabbox");
+  box.innerHTML=`<div class="es-rk-grp">${groups.map(x=>`<button type="button" class="es-rk-g${x===grp?" active":""}" data-g="${x}">${x}</button>`).join("")}</div>
+    <div class="es-rk-items">${avail.filter(r=>r.g===grp).map(r=>`<button type="button" class="day-tab${r.k===ES.rk?" active":""}" data-k="${r.k}">${r.t}</button>`).join("")}</div>`;
+  box.querySelectorAll(".es-rk-g").forEach(b=>b.onclick=()=>{
+    ES.rk=avail.find(r=>r.g===b.dataset.g).k; esRenderRkTabs(); esRenderRk();
+  });
+  box.querySelectorAll(".day-tab").forEach(b=>b.onclick=()=>{
     ES.rk=b.dataset.k;
-    document.querySelectorAll("#es-rk-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
+    box.querySelectorAll(".day-tab").forEach(x=>x.classList.toggle("active", x===b));
     esRenderRk();
   });
 }
