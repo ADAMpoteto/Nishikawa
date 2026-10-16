@@ -1608,6 +1608,13 @@ function esShowYear(y){
         ②奪三振を少し加点
         ③接戦（2点差以内）で勝ち投手・セーブなら加点、完投も少し加点
 */
+/* その試合の先発投手：スタメンで投手として入っている選手（打順あり、またはDHの「投」）。いなければ最初に入力した投手 */
+function esStarterOf(no){
+  const P=ES.box.filter(b=>b.no===no && b.ip!=null); if(!P.length) return null;
+  const gm=ES.gameByNo[no];
+  const L=gm ? ES.lineup.filter(l=>l.year===gm.year && l.season===gm.season && l.pos==="投" && (/^\d+$/.test(l.order)||l.order==="投")) : [];
+  return P.find(b=>L.some(l=>esSameName(l.name,b.name))) || P[0];
+}
 function esGameMargin(no){ const g=ES.gameByNo[no]; return g ? Math.abs(g.rs-g.ra) : 99; }
 function esBatScore(b){
   if(b.ab==null) return -Infinity;
@@ -1661,14 +1668,20 @@ function esMvpTitle(b, kind){
     const nP=ES.box.filter(x=>x.no===b.no && x.ip!=null).length, ra=b.pr!=null?b.pr:b.er, cg=nP===1;
     if(cg && b.ha===0) return "ノーヒットノーラン達成！";
     if(cg && ra===0) return `${b.ha!=null?b.ha+"安打":""}完封`;
-    if((b.k||0)>=10) return `${b.k}奪三振の快投`;
+    if((b.k||0)>=10) return lost ? `${b.k}奪三振も実らず` : `${b.k}奪三振の快投`;
     if(cg && b.ip>9) return `延長${Math.floor(b.ip)}回を一人で投げ抜く`;
     if(cg) return lost ? "最後まで一人で投げ抜いた" : "完投で勝利をつかむ";
+    const ipT = (()=>{ const o=Math.round(b.ip*3), w=Math.floor(o/3), f=o%3; return `${w}回${f?`${f}/3`:""}`; })();
+    const raT = ra==null ? "" : ra===0 ? "無失点" : `${ra}失点`;
+    if(esStarterOf(b.no)===b){
+      if(b.dec==="勝") return raT ? `先発${ipT}を${raT}で勝利` : `先発${ipT}で勝利`;
+      if(lost) return "負けはしたが粘りの投球";
+      return raT ? `先発${ipT}を${raT}` : `先発として${ipT}`;
+    }
     if(b.dec==="S") return "最後を締めた守護神";
     if(b.dec==="勝") return "流れを変えた好リリーフ";
-    if(lost) return "負けはしたが粘りの投球";
-    const ipT = (()=>{ const o=Math.round(b.ip*3), w=Math.floor(o/3), f=o%3; return `${w}回${f?`${f}/3`:""}`; })();
-    return ra!=null ? `${ipT}を${ra===0?"無失点":ra+"失点"}の好投` : `${ipT}の好投`;
+    if(lost) return "負けはしたが粘りのリリーフ";
+    return raT ? `${ipT}を${raT}の好救援` : `${ipT}の好救援`;
   }
   const h=b.h||0, hr=b.hr||0, d2=b.d2||0, d3=b.d3||0, single=h-d2-d3-hr;
   const pre = lost ? "意地の" : "";
@@ -1700,9 +1713,9 @@ function esGameHtml(g){
   const ls=ES.inn[g.no];
   const mv=(ES.mvp && ES.mvp[g.no]) || {};
   const mvs=[mv.bat?`打 ${mv.bat.name}`:"", mv.pit?`投 ${mv.pit.name}`:""].filter(Boolean).join("／");
-  const meta=[g.oppPref, g.power?`戦力${g.power}`:"", g.note, mvs?`MVP ${mvs}`:""].filter(Boolean).join("・");
+  const meta=[g.oppPref, g.power?`戦力${g.power}`:"", g.note].filter(Boolean).join("・");
   const row=`<span class="es-rd">${escHtml(g.round)}</span>
-    <span class="es-opp"><span class="es-opp-name">${escHtml(g.opp)}</span><span class="es-opp-meta">${escHtml(meta)}</span></span>
+    <span class="es-opp"><span class="es-opp-name">${escHtml(g.opp)}</span><span class="es-opp-meta">${escHtml(meta)}</span>${mvs?`<span class="es-opp-meta es-opp-mvp">MVP ${escHtml(mvs)}</span>`:""}</span>
     <span class="es-score ${g.wl==="勝"?"w":g.wl==="負"?"l":""}"><span class="es-wlb">${g.wl}</span>${g.rs}-${g.ra}</span>`;
   const box=esBoxScore(g.no);
   if((!ls || !ls.length) && !box) return `<div class="es-game">${row}</div>`;
@@ -1888,7 +1901,7 @@ function esBoxScore(no){
   bat.sort((x,y)=>(isBat(x.l)?+x.l.order:100+x.i)-(isBat(y.l)?+y.l.order:100+y.i));
   /* 投手：先発（スタメンの投手）を先頭に、あとは入力順 */
   const pit=B.filter(b=>b.ip!=null).map((b,i)=>({b, l:luOf(b), i}));
-  const spIdx=Math.max(0, pit.findIndex(x=>x.l && x.l.pos==="投" && (isBat(x.l)||x.l.order==="投")));
+  const sp=esStarterOf(no), spIdx=Math.max(0, pit.findIndex(x=>x.b===sp));
   pit.forEach((x,i)=>x.k = i===spIdx ? -1 : x.i);
   pit.sort((x,y)=>x.k-y.k);
 
