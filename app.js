@@ -1598,26 +1598,46 @@ function esShowYear(y){
   if(seasons.length) esRenderLineup();
 }
 /* ---------- 試合のMVP（打撃・投手それぞれ1人。勝っても負けても選手成績から自動で選ぶ） ---------- */
+/*
+  評価のしかた
+  打撃：①打席の中身を「得点の価値」で数える（単打0.47・二塁打0.78・三塁打1.09・本塁打1.40・四死球0.33点、凡打は−0.27点、
+          併殺・三振・失策は追加でマイナス、盗塁＋0.2）
+        ②チームの得点のうち、自分が絡んだ割合（打点は6割・ホームインは4割の手柄）を加点。1−0の決勝打は大きく、大差の試合の1打点は小さい
+        ③2点差以内の接戦なら②を1.5倍
+  投手：①平均的な投手ならこの回数で何点取られるか（全試合の失点率から計算）と比べて、何点防いだか
+        ②奪三振を少し加点
+        ③接戦（2点差以内）で勝ち投手・セーブなら加点、完投も少し加点
+*/
+function esGameMargin(no){ const g=ES.gameByNo[no]; return g ? Math.abs(g.rs-g.ra) : 99; }
 function esBatScore(b){
   if(b.ab==null) return -Infinity;
-  const n=k=>b[k]||0;
-  return n("h") + n("d2")*0.5 + n("d3")*1 + n("hr")*2 + n("rbi")*1.5 + n("r")*0.5 + n("bb")*0.5 + n("sb")*0.5 + n("sh")*0.3
-       - n("so")*0.3 - n("dp")*0.5 - n("e")*0.5;
+  const n=k=>b[k]||0, single=Math.max(0, n("h")-n("d2")-n("d3")-n("hr")), outs=Math.max(0, n("ab")-n("h"));
+  const lw = 0.47*single + 0.78*n("d2") + 1.09*n("d3") + 1.40*n("hr") + 0.33*n("bb") + 0.2*n("sb") + 0.05*n("sh")
+           - 0.27*outs - 0.37*n("dp") - 0.05*n("so") - 0.5*n("e");
+  const gm=ES.gameByNo[b.no], team=gm ? gm.rs : 0;
+  /* 得点への関与：打点は6割、ホームインは4割の手柄として数える（本塁打は自分で還るので打点＋得点で1点ぶん） */
+  const share = team>0 ? Math.min(1, (0.6*n("rbi") + 0.4*Math.max(n("r"), n("hr")))/team) : 0;
+  return lw + share*2*(esGameMargin(b.no)<=2 ? 1.5 : 1);
+}
+function esRaPerOut(){
+  if(ES._raOut!=null) return ES._raOut;
+  let o=0, r=0; ES.box.forEach(b=>{ if(b.ip==null) return; o+=Math.round(b.ip*3); r+= b.pr!=null?b.pr:(b.er||0); });
+  return ES._raOut = o>0 ? r/o : 4/27;
 }
 function esPitScore(b, nP){
   if(b.ip==null) return -Infinity;
-  const n=k=>b[k]||0, cg=nP===1, ra=b.pr!=null?b.pr:b.er;
-  return b.ip*0.6 + n("k")*0.2 - n("er")*1.5 - (n("ha")+n("pbb"))*0.3
-       + (b.dec==="勝"||b.dec==="S"?1.5:0) + (cg?1:0) + (cg && ra===0 ? 2 : 0);
+  const outs=Math.round(b.ip*3), ra=b.pr!=null?b.pr:(b.er||0), close=esGameMargin(b.no)<=2;
+  const saved = outs*esRaPerOut() - ra;
+  return saved + 0.08*(b.k||0) + ((b.dec==="勝"||b.dec==="S") ? (close?1:0.3) : 0) + (nP===1?0.5:0);
 }
 function esBuildMvp(){
-  ES.mvp={};
+  ES.mvp={}; ES._raOut=null;
   const by={}; ES.box.forEach(b=>(by[b.no]=by[b.no]||[]).push(b));
   Object.keys(by).forEach(no=>{
     const B=by[no], nP=B.filter(b=>b.ip!=null).length;
     const top=f=>{ let best=null, bs=-Infinity; B.forEach(b=>{ const v=f(b); if(v>bs){ bs=v; best=b; } }); return {best, bs}; };
     const bt=top(esBatScore), pt=top(b=>esPitScore(b,nP));
-    ES.mvp[no]={ bat: bt.best && bt.bs>0 ? bt.best : null, pit: pt.best && pt.bs>-Infinity ? pt.best : null };
+    ES.mvp[no]={ bat: bt.best && bt.bs>0 && (bt.best.h||bt.best.rbi||bt.best.bb) ? bt.best : null, pit: pt.best && pt.bs>-Infinity ? pt.best : null };
   });
 }
 const esIsMvp = (b, kind) => !!(ES.mvp && ES.mvp[b.no] && ES.mvp[b.no][kind]===b);
@@ -1634,6 +1654,37 @@ function esMvpDesc(b, kind){
   }
   return P.join(" ");
 }
+/* MVPの見出し（新聞の見出し風のひとこと） */
+function esMvpTitle(b, kind){
+  const gm=ES.gameByNo[b.no], lost=gm && gm.wl==="負";
+  if(kind==="pit"){
+    const nP=ES.box.filter(x=>x.no===b.no && x.ip!=null).length, ra=b.pr!=null?b.pr:b.er, cg=nP===1;
+    if(cg && b.ha===0) return "ノーヒットノーラン達成！";
+    if(cg && ra===0) return `${b.ha!=null?b.ha+"安打":""}完封`;
+    if((b.k||0)>=10) return `${b.k}奪三振の快投`;
+    if(cg && b.ip>9) return `延長${Math.floor(b.ip)}回を一人で投げ抜く`;
+    if(cg) return lost ? "最後まで一人で投げ抜いた" : "完投で勝利をつかむ";
+    if(b.dec==="S") return "最後を締めた守護神";
+    if(b.dec==="勝") return "流れを変えた好リリーフ";
+    if(lost) return "負けはしたが粘りの投球";
+    const ipT = (()=>{ const o=Math.round(b.ip*3), w=Math.floor(o/3), f=o%3; return `${w}回${f?`${f}/3`:""}`; })();
+    return ra!=null ? `${ipT}を${ra===0?"無失点":ra+"失点"}の好投` : `${ipT}の好投`;
+  }
+  const h=b.h||0, hr=b.hr||0, d2=b.d2||0, d3=b.d3||0, single=h-d2-d3-hr;
+  const pre = lost ? "意地の" : "";
+  if(single>0 && d2>0 && d3>0 && hr>0) return "サイクルヒット達成！";
+  if(hr>=2) return `1試合${hr}本のアーチ`;
+  if(h>=4) return lost ? `意地の${h}安打` : `${h}安打の固め打ち`;
+  if((b.rbi||0)>=4) return `${b.rbi}打点の大暴れ`;
+  if(hr===1 && (b.rbi||0)>=2) return `${pre}一発含む${b.rbi}打点`;
+  if(h===3) return `${pre}猛打賞`;
+  if(hr===1) return lost ? "意地の一発" : "一発で流れを呼ぶ";
+  if((b.sb||0)>=2) return "足でかき回す";
+  if((b.rbi||0)>=2) return `${pre}${b.rbi}打点の勝負強さ`;
+  if((b.bb||0)>=2) return "しぶとく出塁";
+  if(h<=1) return lost ? "意地の一打" : "チームを勢いづける一打";
+  return lost ? `意地の${h}安打` : `${h}安打の活躍`;
+}
 function esMvpHtml(no){
   const M=ES.mvp && ES.mvp[no]; if(!M || (!M.bat && !M.pit)) return "";
   const gm=ES.gameByNo[no];
@@ -1641,7 +1692,7 @@ function esMvpHtml(no){
     if(!b) return "";
     const l=gm && ES.lineup.find(x=>x.year===gm.year && x.season===gm.season && esSameName(x.name,b.name));
     const sub=l ? [l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ") : "";
-    return `<div class="es-mvp-row"><span class="es-mvp-b ${kind}">${lbl}</span>${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>`:""}<b>${escHtml(b.name)}</b>${sub?`<small>${sub}</small>`:""}<span class="es-mvp-d">${escHtml(esMvpDesc(b,kind))}</span></div>`;
+    return `<div class="es-mvp-row"><span class="es-mvp-b ${kind}">${lbl}</span>${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>`:""}<b>${escHtml(b.name)}</b>${sub?`<small>${sub}</small>`:""}<span class="es-mvp-d"><b class="es-mvp-t">${escHtml(esMvpTitle(b,kind))}</b>${escHtml(esMvpDesc(b,kind))}</span></div>`;
   };
   return `<div class="es-mvp">${one(M.bat,"bat","打撃MVP")}${one(M.pit,"pit","投手MVP")}</div>`;
 }
@@ -1947,7 +1998,7 @@ const ES_RK=[
   {g:"総合", k:"star", t:"★", get:g=>g.star, fmt:v=>v},
   {g:"総合", k:"grow", t:"★の伸び", get:g=>g.grow, fmt:v=>`+${v}`},
   {g:"総合", k:"games",t:"出場試合", get:g=>g.games||null, fmt:esCnt("試合")},
-  {g:"打撃", k:"mvpB", t:"打撃MVP", get:g=>g.mvpB||null, fmt:esCnt("回"), note:"試合ごとの打撃MVPに選ばれた回数（選手成績から自動で選出）"},
+  {g:"打撃", k:"mvpB", t:"打撃MVP", get:g=>g.mvpB||null, fmt:esCnt("回"), note:"試合ごとの打撃MVPに選ばれた回数。打席の中身を得点の価値で数え、チームの得点に絡んだ割合（接戦ほど重く）を足して選ぶ"},
   {g:"打撃", k:"avg",  t:"打率", get:g=>esBatQ(g)?g.avg:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
   {g:"打撃", k:"ops",  t:"OPS", get:g=>esBatQ(g)?g.ops:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
   {g:"打撃", k:"obp",  t:"出塁率", get:g=>esBatQ(g)?g.obp:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
@@ -1961,7 +2012,7 @@ const ES_RK=[
   {g:"打撃", k:"sb",   t:"盗塁", get:g=>g.sb||null, fmt:esCnt("個")},
   {g:"打撃", k:"bbb",  t:"四死球", get:g=>g.bbb||null, fmt:esCnt("個")},
   {g:"打撃", k:"sh",   t:"犠打", get:g=>g.sh||null, fmt:esCnt("個")},
-  {g:"投手", k:"mvpP", t:"投手MVP", get:g=>g.mvpP||null, fmt:esCnt("回"), note:"試合ごとの投手MVPに選ばれた回数（選手成績から自動で選出）"},
+  {g:"投手", k:"mvpP", t:"投手MVP", get:g=>g.mvpP||null, fmt:esCnt("回"), note:"試合ごとの投手MVPに選ばれた回数。平均的な投手と比べて何点防いだかに、奪三振と接戦での勝ち・セーブを足して選ぶ"},
   {g:"投手", k:"era",  t:"防御率", get:g=>g.pitQual?g.era:null, fmt:v=>v.toFixed(2), asc:true, note:ES_PIT_NOTE},
   {g:"投手", k:"whip", t:"WHIP", get:g=>g.pitQual?g.whip:null, fmt:v=>v.toFixed(2), asc:true, note:`1イニングあたりに出した走者（被安打＋与四死球）。${ES_PIT_NOTE}`},
   {g:"投手", k:"k9",   t:"奪三振率", get:g=>g.pitQual?g.k9:null, fmt:v=>v.toFixed(2), note:`9イニングあたりの奪三振。${ES_PIT_NOTE}`},
