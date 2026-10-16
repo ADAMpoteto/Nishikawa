@@ -617,6 +617,6 @@ details.kk-group[open] summary::after{content:"－";}
 .es-bx-pl .es-pos.sm{margin-left:0;}
 .es-bx-pl small{font-size:11px;color:var(--text2);font-weight:600;}
 .es-bx-sub{font-style:normal;font-size:9px;font-weight:700;color:var(--text2);border:.5px solid var(--border2);border-radius:3px;padding:0 3px;}
-.es-box-tbl tr.sub th{font-weight:500;padding-left:14px;}
+.es-box-tbl tr.sub th{font-weight:500;}
 .es-box-tbl tr.tot th,.es-box-tbl tr.tot td{font-weight:800;border-top:1px solid var(--border2);}
 .es-auto{font-size:9px;font-weight:700;color:var(--text2);background:var(--bg);border-radius:99px;padding:1px 6px;margin-left:6px;}
