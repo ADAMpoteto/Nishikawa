@@ -1705,7 +1705,7 @@ function esMvpHtml(no){
     if(!b) return "";
     const l=gm && ES.lineup.find(x=>x.year===gm.year && x.season===gm.season && esSameName(x.name,b.name));
     const sub=l ? [l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ") : "";
-    return `<div class="es-mvp-row"><span class="es-mvp-b ${kind}">${lbl}</span>${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>`:""}<b>${escHtml(b.name)}</b>${sub?`<small>${sub}</small>`:""}<span class="es-mvp-d"><b class="es-mvp-t">${escHtml(esMvpTitle(b,kind))}</b>${escHtml(esMvpDesc(b,kind))}</span></div>`;
+    return `<div class="es-mvp-row"><span class="es-mvp-b ${kind}">${lbl}</span>${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos, kind==="pit"&&esStarterOf(b.no)!==b?"rp":"")}">${escHtml(l.pos)}</span>`:""}<b>${escHtml(b.name)}</b>${sub?`<small>${sub}</small>`:""}<span class="es-mvp-d"><b class="es-mvp-t">${escHtml(esMvpTitle(b,kind))}</b>${escHtml(esMvpDesc(b,kind))}</span></div>`;
   };
   return `<div class="es-mvp">${one(M.bat,"bat","打撃MVP")}${one(M.pit,"pit","投手MVP")}</div>`;
 }
@@ -1741,9 +1741,11 @@ function esFindGrad(l){
   return c[0]||null;
 }
 /* 守備位置アイコンの色分け：投手=赤、捕手=青、内野=黄、外野=緑 */
-function esPosCls(p){
+/* 守備位置アイコンの色（パワプロに合わせる）：先発=赤、中継ぎ・抑え=ピンク、捕手=青、内野=黄、外野=黄緑
+   role に "rp" を渡すと、投手を中継ぎ色（ピンク）にする（控えの投手・救援で投げた投手） */
+function esPosCls(p, role){
   p=String(p||"");
-  if(p==="投") return "p-pit";
+  if(p==="投") return role==="rp" ? "p-rel" : "p-pit";
   if(p==="捕") return "p-cat";
   if(/^[一二三遊]$/.test(p)) return "p-inf";
   if(/^[左中右外]$/.test(p)) return "p-of";
@@ -1895,7 +1897,7 @@ function esBoxScore(no){
   const L=gm ? ES.lineup.filter(l=>l.year===gm.year && l.season===gm.season) : [];
   const luOf=b=>L.find(l=>esSameName(l.name,b.name)) || null;
   const isBat=l=>l && /^\d+$/.test(l.order);
-  const tag=(b,l,sub)=>`<span class="es-bx-pl">${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>`:""}<span class="es-bx-nm">${escHtml(b.name)}</span>${l&&(l.grade||l.num)?`<small>${[l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ")}</small>`:""}${sub?`<em class="es-bx-sub">途中</em>`:""}</span>`;
+  const tag=(b,l,sub,role)=>`<span class="es-bx-pl">${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos,role)}">${escHtml(l.pos)}</span>`:""}<span class="es-bx-nm">${escHtml(b.name)}</span>${l&&(l.grade||l.num)?`<small>${[l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ")}</small>`:""}${sub?`<em class="es-bx-sub">途中</em>`:""}</span>`;
 
   const bat=B.filter(b=>b.ab!=null).map((b,i)=>({b, l:luOf(b), i}));
   bat.sort((x,y)=>(isBat(x.l)?+x.l.order:100+x.i)-(isBat(y.l)?+y.l.order:100+y.i));
@@ -1911,10 +1913,10 @@ function esBoxScore(no){
   const PC=[["回","ip",1],["球数","np",1],["打者","bf",1],["安打","ha",1],["本","hra"],["三振","k",1],["四死","pbb"],["失点","pr",1],["自責","er",1],["暴投","wp"]];
   return `<div class="es-box">
     ${bat.length?`<div class="es-st-wrap"><table class="es-box-tbl"><thead><tr><th class="es-bx-no">打順</th><th>打撃</th>${BC.map(c=>`<th>${c[0]}</th>`).join("")}</tr></thead>
-      <tbody>${bat.map(({b,l})=>{ const st=isBat(l), sub=!st && !(l && l.order==="投"); return `<tr class="${sub?"sub":""}"><td class="es-bx-no">${st?escHtml(l.order):sub?"途中":""}</td><th>${tag(b,l,false)}</th>${BC.map(c=>`<td>${c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}</tr>`; }).join("")}
+      <tbody>${bat.map(({b,l})=>{ const st=isBat(l), sub=!st && !(l && l.order==="投"); return `<tr class="${sub?"sub":""}"><td class="es-bx-no">${st?escHtml(l.order):sub?"途中":""}</td><th>${tag(b,l,false, st||(l&&l.order==="投")?"":"rp")}</th>${BC.map(c=>`<td>${c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}</tr>`; }).join("")}
       <tr class="tot"><td class="es-bx-no"></td><th>計</th>${BC.map(c=>`<td>${c[2]?T[c[1]]:(T[c[1]]||"")}</td>`).join("")}</tr></tbody></table></div>`:""}
     ${pit.length?`<div class="es-st-wrap"><table class="es-box-tbl"><thead><tr><th class="es-bx-no"></th><th>投手</th>${PC.map(c=>`<th>${c[0]}</th>`).join("")}<th></th></tr></thead>
-      <tbody>${pit.map(({b,l},i)=>`<tr class="${i?"sub":""}"><td class="es-bx-no">${i?"":"先発"}</td><th>${tag(b,l,false)}</th>${PC.map(c=>`<td>${c[1]==="ip"?esIPfmt(b.ip):c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}<td>${b.dec?`<b class="es-dec ${b.dec==="勝"?"w":b.dec==="敗"?"l":"s"}">${b.dec}</b>`:""}</td></tr>`).join("")}</tbody></table></div>`:""}
+      <tbody>${pit.map(({b,l},i)=>`<tr class="${i?"sub":""}"><td class="es-bx-no">${i?"":"先発"}</td><th>${tag(b,l,false,i?"rp":"")}</th>${PC.map(c=>`<td>${c[1]==="ip"?esIPfmt(b.ip):c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}<td>${b.dec?`<b class="es-dec ${b.dec==="勝"?"w":b.dec==="敗"?"l":"s"}">${b.dec}</b>`:""}</td></tr>`).join("")}</tbody></table></div>`:""}
   </div>`;
 }
 function esLuRow(l, starter){
@@ -1922,7 +1924,7 @@ function esLuRow(l, starter){
   return `<details class="es-lu-row${starter?"":" bench"}">
     <summary>
       <span class="es-lu-no">${starter?escHtml(l.order==="投"?"先":l.order):"控"}</span>
-      <span class="es-pos ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>
+      <span class="es-pos ${esPosCls(l.pos, starter?"":"rp")}">${escHtml(l.pos)}</span>
       <span class="es-lu-main"><span class="es-lu-name">${escHtml(g?g.name:l.name)}${g?esTags(g):""}</span><span class="es-lu-meta">${[l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ")}</span></span>
       <span class="es-lu-chev" aria-hidden="true"></span>
     </summary>

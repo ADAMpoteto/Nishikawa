@@ -541,11 +541,13 @@ details.kk-group[open] summary::after{content:"－";}
 .es-lu-row[open] .es-lu-chev::after{content:"▾";}
 
 /* 守備位置アイコンの色 */
-:root{ --pos-pit:#d1453b; --pos-cat:#2f6fd1; --pos-inf:#f2c230; --pos-inf-fg:#3d2f00; --pos-of:#2e8b57; --pos-etc:#7a7f87; }
+:root{ --pos-pit:#e8343f; --pos-rel:#f26fa3; --pos-cat:#2c6fe0; --pos-inf:#f5c400; --pos-inf-fg:#3d2f00; --pos-of:#8cc63e; --pos-of-fg:#1f3a00; --pos-etc:#7a7f87; }
+/* パワプロの守備位置の色：先発=赤、中継ぎ・抑え=ピンク、捕手=青、内野=黄、外野=黄緑 */
 .es-pos.p-pit{background:var(--pos-pit);color:#fff;}
+.es-pos.p-rel{background:var(--pos-rel);color:#fff;}
 .es-pos.p-cat{background:var(--pos-cat);color:#fff;}
 .es-pos.p-inf{background:var(--pos-inf);color:var(--pos-inf-fg);}
-.es-pos.p-of{background:var(--pos-of);color:#fff;}
+.es-pos.p-of{background:var(--pos-of);color:var(--pos-of-fg);}
 .es-pos.p-etc{background:var(--pos-etc);color:#fff;}
 .es-lu-row.bench .es-pos{opacity:.8;}
 
