@@ -609,5 +609,14 @@ details.kk-group[open] summary::after{content:"－";}
 .es-box-tbl thead th{font-size:10px;color:var(--text2);font-weight:700;background:var(--bg2);}
 .es-box-tbl thead th:first-child,.es-box-tbl tbody th{text-align:left;}
 .es-box-tbl tbody th{font-weight:700;max-width:130px;overflow:hidden;text-overflow:ellipsis;}
+.es-box-tbl td.es-bx-no,.es-box-tbl th.es-bx-no{text-align:center;color:var(--text2);font-weight:700;padding-left:4px;padding-right:2px;width:1%;font-size:11px;}
+.es-box-tbl tbody th{max-width:none;}
+.es-box-tbl th,.es-box-tbl td{vertical-align:middle;}
+.es-box-tbl thead th:nth-child(2){text-align:left;}
+.es-bx-pl{display:inline-flex;align-items:center;gap:4px;}
+.es-bx-pl .es-pos.sm{margin-left:0;}
+.es-bx-pl small{font-size:11px;color:var(--text2);font-weight:600;}
+.es-bx-sub{font-style:normal;font-size:9px;font-weight:700;color:var(--text2);border:.5px solid var(--border2);border-radius:3px;padding:0 3px;}
+.es-box-tbl tr.sub th{font-weight:500;padding-left:14px;}
 .es-box-tbl tr.tot th,.es-box-tbl tr.tot td{font-weight:800;border-top:1px solid var(--border2);}
 .es-auto{font-size:9px;font-weight:700;color:var(--text2);background:var(--bg);border-radius:99px;padding:1px 6px;margin-left:6px;}

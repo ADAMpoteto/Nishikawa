@@ -1768,17 +1768,31 @@ function esPlayerCard(l, g){
 /* 試合のボックススコア（その試合の自校の選手成績） */
 function esBoxScore(no){
   const B=ES.box.filter(b=>b.no===no); if(!B.length) return "";
-  const bat=B.filter(b=>b.ab!=null), pit=B.filter(b=>b.ip!=null);
-  const T=esAgg(bat);
+  /* その試合の時期のスタメン表から、打順・守備・背番号を引く（打順が数字＝スタメン、補欠＝途中出場） */
+  const gm=ES.gameByNo[no];
+  const L=gm ? ES.lineup.filter(l=>l.year===gm.year && l.season===gm.season) : [];
+  const luOf=b=>L.find(l=>esSameName(l.name,b.name)) || null;
+  const isBat=l=>l && /^\d+$/.test(l.order);
+  const tag=(b,l,sub)=>`<span class="es-bx-pl">${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>`:""}<span class="es-bx-nm">${escHtml(b.name)}</span>${l&&l.num?`<small>${escHtml(esCircled(l.num))}</small>`:""}${sub?`<em class="es-bx-sub">途中</em>`:""}</span>`;
+
+  const bat=B.filter(b=>b.ab!=null).map((b,i)=>({b, l:luOf(b), i}));
+  bat.sort((x,y)=>(isBat(x.l)?+x.l.order:100+x.i)-(isBat(y.l)?+y.l.order:100+y.i));
+  /* 投手：先発（スタメンの投手）を先頭に、あとは入力順 */
+  const pit=B.filter(b=>b.ip!=null).map((b,i)=>({b, l:luOf(b), i}));
+  const spIdx=Math.max(0, pit.findIndex(x=>x.l && x.l.pos==="投" && (isBat(x.l)||x.l.order==="投")));
+  pit.forEach((x,i)=>x.k = i===spIdx ? -1 : x.i);
+  pit.sort((x,y)=>x.k-y.k);
+
+  const T=esAgg(bat.map(x=>x.b));
   /* [見出し, 項目, 0でも表示するか] */
   const BC=[["打数","ab",1],["得点","r"],["安打","h",1],["二","d2"],["三","d3"],["本","hr"],["打点","rbi"],["三振","so"],["四死","bb"],["犠打","sh"],["盗塁","sb"],["併殺","dp"],["失策","e"]];
   const PC=[["回","ip",1],["球数","np",1],["打者","bf",1],["安打","ha",1],["本","hra"],["三振","k",1],["四死","pbb"],["失点","pr",1],["自責","er",1],["暴投","wp"]];
   return `<div class="es-box">
-    ${bat.length?`<div class="es-st-wrap"><table class="es-box-tbl"><thead><tr><th>打撃</th>${BC.map(c=>`<th>${c[0]}</th>`).join("")}</tr></thead>
-      <tbody>${bat.map(b=>`<tr><th>${escHtml(b.name)}</th>${BC.map(c=>`<td>${c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}</tr>`).join("")}
-      <tr class="tot"><th>計</th>${BC.map(c=>`<td>${c[2]?T[c[1]]:(T[c[1]]||"")}</td>`).join("")}</tr></tbody></table></div>`:""}
-    ${pit.length?`<div class="es-st-wrap"><table class="es-box-tbl"><thead><tr><th>投手</th>${PC.map(c=>`<th>${c[0]}</th>`).join("")}<th></th></tr></thead>
-      <tbody>${pit.map(b=>`<tr><th>${escHtml(b.name)}</th>${PC.map(c=>`<td>${c[1]==="ip"?esIPfmt(b.ip):c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}<td>${b.dec?`<b class="es-dec ${b.dec==="勝"?"w":b.dec==="敗"?"l":"s"}">${b.dec}</b>`:""}</td></tr>`).join("")}</tbody></table></div>`:""}
+    ${bat.length?`<div class="es-st-wrap"><table class="es-box-tbl"><thead><tr><th class="es-bx-no">打順</th><th>打撃</th>${BC.map(c=>`<th>${c[0]}</th>`).join("")}</tr></thead>
+      <tbody>${bat.map(({b,l})=>{ const st=isBat(l), sub=!st && !(l && l.order==="投"); return `<tr class="${sub?"sub":""}"><td class="es-bx-no">${st?escHtml(l.order):""}</td><th>${tag(b,l,sub)}</th>${BC.map(c=>`<td>${c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}</tr>`; }).join("")}
+      <tr class="tot"><td class="es-bx-no"></td><th>計</th>${BC.map(c=>`<td>${c[2]?T[c[1]]:(T[c[1]]||"")}</td>`).join("")}</tr></tbody></table></div>`:""}
+    ${pit.length?`<div class="es-st-wrap"><table class="es-box-tbl"><thead><tr><th class="es-bx-no"></th><th>投手</th>${PC.map(c=>`<th>${c[0]}</th>`).join("")}<th></th></tr></thead>
+      <tbody>${pit.map(({b,l},i)=>`<tr class="${i?"sub":""}"><td class="es-bx-no">${i?"":"先発"}</td><th>${tag(b,l,false)}</th>${PC.map(c=>`<td>${c[1]==="ip"?esIPfmt(b.ip):c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}<td>${b.dec?`<b class="es-dec ${b.dec==="勝"?"w":b.dec==="敗"?"l":"s"}">${b.dec}</b>`:""}</td></tr>`).join("")}</tbody></table></div>`:""}
   </div>`;
 }
 function esLuRow(l, starter){
