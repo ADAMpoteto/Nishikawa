@@ -631,3 +631,12 @@ details.kk-group[open] summary::after{content:"－";}
 .es-rk-g+.es-rk-g{border-left:1.5px solid var(--border2);}
 .es-rk-g.active{background:var(--text);color:#fff;}
 .es-rk-items{display:flex;gap:6px;flex-wrap:wrap;}
+/* 試合のMVP（打撃・投手） */
+.es-mvp{display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin:4px 0 10px;background:var(--bg2);border-radius:8px;}
+.es-mvp-row{display:flex;align-items:center;flex-wrap:wrap;gap:3px 6px;font-size:13px;}
+.es-mvp-row+.es-mvp-row{padding-top:6px;border-top:.5px solid var(--border);}
+.es-mvp .es-pos.sm{margin-left:0;}
+.es-mvp small{font-size:11px;color:var(--text2);font-weight:600;}
+.es-mvp-d{flex-basis:100%;font-size:12px;color:var(--text2);}
+.es-mvp-b{display:inline-block;font-size:10px;font-weight:900;letter-spacing:.04em;padding:1px 7px;border-radius:99px;background:#c9a227;color:#fff;}
+.es-mvp-b.sm{font-size:9px;padding:0 5px;margin-right:4px;vertical-align:1px;}
