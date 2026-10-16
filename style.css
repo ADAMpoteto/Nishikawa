@@ -624,3 +624,10 @@ details.kk-group[open] summary::after{content:"－";}
 .es-box-tbl .es-bx-no{position:sticky;left:0;z-index:1;background:var(--bg);box-sizing:border-box;width:34px;min-width:34px;max-width:34px;}
 .es-box-tbl tbody th,.es-box-tbl thead th:nth-child(2){position:sticky;left:34px;z-index:1;background:var(--bg);box-shadow:inset -1px 0 0 var(--border);}
 .es-box-tbl thead .es-bx-no,.es-box-tbl thead th:nth-child(2){background:var(--bg2);}
+/* 歴代ランキング：総合／打撃／投手 の切り替え＋項目 */
+.es-rk-tabbox{display:block;}
+.es-rk-grp{display:flex;border:1.5px solid var(--border2);border-radius:9px;overflow:hidden;margin-bottom:10px;}
+.es-rk-g{flex:1;font-size:12px;font-weight:800;padding:8px 0;border:0;background:var(--bg);color:var(--text2);cursor:pointer;}
+.es-rk-g+.es-rk-g{border-left:1.5px solid var(--border2);}
+.es-rk-g.active{background:var(--text);color:#fff;}
+.es-rk-items{display:flex;gap:6px;flex-wrap:wrap;}
