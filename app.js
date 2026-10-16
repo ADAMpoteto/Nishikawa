@@ -1776,7 +1776,7 @@ function esBoxScore(no){
   const L=gm ? ES.lineup.filter(l=>l.year===gm.year && l.season===gm.season) : [];
   const luOf=b=>L.find(l=>esSameName(l.name,b.name)) || null;
   const isBat=l=>l && /^\d+$/.test(l.order);
-  const tag=(b,l,sub)=>`<span class="es-bx-pl">${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>`:""}<span class="es-bx-nm">${escHtml(b.name)}</span>${l&&l.num?`<small>${escHtml(esCircled(l.num))}</small>`:""}${sub?`<em class="es-bx-sub">途中</em>`:""}</span>`;
+  const tag=(b,l,sub)=>`<span class="es-bx-pl">${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos)}">${escHtml(l.pos)}</span>`:""}<span class="es-bx-nm">${escHtml(b.name)}</span>${l&&(l.grade||l.num)?`<small>${[l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ")}</small>`:""}${sub?`<em class="es-bx-sub">途中</em>`:""}</span>`;
 
   const bat=B.filter(b=>b.ab!=null).map((b,i)=>({b, l:luOf(b), i}));
   bat.sort((x,y)=>(isBat(x.l)?+x.l.order:100+x.i)-(isBat(y.l)?+y.l.order:100+y.i));
