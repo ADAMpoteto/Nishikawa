@@ -490,7 +490,7 @@ details.kk-group[open] summary::after{content:"－";}
 /* 栄冠ナイン：すっきり表示 */
 .es-subnav{position:sticky;top:calc(env(safe-area-inset-top, 0px) + 66px);z-index:50;background:var(--bg);padding:8px 0;margin:-8px 0 18px;border-bottom:.5px solid var(--border);}
 .es-subnav .day-tab{flex:1 1 0;justify-content:center;}
-.es-dec{margin-bottom:12px;}
+.es-decs{margin-bottom:12px;}
 .es-fold{display:flex;flex-direction:column;border-top:1.5px solid var(--text);}
 .es-tk{margin:0;border-bottom:.5px solid var(--border2);}
 .es-tk > summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:1fr auto auto 14px;align-items:center;gap:10px;padding:11px 2px;border-bottom:none;font-size:13px;font-weight:800;}
@@ -761,3 +761,102 @@ details.kk-group[open] summary::after{content:"－";}
 .pw-def i{font-style:normal;margin-left:auto;font-variant-numeric:tabular-nums;}
 .pw-prof{display:flex;flex-direction:column;gap:5px;background:var(--pw-sky);border-radius:8px;padding:6px;}
 .pw-prof .pw-row b{font-size:15px;font-weight:900;color:var(--pw-navy);}
+.es-tag.ab{background:#dcecf9;color:#1d3f7a;}
+/* 選手カード（1枚にまとめた版） */
+.pw-card{background:#fff;border:1px solid #c9d3e0;border-radius:12px;padding:10px;}
+.pw-card > .pw-tabs{margin-top:2px;}
+.pw-tab.s{background:#1d3f7a;}
+.pw-pane.t-s{--tone:#1d3f7a;}
+.pw-sub{font-size:12px;font-weight:900;color:var(--pw-navy);margin:10px 0 6px;padding-left:6px;border-left:3px solid var(--tone);}
+.pw-pane > .pw-sub:first-child{margin-top:2px;}
+.pw-pane .es-abseg{margin:0 0 8px;}
+.pw-pane .es-cells{margin-bottom:6px;}
+.es-lu-row > .pw-card,.es-pl > .pw-card{margin:6px 8px 12px;}
+@media(min-width:481px){ .es-lu-row > .pw-card,.es-pl > .pw-card{margin:6px 12px 14px 46px;} }
+.pw-card > .pw-tabs{gap:2px;padding:0 2px;}
+.pw-card > .pw-tabs .pw-tab{flex:1 1 auto;min-width:0;font-size:11px;padding:7px 4px 6px;letter-spacing:0;white-space:nowrap;}
+@media(min-width:481px){ .pw-card > .pw-tabs .pw-tab{font-size:12px;padding:7px 8px 6px;} }
+/* 選手カード（サイト共通の見た目に統一） */
+.es-card2{gap:8px;}
+.es-c2-head{display:flex;align-items:center;gap:10px;}
+.es-c2-head .es-pos.lg{margin:0;flex:0 0 auto;}
+.es-c2-id{min-width:0;}
+.es-c2-id > b{font-size:15px;font-weight:800;}
+.es-c2-no{font-size:13px;color:var(--text2);font-weight:700;margin-left:6px;}
+.es-c2-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;}
+.es-c2-chips span{font-size:11px;font-weight:700;color:var(--text2);background:var(--bg);border:.5px solid var(--border2);border-radius:99px;padding:1px 8px;}
+.es-c2-tabs{margin:2px 0 4px;gap:4px;}
+.es-c2-tabs .day-tab{font-size:11px;padding:5px 10px;}
+.es-c2-pane{display:flex;flex-direction:column;gap:4px;}
+.es-c2-pane .es-pc{background:var(--bg);}
+.es-c2-pane[hidden],.es-abview[hidden]{display:none!important;}
+/* ===== 選手カード v3（すっきり版） ===== */
+.es-card2{gap:10px;}
+.es-c2-head{display:flex;align-items:center;gap:12px;padding-bottom:10px;border-bottom:.5px solid var(--border);}
+.es-c2-name{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 6px;}
+.es-c2-name b{font-size:17px;font-weight:800;letter-spacing:.02em;}
+.es-c2-name .es-tag{margin-left:0;}
+.es-c2-no{font-size:14px;color:var(--text2);font-weight:700;margin-left:0;}
+.es-c2-meta{font-size:12px;color:var(--text2);margin-top:2px;}
+.es-c2-meta i{font-style:normal;margin:0 4px;color:var(--border2);}
+.es-c2-star{margin-left:auto;text-align:right;font-size:22px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;}
+.es-c2-star small{font-size:14px;color:#e0a800;margin-right:1px;}
+.es-c2-star span{display:block;font-size:10px;font-weight:700;color:var(--text2);margin-top:3px;}
+/* タブ：ランキングの切り替えと同じセグメント */
+.es-c2-tabs{display:flex;border:1.5px solid var(--border2);border-radius:9px;overflow:hidden;margin:0;}
+.es-c2-tab{flex:1 1 0;min-width:0;font-size:11px;font-weight:800;padding:8px 2px;border:0;background:var(--bg);color:var(--text2);cursor:pointer;white-space:nowrap;}
+.es-c2-tab+.es-c2-tab{border-left:1.5px solid var(--border2);}
+.es-c2-tab.active{background:var(--text);color:#fff;}
+@media(min-width:481px){ .es-c2-tab{font-size:12px;} }
+.es-c2-pane{gap:8px;}
+/* 入学時／卒業時 */
+.es-c2-pane .es-abseg{align-self:flex-end;margin:0;border-width:1px;border-radius:99px;}
+.es-c2-pane .es-abseg-b{font-size:11px;padding:4px 12px;}
+.es-c2-pane .es-abseg.one span{font-size:11px;padding:3px 10px;color:var(--text2);}
+/* 能力：バー */
+.es-brs{background:var(--bg);border-radius:8px;padding:2px 12px;}
+.es-br{display:grid;grid-template-columns:84px 22px 1fr 54px;align-items:center;gap:8px;padding:7px 0;}
+.es-br+.es-br{border-top:.5px solid var(--border);}
+.es-br-l{font-size:12px;font-weight:700;color:var(--text2);display:flex;align-items:center;gap:5px;white-space:nowrap;}
+.es-br-l .es-pos.sm{margin-left:0;}
+.es-br-l em{font-style:normal;font-size:10px;color:var(--text2);}
+.es-br .es-ab-r{width:22px;height:22px;font-size:12px;border-radius:5px;}
+.es-br-t{height:8px;border-radius:99px;background:var(--bg3);overflow:hidden;}
+.es-br-t i{display:block;height:100%;border-radius:99px;}
+.es-br-t i.velo{background:linear-gradient(90deg,#7fb2f0,#2c6fe0);}
+.es-br-v{text-align:right;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1;}
+.es-br-v small{display:block;font-size:10px;font-weight:800;}
+.es-br-v small.up{color:#1e8e4e;} .es-br-v small.dn{color:#d9453f;}
+.es-br-v > small:first-child:not(.up):not(.dn){display:inline;color:var(--text2);margin-left:1px;}
+.es-traj{display:flex;gap:4px;}
+.es-traj i{flex:1;height:8px;border-radius:99px;background:var(--bg3);}
+.es-traj i.on.traj-1{background:var(--rk-D);} .es-traj i.on.traj-2{background:var(--rk-C);} .es-traj i.on.traj-3{background:var(--rk-B);} .es-traj i.on.traj-4{background:var(--rk-A);}
+/* 投手：球速〜スタミナと変化球の図 */
+.es-pbox{display:flex;flex-wrap:wrap;gap:8px;}
+.es-pbox > .es-brs{flex:1 1 260px;align-self:flex-start;}
+.es-pbox-pc{flex:1 1 240px;background:var(--bg);border-radius:8px;padding:4px;}
+.es-pbox-pc .es-pc{margin:0 auto;max-width:300px;}
+/* ランク特能・特能のチップ */
+.es-rkc2{display:flex;flex-wrap:wrap;gap:5px;}
+.es-rkc2 span{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text);background:var(--bg);border:.5px solid var(--border2);border-radius:6px;padding:4px 8px;}
+.es-rkc2 b{font-size:13px;font-weight:900;}
+.es-c2-pane .es-sks{margin:0;}
+.es-c2-pane .es-sk{font-size:12px;padding:4px 9px;border-radius:6px;}
+.es-c2-pane .es-car-dl{background:var(--bg);border-radius:8px;padding:6px 12px;}
+.es-card2 .es-c2-tabs{gap:0;padding:0;}
+.es-c2-tab{padding:8px 0;letter-spacing:-.02em;}
+.es-abview{display:flex;flex-direction:column;gap:8px;}
+.es-c2-pane > .es-sks{margin-top:0;}
+/* プロフィール：小さな情報タイル */
+.es-prof2{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.es-prof2 > div{background:var(--bg);border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0;}
+.es-prof2 > div.w{grid-column:1/-1;}
+.es-prof2 span{font-size:10px;font-weight:700;color:var(--text2);letter-spacing:.04em;}
+.es-prof2 b{font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+@media(min-width:481px){ .es-prof2{grid-template-columns:repeat(3,1fr);} }
+/* 表の1列目（時期・戦力）は見出しも左そろえ */
+.es-st-tbl thead th:first-child,.es-st-tbl tbody th{text-align:left;}
+.es-st-tbl tbody th .es-pw{vertical-align:middle;}
+.es-st-tbl{table-layout:auto;}
+.es-st-tbl td,.es-st-tbl thead th:not(:first-child){text-align:right;}
+.es-rank-tbl thead th:first-child,.es-rank-tbl tbody th{text-align:center;width:44px;}

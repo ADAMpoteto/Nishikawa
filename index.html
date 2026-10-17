@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>西川記録</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261018j">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
@@ -183,6 +183,12 @@
 
   <div class="es-pane" data-pane="player" hidden>
   <div class="card-section">
+    <div class="sec-title">選手名鑑</div>
+    <div class="trip-selbox"><select id="es-roster-sel" aria-label="入学年度を選ぶ"></select></div>
+    <div id="es-roster"></div>
+  </div>
+
+  <div class="card-section">
     <div class="sec-title">歴代ベスト9</div>
     <div class="day-tabs" id="es-b9-tabs"></div>
     <div class="trip-selbox" id="es-b9-team" hidden><select id="es-team-sel" aria-label="球団を選ぶ"></select></div>
@@ -230,6 +236,6 @@
   データはGoogleスプレッドシートから取得しています。
 </footer>
 
-<script src="app.js"></script>
+<script src="app.js?v=20261018j"></script>
 </body>
 </html>
