@@ -650,3 +650,54 @@ details.kk-group[open] summary::after{content:"－";}
 .es-pw{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;font-size:11px;font-weight:900;color:#fff;background:#7a7f87;}
 .es-pw.pw-S{background:#d4a017;} .es-pw.pw-A{background:#e8343f;} .es-pw.pw-B{background:#f08a24;} .es-pw.pw-C{background:#c9b400;}
 .es-pw.pw-D{background:#4caf50;} .es-pw.pw-E{background:#2c6fe0;} .es-pw.pw-F{background:#6c7bd6;} .es-pw.pw-G{background:#9aa0a6;}
+/* 卒業時の能力（パワプロ風）：ランク色 S=金 A=ピンク B=赤 C=オレンジ D=黄 E=緑 F=水色 G=灰 */
+:root{ --rk-S:#d4a017; --rk-A:#ec4f9a; --rk-B:#e8343f; --rk-C:#f08a24; --rk-D:#f2c400; --rk-E:#3aaa55; --rk-F:#3fb3e0; --rk-G:#9aa0a6; }
+.es-ab-top{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:2px 0 8px;font-size:12px;}
+.es-ab-top .es-pos.sm{margin-left:0;}
+.es-hand{font-weight:800;padding:2px 8px;border-radius:99px;background:var(--bg);border:.5px solid var(--border2);}
+.es-ab-sub{font-size:10px;font-weight:700;color:var(--text2);margin-left:4px;}
+.es-abs{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;margin-bottom:8px;}
+.es-ab{display:flex;align-items:center;flex-wrap:wrap;gap:3px 6px;background:var(--bg);border-radius:6px;padding:6px 8px;}
+.es-ab-l{font-size:10px;font-weight:700;color:var(--text2);flex-basis:100%;white-space:nowrap;}
+.es-ab-r{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;font-size:13px;font-weight:900;color:#fff;background:var(--rk-G);}
+.es-ab-r.in{width:18px;height:18px;font-size:11px;margin-right:5px;vertical-align:2px;}
+.es-ab-n{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;margin-left:auto;}
+.es-ab-n.big{font-size:17px;} .es-ab-n small{font-size:10px;color:var(--text2);margin-left:1px;}
+.rk-S{background:var(--rk-S);} .rk-A{background:var(--rk-A);} .rk-B{background:var(--rk-B);} .rk-C{background:var(--rk-C);}
+.rk-D{background:var(--rk-D);color:#3d2f00;} .rk-E{background:var(--rk-E);} .rk-F{background:var(--rk-F);} .rk-G{background:var(--rk-G);}
+/* 弾道：1=Dの色 2=Cの色 3=Bの色 4=Aの色 */
+.traj-1{background:var(--rk-D);color:#3d2f00;} .traj-2{background:var(--rk-C);} .traj-3{background:var(--rk-B);} .traj-4{background:var(--rk-A);}
+.es-pts{display:flex;flex-wrap:wrap;gap:4px 10px;margin:-2px 0 10px;font-size:12px;font-weight:700;}
+.es-pt i{font-style:normal;font-size:10px;letter-spacing:-1px;color:#2c6fe0;margin-left:4px;vertical-align:1px;}
+.es-pt i em{font-style:normal;color:var(--border2);}
+.es-sks{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;}
+.es-sk{font-size:11px;font-weight:800;padding:3px 9px;border-radius:5px;color:#fff;}
+.es-sk.gold{background:linear-gradient(135deg,#e0b23a,#b8860b);} .es-sk.blue{background:#2c6fe0;} .es-sk.red{background:#d9453f;}
+/* 能力パネル（パワプロの選手画面風のタブ） */
+.es-car-sub .es-hand{font-size:11px;margin-left:8px;color:var(--text);}
+.es-ptabs{display:flex;gap:4px;margin:2px 0 8px;overflow-x:auto;}
+.es-ptab{flex:1 0 auto;font-size:11px;font-weight:800;padding:6px 8px;border:0;border-radius:6px 6px 0 0;color:#fff;opacity:.45;cursor:pointer;border-bottom:3px solid transparent;}
+.es-ptab.active{opacity:1;}
+.es-ptab.p{background:#c8323b;} .es-ptab.f{background:#2c6fe0;} .es-ptab.d{background:#d79b00;} .es-ptab.i{background:#2f9a4f;}
+.es-pc{display:block;width:100%;max-width:320px;margin:0 auto 6px;background:var(--bg);border-radius:8px;}
+.es-pc-t{font-size:11px;font-weight:700;fill:var(--text);}
+.es-sk.plain{background:#7d8fa8;}
+.es-sk-r{display:inline-block;margin-left:5px;padding:0 4px;border-radius:3px;background:rgba(255,255,255,.92);color:#333;font-size:10px;font-weight:900;}
+.es-sks:empty{display:none;}
+.es-dfs{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;}
+.es-df{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:6px;padding:6px 8px;}
+.es-df .es-pos{margin-left:0;}
+.es-df-l{font-size:10px;font-weight:700;color:var(--text2);flex:1;}
+.es-prof small{font-size:11px;color:var(--text2);margin-left:4px;}
+/* ランクで記録する特能（ゲームの特能欄風） */
+.es-rks{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:4px;margin-bottom:8px;}
+.es-rkc{display:flex;align-items:center;justify-content:space-between;background:#e3f0fb;border-radius:5px;padding:5px 8px;font-size:12px;font-weight:700;color:#4a6b8a;}
+.es-rkc b{font-size:15px;font-weight:900;}
+.rkt-A{color:var(--rk-A);} .rkt-B{color:var(--rk-B);} .rkt-C{color:var(--rk-C);} .rkt-D{color:#c9a000;} .rkt-E{color:var(--rk-E);} .rkt-F{color:var(--rk-F);} .rkt-G{color:var(--rk-G);}
+/* 入学時／卒業時の切り替えと伸び */
+.es-abseg{display:flex;width:max-content;border:1.5px solid var(--border2);border-radius:8px;overflow:hidden;margin:0 0 8px;}
+.es-abseg-b{font-size:12px;font-weight:800;padding:6px 14px;border:0;background:var(--bg);color:var(--text2);cursor:pointer;}
+.es-abseg-b.active{background:var(--text);color:#fff;}
+.es-abseg.one span{font-size:12px;font-weight:800;padding:5px 12px;}
+.es-ab-d{display:block;font-size:10px;font-weight:800;text-align:right;line-height:1.1;}
+.es-ab-d.up{color:#1e8e4e;} .es-ab-d.dn{color:#d9453f;}
