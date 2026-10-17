@@ -164,7 +164,8 @@
   <div class="day-tabs es-subnav" id="es-subnav" role="tablist" aria-label="表示の切り替え">
     <button type="button" class="day-tab active" role="tab" data-pane="year" aria-selected="true">年度</button>
     <button type="button" class="day-tab" role="tab" data-pane="player" aria-selected="false">選手</button>
-    <button type="button" class="day-tab" role="tab" data-pane="rec" aria-selected="false">記録・対戦校</button>
+    <button type="button" class="day-tab" role="tab" data-pane="rec" aria-selected="false">記録</button>
+    <button type="button" class="day-tab" role="tab" data-pane="opp" aria-selected="false">対戦校</button>
   </div>
 
   <div class="es-pane" data-pane="year">
@@ -209,6 +210,13 @@
     <div id="es-records"></div>
   </div>
 
+  <div class="card-section">
+    <div class="sec-title">相手の戦力別の成績</div>
+    <div id="es-pw"></div>
+  </div>
+  </div>
+
+  <div class="es-pane" data-pane="opp" hidden>
   <div class="card-section">
     <div class="sec-title">対戦校</div>
     <div id="es-rivals"></div>
