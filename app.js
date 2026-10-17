@@ -1800,7 +1800,7 @@ function esFillFromBox(g){
   set("mvpB", B.filter(b=>esIsMvp(b,"bat")).length || null);
   set("mvpP", B.filter(b=>esIsMvp(b,"pit")).length || null);
   if(t.pit){ set("app",t.app); set("gs",gs); set("w",t.w); set("l",t.l); set("sv",t.sv); set("cg",cg); set("sho",sho); set("nh",nh);
-    set("ip",t.ip); set("k",t.k); set("bb",t.pbb); set("era",t.era); set("ha",t.ha); set("hd",t.hd||null); set("hp",t.hp||null);
+    set("ip",t.ip); set("k",t.k); set("bb",t.pbb); set("era",t.era); set("ha",t.ha); set("hd",t.hd||null);
     if(t.outs>0){ set("k9",t.k*27/t.outs); set("whip",(t.ha+t.pbb)*3/t.outs); } }
 }
 function esGradDerived(g){
@@ -1812,13 +1812,13 @@ const esDecCls = d => d==="勝"?"w":d==="敗"?"l":d==="H"?"h":"s";
 /* 勝敗の表示：12-3 2S 5H */
 const esWLtxt = t => `${t.w}-${t.l}${t.sv?` ${t.sv}S`:""}${t.hd?` ${t.hd}H`:""}`;
 function esAgg(B){
-  const t={ g:0, ab:0, r:0, h:0, d2:0, d3:0, hr:0, rbi:0, so:0, sb:0, bb:0, sh:0, dp:0, e:0, app:0, outs:0, ha:0, er:0, k:0, pbb:0, w:0, l:0, sv:0, hd:0, rw:0, bat:false, pit:false };
+  const t={ g:0, ab:0, r:0, h:0, d2:0, d3:0, hr:0, rbi:0, so:0, sb:0, bb:0, sh:0, dp:0, e:0, app:0, outs:0, ha:0, er:0, k:0, pbb:0, w:0, l:0, sv:0, hd:0, bat:false, pit:false };
   B.forEach(b=>{
     t.g++;
     if(b.ab!=null){ t.bat=true; t.ab+=b.ab; t.h+=b.h||0; t.hr+=b.hr||0; t.rbi+=b.rbi||0; t.sb+=b.sb||0; t.bb+=b.bb||0;
       t.r+=b.r||0; t.d2+=b.d2||0; t.d3+=b.d3||0; t.so+=b.so||0; t.sh+=b.sh||0; t.dp+=b.dp||0; t.e+=b.e||0; }
     if(b.ip!=null){ t.pit=true; t.app++; t.outs+=Math.round(b.ip*3); t.ha+=b.ha||0; t.er+=b.er||0; t.k+=b.k||0; t.pbb+=b.pbb||0;
-      if(b.dec==="勝"){ t.w++; if(esStarterOf(b.no)!==b) t.rw++; } else if(b.dec==="敗") t.l++; else if(b.dec==="S") t.sv++; else if(b.dec==="H") t.hd++; }
+      if(b.dec==="勝") t.w++; else if(b.dec==="敗") t.l++; else if(b.dec==="S") t.sv++; else if(b.dec==="H") t.hd++; }
   });
   t.avg = t.ab>0 ? t.h/t.ab : null;
   /* 出塁率は (安打+四死球)/(打数+四死球)、長打率は 塁打/打数（犠飛は記録しないので含めない） */
@@ -1827,7 +1827,6 @@ function esAgg(B){
   t.ops = (t.obp!=null && t.slg!=null) ? t.obp+t.slg : null;
   t.era = t.outs>0 ? t.er*27/t.outs : null;
   t.ip = t.outs/3;
-  t.hp = t.hd + t.rw;   // ホールドポイント＝ホールド＋救援での勝ち
   return t;
 }
 const esF = (v,fn) => v==null ? "-" : (fn?fn(v):v);
@@ -2057,7 +2056,6 @@ const ES_RK=[
   {g:"投手", k:"sho",  t:"完封", get:g=>g.sho||null, fmt:esCnt("回")},
   {g:"投手", k:"nh",   t:"ノーノー", get:g=>g.nh||null, fmt:esCnt("回")},
   {g:"投手", k:"hd",   t:"ホールド", get:g=>g.hd||null, fmt:esCnt("H")},
-  {g:"投手", k:"hp",   t:"HP", get:g=>g.hp||null, fmt:esCnt("HP"), note:"ホールドポイント＝ホールド＋救援での勝ち"},
   {g:"投手", k:"sv",   t:"セーブ", get:g=>g.sv||null, fmt:esCnt("S")},
   {g:"投手", k:"app",  t:"登板", get:g=>g.app||null, fmt:esCnt("試合")}
 ];
