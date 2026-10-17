@@ -644,3 +644,9 @@ details.kk-group[open] summary::after{content:"－";}
 .es-mvp-b.sm{font-size:9px;padding:0 5px;margin-right:4px;vertical-align:1px;}
 .es-mvp-t{display:block;font-size:14px;font-weight:800;color:var(--text);margin:1px 0;}
 .es-opp-mvp{display:block;}
+/* ホールドのバッジ */
+.es-dec.h{background:#8a4fd1;}
+/* 相手の戦力ランク */
+.es-pw{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;font-size:11px;font-weight:900;color:#fff;background:#7a7f87;}
+.es-pw.pw-S{background:#d4a017;} .es-pw.pw-A{background:#e8343f;} .es-pw.pw-B{background:#f08a24;} .es-pw.pw-C{background:#c9b400;}
+.es-pw.pw-D{background:#4caf50;} .es-pw.pw-E{background:#2c6fe0;} .es-pw.pw-F{background:#6c7bd6;} .es-pw.pw-G{background:#9aa0a6;}
