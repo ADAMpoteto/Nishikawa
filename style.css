@@ -701,3 +701,63 @@ details.kk-group[open] summary::after{content:"－";}
 .es-abseg.one span{font-size:12px;font-weight:800;padding:5px 12px;}
 .es-ab-d{display:block;font-size:10px;font-weight:800;text-align:right;line-height:1.1;}
 .es-ab-d.up{color:#1e8e4e;} .es-ab-d.dn{color:#d9453f;}
+/* ===== 能力カード（パワプロの選手画面風） ===== */
+.pw-card{--pw-navy:#1d3f7a;--pw-sky:#dcecf9;--pw-sky2:#c4def4;--tone:#2c6fe0;margin:2px 0 12px;}
+.pw-tabs{display:flex;gap:3px;overflow-x:auto;margin:0;padding:0 4px;}
+.pw-tab{flex:1 0 auto;font-size:12px;font-weight:900;letter-spacing:.04em;padding:7px 10px 6px;border:0;border-radius:8px 8px 0 0;color:#fff;opacity:.5;cursor:pointer;}
+.pw-tab.active{opacity:1;}
+.pw-tab.p{background:#c8323b;} .pw-tab.f{background:#2c6fe0;} .pw-tab.d{background:#d79b00;} .pw-tab.i{background:#2f9a4f;}
+.pw-pane{border:3px solid var(--tone);border-radius:10px;background:#fff;padding:8px;}
+.pw-pane.t-p{--tone:#c8323b;} .pw-pane.t-f{--tone:#2c6fe0;} .pw-pane.t-d{--tone:#d79b00;} .pw-pane.t-i{--tone:#2f9a4f;}
+/* 上段：名札・背番号・★・適性・成績・投打 */
+.pw-head{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+.pw-plate{display:flex;align-items:center;gap:5px;}
+.pw-name{min-width:84px;text-align:center;font-size:18px;font-weight:900;padding:4px 12px;border-radius:5px;color:#222;border:1.5px solid rgba(0,0,0,.12);}
+.pw-name.p-pit{background:linear-gradient(90deg,#f26b6b 55%,#f7a3c7);} .pw-name.p-rel{background:linear-gradient(90deg,#f28ab0,#f9c4da);}
+.pw-name.p-cat{background:linear-gradient(90deg,#5f8ff0 55%,#9cc0f7);color:#fff;} .pw-name.p-inf{background:linear-gradient(90deg,#f5c400 55%,#fbe27a);}
+.pw-name.p-of{background:linear-gradient(90deg,#8cc63e 55%,#c3e58c);} .pw-name.p-etc{background:#c9ced6;}
+.pw-no{min-width:34px;text-align:center;font-size:18px;font-weight:900;color:var(--pw-navy);background:#fff;border:1.5px solid #c9d3e0;border-radius:5px;padding:3px 6px;}
+.pw-star{font-size:14px;font-weight:900;color:#fff;background:var(--pw-navy);border-radius:5px;padding:4px 7px;}
+.pw-star::first-letter{color:#ffd23f;}
+.pw-meta{flex:1 1 220px;display:flex;flex-direction:column;gap:3px;}
+.pw-mrow{display:flex;align-items:center;gap:8px;background:var(--pw-sky);border-radius:6px;padding:3px 6px;}
+.pw-mrow b{font-size:14px;font-weight:900;color:var(--pw-navy);}
+.pw-mrow b.pw-stat{font-size:12px;letter-spacing:.02em;}
+/* ラベル（白いボタン風） */
+.pw-lbl{flex:0 0 auto;min-width:64px;text-align:center;font-size:11px;font-weight:800;color:#3b4a5e;background:linear-gradient(#fff,#e9edf2);border:1px solid #cdd5df;border-radius:5px;padding:3px 6px;}
+/* 左：能力の行 */
+.pw-cols{display:flex;flex-wrap:wrap;gap:8px;}
+.pw-left{flex:1 1 240px;display:flex;flex-direction:column;gap:5px;background:var(--pw-sky);border-radius:8px;padding:6px;}
+.pw-right{flex:1 1 300px;}
+.pw-row{display:flex;align-items:center;gap:10px;background:#fff;border-radius:6px;padding:5px 8px;}
+.pw-v{margin-left:auto;font-size:24px;font-weight:900;color:var(--pw-navy);font-variant-numeric:tabular-nums;line-height:1;text-align:right;}
+.pw-v.velo small{font-size:12px;margin-left:3px;}
+.pw-d{display:block;font-size:10px;font-weight:800;margin-top:2px;}
+.pw-d.up{color:#1e8e4e;} .pw-d.dn{color:#d9453f;}
+/* ランク文字（色付き・白フチ） */
+.pw-rk{font-size:26px;font-weight:900;font-style:italic;line-height:1;width:28px;text-align:center;background:none!important;
+  -webkit-text-stroke:1px rgba(0,0,0,.25);text-shadow:0 1px 0 #fff,1px 0 0 #fff,-1px 0 0 #fff,0 -1px 0 #fff,0 2px 3px rgba(0,0,0,.15);}
+.pw-rk.rk-S{color:var(--rk-S);} .pw-rk.rk-A{color:var(--rk-A);} .pw-rk.rk-B{color:var(--rk-B);} .pw-rk.rk-C{color:var(--rk-C);}
+.pw-rk.rk-D{color:#e2b600;} .pw-rk.rk-E{color:var(--rk-E);} .pw-rk.rk-F{color:var(--rk-F);} .pw-rk.rk-G{color:var(--rk-G);}
+.pw-rk.sm{font-size:17px;width:auto;}
+.pw-traj{width:28px;height:28px;stroke:#fff;stroke-width:1.5;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25));} .pw-traj.traj-1{fill:#e2b600;} .pw-traj.traj-2{fill:var(--rk-C);} .pw-traj.traj-3{fill:var(--rk-B);} .pw-traj.traj-4{fill:var(--rk-A);}
+.pw-pc{background:#fff;border-radius:6px;padding:2px;}
+.pw-pc .es-pc{background:#fff;margin:0 auto;}
+/* 右：特能欄（水色のマス） */
+.pw-sks{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:3px;background:var(--pw-sky);border-radius:8px;padding:4px;}
+.pw-sk{display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:34px;padding:3px 6px;border-radius:4px;background:linear-gradient(#e9f4fd,#cfe5f7);color:#6f93b8;font-size:13px;font-weight:800;}
+.pw-sk span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pw-sk .pw-rk.sm{background:#fff!important;border-radius:4px;padding:1px 4px;-webkit-text-stroke:0;text-shadow:none;font-style:normal;color:var(--pw-navy);}
+.pw-sk.good{color:#2c6fe0;} .pw-sk.bad{color:#c8323b;}
+.pw-sk.blue{background:linear-gradient(#5b9cf0,#2c6fe0);color:#fff;} .pw-sk.red{background:linear-gradient(#f0787b,#d9453f);color:#fff;}
+.pw-sk.gold{background:linear-gradient(#f3d36b,#c9961a);color:#fff;} .pw-sk.plain{background:linear-gradient(#a9b9cc,#7d8fa8);color:#fff;}
+.pw-skr{background:#fff;color:#333;border-radius:3px;padding:0 4px;font-size:12px;}
+/* 守備力（位置ごと） */
+.pw-defbox{flex-wrap:wrap;align-items:flex-start;}
+.pw-defs{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;}
+.pw-def{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:900;color:var(--pw-navy);border-bottom:.5px solid #e1e7ef;padding:2px 0;}
+.pw-def.main{grid-column:1/-1;font-size:17px;}
+.pw-def.none{color:#b9c3cf;}
+.pw-def i{font-style:normal;margin-left:auto;font-variant-numeric:tabular-nums;}
+.pw-prof{display:flex;flex-direction:column;gap:5px;background:var(--pw-sky);border-radius:8px;padding:6px;}
+.pw-prof .pw-row b{font-size:15px;font-weight:900;color:var(--pw-navy);}
