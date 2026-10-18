@@ -1913,8 +1913,8 @@ function esPitchChart(P, lefty){
     const [vx,vy]=vec[d], L=dirs[d], lv=Math.max(0,...L.map(p=>p.lv)), ang=Math.atan2(vy,vx)*180/Math.PI;
     for(let i=0;i<7;i++){
       const t=r0+i*(cell+gap)+cell/2, x=cx+vx*t, y=cy+vy*t;
-      const on=i<lv, col= on ? (i>=5?"#e8343f":i>=3?"#f08a24":"#f5b800") : "#4a8fe0";
-      svg+=`<rect x="${(x-cell/2).toFixed(1)}" y="${(y-4.5).toFixed(1)}" width="${cell}" height="9" rx="2" fill="${col}" opacity="${on?1:.55}" transform="rotate(${ang.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`;
+      const on=i<lv, col= on ? (i>=5?"#e8343f":i>=3?"#f0602a":"#f59b16") : "#5c9ef0";
+      svg+=`<rect x="${(x-cell/2).toFixed(1)}" y="${(y-5).toFixed(1)}" width="${cell}" height="10" rx="2" fill="${col}" stroke="${on?"#b8371b":"#2a64c8"}" stroke-width="1" transform="rotate(${ang.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`;
     }
     if(L.length){
       /* 横の腕は先端の上、斜め・下は先端の外側に名前 */
@@ -1941,7 +1941,8 @@ function esParseAbil(o){
     traj:esInt(F(o,"弾道")), meet:esInt(F(o,"ミート")), pow:esInt(F(o,"パワー")), run:esInt(F(o,"走力")),
     arm:esInt(F(o,"肩力")), catch_:esInt(F(o,"捕球")),
     velo:esInt(F(o,"球速")), ctl:esInt(F(o,"コントロール")), sta:esInt(F(o,"スタミナ")),
-    pitches, skills:F(o,"特能"),
+    pitches, skillsF:F(o,"野手特能")||F(o,"特能"), skillsP:F(o,"投手特能"),
+    skills:[F(o,"野手特能")||F(o,"特能"), F(o,"投手特能")].filter(Boolean).join("、"),
     rk:Object.fromEntries(ES_RANK_SK.map(k=>[k, esHalf(F(o,k)).toUpperCase().replace(/[^A-G]/g,"")]).filter(([,v])=>v)) };
 }
 /* ランクで記録する特能（能力シートの列名） */
@@ -1964,64 +1965,79 @@ function esSkillChips(list, base){
     return `<span class="es-sk ${cls}">${escHtml(nm)}${rk?`<b class="es-sk-r rk-${/[A-G]/.test(rk)?rk:"x"}">${escHtml(rk)}</b>`:""}</span>`;
   }).join("");
 }
-/* ---------- 選手カード：成績・能力・守備・プロフィールを1枚にまとめる（サイト共通の見た目） ---------- */
+/* ---------- 選手カード（パワプロの選手画面風）：成績・能力・守備・プロフィール ---------- */
 function esPwNum(g){   // スタメン表から背番号（最後の時期のもの）
   const L=ES.lineup.filter(l=>l.num && esFindGrad(l)===g).sort((a,b)=>a.year-b.year||(a.season==="夏"?0:1)-(b.season==="夏"?0:1));
   return L.length ? L[L.length-1].num : "";
 }
-const ES_ABIL_KEYS=["apt","def","traj","meet","pow","run","arm","fld","catch_","velo","ctl","sta","pitches","skills","rk"];
-/* 能力タブの中身（投手・野手・守備）。prev があれば入学時からの伸びを出す */
+const ES_ABIL_KEYS=["apt","def","traj","meet","pow","run","arm","fld","catch_","velo","ctl","sta","pitches","skills","skillsF","skillsP","rk"];
+const esPwRk = (r, sm) => `<b class="pw2-rk rk-${r}${sm?" sm":""}">${r}</b>`;
+/* 能力タブの中身。prev があれば入学時からの伸びを小さく出す */
 function esAbilityParts(g, prev){
   const dif=k=> (prev && prev[k]!=null && g[k]!=null && g[k]!==prev[k]) ? `<small class="${g[k]>prev[k]?"up":"dn"}">${g[k]>prev[k]?"+":""}${g[k]-prev[k]}</small>` : "";
-  /* 1行＝ラベル・ランク・バー・数字（バーの長さは能力値、色はランク） */
-  const bar=(lbl,k,opt={})=>{ const v=g[k]; if(v==null) return "";
-    const r=opt.rank===false?null:esRankOf(v), pct=Math.max(3,Math.min(100, opt.pct?opt.pct(v):v));
-    return `<div class="es-br"><span class="es-br-l">${lbl}</span>${r?`<span class="es-ab-r rk-${r}">${r}</span>`:`<span></span>`}
-      <span class="es-br-t"><i class="${r?"rk-"+r:"velo"}" style="width:${pct}%"></i></span><span class="es-br-v">${v}${opt.unit||""}${dif(k)}</span></div>`; };
-  const rkChips=keys=>{ const L=keys.filter(k=>g.rk&&g.rk[k]); return L.length?`<div class="es-rkc2">${L.map(k=>`<span>${k}<b class="rkt-${g.rk[k]}">${g.rk[k]}</b></span>`).join("")}</div>`:""; };
-  const hasP = g.velo!=null || g.ctl!=null || g.sta!=null || (g.pitches&&g.pitches.length) || ["対ピンチ","対左打者","打たれ強さ","ノビ","クイック"].some(k=>g.rk&&g.rk[k]);
-  const hasF = [g.traj,g.meet,g.pow,g.run,g.arm,g.fld,g.catch_].some(v=>v!=null) || ["チャンス","対左投手","キャッチャー","盗塁","走塁","送球"].some(k=>g.rk&&g.rk[k]);
+  const row=(lbl,k)=>{ const v=g[k]; if(v==null) return ""; return `<div class="pw2-row"><span class="pw2-lbl">${lbl}</span>${esPwRk(esRankOf(v))}<span class="pw2-v">${v}${dif(k)}</span></div>`; };
+  const hasP = g.velo!=null || g.ctl!=null || g.sta!=null || (g.pitches&&g.pitches.length) || ["対ピンチ","対左打者","打たれ強さ","ノビ","クイック"].some(k=>g.rk&&g.rk[k]) || !!g.skillsP;
+  const hasF = [g.traj,g.meet,g.pow,g.run,g.arm,g.fld,g.catch_].some(v=>v!=null) || ["チャンス","対左投手","キャッチャー","盗塁","走塁","送球"].some(k=>g.rk&&g.rk[k]) || !!g.skillsF;
   const hasD = g.def && Object.keys(g.def).length;
   const mainP = /^[左中右]$/.test(g.pos) ? "外" : g.pos;
+  /* 特能欄：ランク特能＋「特能」セル。空きマスで4の倍数（スマホは2の倍数）にそろえる */
+  const grid=(keys, list)=>{
+    /* 固定の項目は空欄でも項目名だけ出す（並びも固定）。null は空きマス */
+    const cells=keys.map(k=>{ if(k==null) return `<div class="pw2-sk empty gap"></div>`; const r=(g.rk&&g.rk[k])||"";
+      return `<div class="pw2-sk"><span>${k}</span><b class="pw2-skr${r?"":" none"}">${r||"-"}</b></div>`; });
+    esSplitList(list).forEach(x=>{
+      let cls="blue"; if(/^[★☆]/.test(x)){ x=x.slice(1); cls="gold"; } else if(ES_RED_SK.test(x)) cls="red";
+      const m=x.match(/^(.*?)([A-GＡ-Ｇ◎◯○〇×✕])$/); let nm=x, rk="";
+      if(m){ nm=m[1]; rk=m[2]; if(cls!=="gold") cls=/[AB◎◯○〇ＡＢ]/.test(rk)?"blue":/[CDＣＤ]/.test(rk)?"":"red"; }
+      cells.push(`<div class="pw2-sk ${cls}"><span>${escHtml(nm)}</span>${rk?`<b class="pw2-skr">${escHtml(rk)}</b>`:""}</div>`);
+    });
+    while(cells.length<8 || cells.length%4) cells.push(`<div class="pw2-sk empty"></div>`);
+    return `<div class="pw2-sks">${cells.join("")}</div>`;
+  };
   const out={};
-  if(hasP) out.p=`<div class="es-pbox">
-      <div class="es-brs">
-        ${bar("球速","velo",{rank:false,unit:"<small>km/h</small>",pct:v=>(v-100)/(170-100)*100})}
-        ${bar("コントロール","ctl")}${bar("スタミナ","sta")}
-      </div>
-      ${g.pitches&&g.pitches.length?`<div class="es-pbox-pc">${esPitchChart(g.pitches, g.th==="左")}</div>`:""}
-    </div>${rkChips(ES_RANK_P)}`;
-  if(hasF) out.f=`<div class="es-brs">
-      ${g.traj!=null?`<div class="es-br"><span class="es-br-l">弾道</span><span class="es-ab-r traj-${g.traj}">${g.traj}</span>
-        <span class="es-traj">${[1,2,3,4].map(i=>`<i class="${i<=g.traj?"on traj-"+g.traj:""}"></i>`).join("")}</span><span class="es-br-v">${dif("traj")}</span></div>`:""}
-      ${bar("ミート","meet")}${bar("パワー","pow")}${bar("走力","run")}${bar("肩力","arm")}${bar("守備力","fld")}${bar("捕球","catch_")}
-    </div>${rkChips(ES_RANK_F)}`;
-  if(hasD) out.d=`<div class="es-brs">
-      ${["投","捕","一","二","三","遊","外"].filter(p=>g.def[p]!=null).sort((x,y)=>(y===mainP)-(x===mainP)).map(p=>{ const v=g.def[p], r=esRankOf(v);
-        return `<div class="es-br"><span class="es-br-l"><span class="es-pos sm ${esPosCls(p)}">${p}</span>${p===mainP?"<em>メイン</em>":""}</span><span class="es-ab-r rk-${r}">${r}</span>
-          <span class="es-br-t"><i class="rk-${r}" style="width:${v}%"></i></span><span class="es-br-v">${v}</span></div>`; }).join("")}
-    </div>`;
+  if(hasP) out.p=`<div class="pw2-cols"><div class="pw2-left">
+      ${g.velo!=null?`<div class="pw2-row"><span class="pw2-lbl">球速</span><span class="pw2-v velo">${g.velo}<em>km/h</em>${dif("velo")}</span></div>`:""}
+      ${row("コントロール","ctl")}${row("スタミナ","sta")}
+      ${g.pitches&&g.pitches.length?`<div class="pw2-pc">${esPitchChart(g.pitches, g.th==="左")}</div>`:""}
+    </div><div class="pw2-right">${grid(["対ピンチ","対左打者","打たれ強さ","ケガしにくさ","ノビ","クイック",null,"回復"], g.skillsP)}</div></div>`;
+  if(hasF) out.f=`<div class="pw2-cols"><div class="pw2-left">
+      ${g.traj!=null?`<div class="pw2-row"><span class="pw2-lbl">弾道</span><svg class="pw2-traj traj-${g.traj}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1 L23 12 H16.5 V23 H7.5 V12 H1 Z" transform="rotate(${[0,60,40,20,0][g.traj]||0} 12 12)"/></svg><span class="pw2-v">${g.traj}${dif("traj")}</span></div>`:""}
+      ${row("ミート","meet")}${row("パワー","pow")}${row("走力","run")}${row("肩力","arm")}${row("守備力","fld")}${row("捕球","catch_")}
+    </div><div class="pw2-right">${grid(ES_RANK_F, g.skillsF)}</div></div>`;
+  if(hasD) out.d=`<div class="pw2-left pw2-full"><div class="pw2-row pw2-defrow"><span class="pw2-lbl">守備力</span><div class="pw2-defs">
+      ${(()=>{ const top=Math.max(...Object.values(g.def).filter(v=>v!=null));
+        return ["投","捕","一","二","三","遊","外"].map(p=>{ const v=g.def[p];
+        /* 一番高い守備力より低い位置は薄く */
+        return `<div class="pw2-def ${esPosCls(p)}${p===mainP?" main":""}${v==null?" none":v<top?" low":""}"><span class="pw2-dp">${p}</span>${v!=null?`${esPwRk(esRankOf(v),1)}<i>${v}</i>`:`<i>--</i>`}</div>`; }).join(""); })()}
+    </div></div></div>`;
   return out;
 }
 /* 入学時／卒業時の切り替え（同じカードの中の能力タブがまとめて切り替わる） */
 document.addEventListener("click", e=>{
   const b=e.target.closest(".es-abseg-b"); if(!b) return;
-  const card=b.closest(".es-card2"); if(!card) return;
+  const card=b.closest(".pw2"); if(!card) return;
   card.querySelectorAll(".es-abseg-b").forEach(x=>x.classList.toggle("active", x.dataset.w===b.dataset.w));
   card.querySelectorAll(".es-abview").forEach(v=>v.hidden = v.dataset.w!==b.dataset.w);
 });
-/* タブの切り替え */
+/* タブの切り替え（枠の色もタブに合わせる） */
 document.addEventListener("click", e=>{
-  const b=e.target.closest(".es-c2-tab"); if(!b) return;
-  const card=b.closest(".es-card2"); if(!card) return;
-  card.querySelectorAll(":scope > .es-c2-tabs .es-c2-tab").forEach(x=>x.classList.toggle("active", x===b));
-  card.querySelectorAll(":scope > .es-c2-pane").forEach(p=>p.hidden = p.dataset.t!==b.dataset.t);
+  const b=e.target.closest(".pw2-tab"); if(!b) return;
+  const card=b.closest(".pw2"); if(!card) return;
+  card.dataset.tab=b.dataset.t;
+  card.querySelectorAll(":scope > .pw2-tabs .pw2-tab").forEach(x=>x.classList.toggle("active", x===b));
+  card.querySelectorAll(".pw2-pane").forEach(p=>p.hidden = p.dataset.t!==b.dataset.t);
 });
+/* 誕生日を「2008年6月9日」の形に */
+function esBirthFmt(v){
+  const m=String(v||"").match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  return m ? `${+m[1]}年${+m[2]}月${+m[3]}日` : (v||"");
+}
 function esPlayerCard(l, g){
   const id=esIdent(l||{}, g); const B=id.name?esBoxOf(id):[];
   const all=esAgg(B);
   const pit = l ? (l.pos==="投" && all.pit) : (g ? (g.pos==="投" && all.pit) || (!all.bat && all.pit) : all.pit && !all.bat);
   const pos = (g && g.pos) || (l && l.pos) || "";
+  const name = g ? g.name : (l ? l.name : "");
 
   /* --- 成績 --- */
   let st="";
@@ -2050,39 +2066,46 @@ function esPlayerCard(l, g){
             : (cur ? `<div class="es-abseg one"><span>${cur}</span></div>` : "");
   const abPane = k => { const vs=views.filter(([,o])=>o[k]); if(!vs.length) return "";
     return seg + vs.map(([w,o])=>`<div class="es-abview" data-w="${w}"${w===cur?"":" hidden"}>${o[k]}</div>`).join(""); };
-  const skills = (A["卒業時"]||A["入学時"]||{}).skills;
 
   /* --- プロフィール --- */
   const pro = g ? (g.team ? `${g.team}${g.rank?` ${g.rank}位`:""}` : g.course) : "";
-  const prof = g ? [["よみがな", escHtml(g.kana)], ["誕生日", escHtml(g.birth)], ["出身", escHtml(g.from)], ["性格", escHtml(g.chara)],
-    ["入学", g.year?`${g.year}年度`:""], ["スカウト・転生", [g.scout?"スカウト":"", g.tensei?"転生":""].filter(Boolean).join("・")], ["進路", escHtml(pro)]].filter(([,v])=>v) : [];
+  const prof = g ? [["氏名", escHtml(g.name)], ["よびかた", escHtml(g.kana)], ["誕生日", escHtml(esBirthFmt(g.birth))], ["出身", escHtml(g.from)], ["性格", escHtml(g.chara)],
+    ["スカウト", [g.scout?"スカウト":"", g.tensei?"転生":""].filter(Boolean).join("・")], ["進路", escHtml(pro)]].filter(([,v])=>v) : [];
 
-  /* --- 上段：守備位置・名前・背番号と、投打・適性・★ --- */
+  /* --- 上段（ゲームの選手画面の上の部分） --- */
   const num = (l && l.num) || (g ? esPwNum(g) : "");
   const apt = (A["卒業時"]||A["入学時"]||{}).apt;
   const hand = g && (g.th||g.bt) ? `${g.th?escHtml(g.th)+"投":""}${g.bt?escHtml(g.bt==="両"?"両打":g.bt+"打"):""}` : "";
-  const star = g && (g.star0!=null||g.star!=null) ? `★${g.star0??"-"}${g.star!=null?` → ${g.star}`:""}` : "";
-  const chips=[hand, apt?`適性 ${escHtml(apt)}`:"", star].filter(Boolean);
-  const meta=[pos?`${escHtml(pos)}`:"", hand, apt?`適性 ${escHtml(apt)}`:"", g&&g.from?escHtml(g.from):""].filter(Boolean);
-  const head=`<div class="es-c2-head">
-      <span class="es-pos lg ${esPosCls(pos)}">${escHtml(pos||"-")}</span>
-      <div class="es-c2-id">
-        <div class="es-c2-name"><b>${escHtml(g?g.name:(l?l.name:""))}</b>${num?`<span class="es-c2-no">${escHtml(esCircled(num))}</span>`:""}${g?esTags(g):""}</div>
-        <div class="es-c2-meta">${meta.join("<i>・</i>")}</div>
+  const star = g ? (g.star!=null ? g.star : g.star0) : null;
+  const sur = String(name).split(/[\s　]+/)[0];
+  const isPit = pos==="投";
+  const stat = isPit
+    ? `防${all.pit?esF(all.era,v=>v.toFixed(2)):"----"}　${all.pit?all.w:"--"}勝${all.pit?all.l:"--"}敗　${all.pit?all.hd:"--"}H　${all.pit?all.sv:"--"}S`
+    : `率${all.bat?esF(all.avg,esAvgFmt):"----"}　${all.bat?all.hr:"--"}本　${all.bat?all.rbi:"--"}点　${all.bat?all.sb:"--"}盗`;
+  /* 上段：左右の行の高さをそろえるため、4つの箱を2列のグリッドに並べる */
+  const head=`<div class="pw2-head">
+      <div class="pw2-hname">
+        <div class="pw2-plate ${esPosCls(pos)}">${escHtml(sur)}</div>
+        <div class="pw2-nobox">${num?`<span class="pw2-no">${escHtml(num)}</span>`:""}${star!=null?`<span class="pw2-star">★${star}</span>`:""}</div>
       </div>
-      ${star?`<div class="es-c2-star"><small>★</small>${g.star!=null?g.star:g.star0}${g.star0!=null&&g.star!=null?`<span>入学時 ${g.star0}</span>`:""}</div>`:""}
+      <div class="pw2-hbox h-stat"><span class="pw2-lbl">成績</span><b class="stat">${stat}</b></div>
+      <div class="pw2-hbox h-pos"><span class="pw2-lbl">${isPit?"適性":"守備位置"}</span><b>${escHtml(isPit?(apt||"-"):(pos||"-"))}</b></div>
+      <div class="pw2-hbox h-hand"><span class="pw2-lbl">投打</span><b>${hand||"-"}</b></div>
     </div>`;
-  const tabs=[["s","成績", st]];
+
+  const tabs=[["s","選手成績", `<div class="pw2-stats">${st}</div>`]];
   const pP=abPane("p"), pF=abPane("f"), pD=abPane("d");
   if(pP) tabs.push(["p","投手能力", pP]);
   if(pF) tabs.push(["f","野手能力", pF]);
-  if(pD) tabs.push(["d","守備", pD]);
-  if(prof.length) tabs.push(["i","プロフィール", `<div class="es-prof2">${prof.map(([k,v])=>`<div class="${k==="よみがな"||k==="進路"?"w":""}"><span>${k}</span><b>${v}</b></div>`).join("")}</div>`]);
-  const first = (l || B.length) ? "s" : (pP && pos==="投" ? "p" : pF ? "f" : tabs[0][0]);
-  return `<div class="es-car es-card2">
-    ${head}
-    ${tabs.length>1?`<div class="es-c2-tabs">${tabs.map(([k,t])=>`<button type="button" class="es-c2-tab${k===first?" active":""}" data-t="${k}">${t}</button>`).join("")}</div>`:""}
-    ${tabs.map(([k,,h])=>`<div class="es-c2-pane" data-t="${k}"${k===first?"":" hidden"}>${h}${(k==="p"||k==="f")&&skills?`<div class="es-sks">${esSkillChips(skills,"blue")}</div>`:""}</div>`).join("")}
+  if(pD) tabs.push(["d","守備・起用", pD]);
+  if(prof.length) tabs.push(["i","プロフィール", `<div class="pw2-left pw2-full pw2-prof">${prof.map(([k,v])=>`<div class="pw2-row"><span class="pw2-lbl">${k}</span><b class="pw2-pv">${v}</b></div>`).join("")}</div>`]);
+  const first = (l || B.length) ? "s" : (pP && isPit ? "p" : pF ? "f" : tabs[0][0]);
+  return `<div class="pw2" data-tab="${first}">
+    <div class="pw2-tabs">${tabs.map(([k,t])=>`<button type="button" class="pw2-tab t-${k}${k===first?" active":""}" data-t="${k}">${t}</button>`).join("")}</div>
+    <div class="pw2-panel">
+      ${head}
+      ${tabs.map(([k,,h])=>`<div class="pw2-pane" data-t="${k}"${k===first?"":" hidden"}>${h}</div>`).join("")}
+    </div>
   </div>`;
 }
 /* 試合のボックススコア（その試合の自校の選手成績） */
