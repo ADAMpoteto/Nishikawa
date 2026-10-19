@@ -3,216 +3,239 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ﾏﾝﾎｰﾙ二郎ﾛｰﾄﾞ食べﾛｸﾞ釣りﾏﾗｿﾝ部</title>
-<link rel="icon" href="ka-min.png" type="image/png">
-<link rel="stylesheet" href="css/style.css">
+<title>西川記録</title>
+<link rel="stylesheet" href="style.css?v=20261019b">
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
 
 <nav>
   <div class="nav-top">
-    <div class="nav-brand">ﾏﾝﾎｰﾙ二郎ﾛｰﾄﾞ食べﾛｸﾞ釣りﾏﾗｿﾝ部</div>
+    <div class="nav-brand">西川記録</div>
   </div>
   <div class="nav-links">
-    <button class="nav-btn active" onclick="goto('top')">トップ</button>
-    <button class="nav-btn" onclick="goto('activities')">実績</button>
-    <button class="nav-btn" onclick="goto('mypage')">マイページ</button>
-    <button class="nav-btn" onclick="goto('progress')">進捗</button>
-    <button class="nav-btn" onclick="goto('michinoeki')">道の駅</button>
-    <button class="nav-btn" onclick="goto('manhole')">旅程</button>
-    <button class="nav-btn" onclick="goto('cycle')">自転車</button>
-    <button class="nav-btn" onclick="goto('rules')">規程</button>
+    <button class="nav-btn active" data-nav="torima" onclick="goto('torima')">トリマ</button>
+    <button class="nav-btn" data-nav="run" onclick="goto('run')">ランニング</button>
+    <button class="nav-btn" data-nav="bike" onclick="goto('bike')">自転車</button>
+    <button class="nav-btn" data-nav="keiken" onclick="goto('keiken')">経県値</button>
+    <button class="nav-btn" data-nav="gourmet" onclick="goto('gourmet')">グルメ</button>
+    <button class="nav-btn" data-nav="eikan" onclick="goto('eikan')">栄冠ナイン</button>
   </div>
 </nav>
 
-<!-- TOP -->
-<div id="top" class="page active">
+<!-- ========== トリマ ========== -->
+<div id="torima" class="page active">
 <div class="container">
-  <div class="hero">
-    <div class="hero-title">ﾏﾝﾎｰﾙ二郎ﾛｰﾄﾞ食べﾛｸﾞ釣りﾏﾗｿﾝ部</div>
+  <div class="trip-selbox">
+    <select id="tm-month-sel" aria-label="月を選ぶ"><option>読み込み中…</option></select>
+  </div>
+  <div class="tm-alert" id="tm-alert" role="status" hidden></div>
+  <div class="hero" id="tm-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="card-section">
+    <div class="sec-title">目標まで、1日あと何ポイント？</div>
+    <div class="tgt-grid" id="tm-targets"></div>
+    <p class="kk-note-s" id="tm-target-note"></p>
   </div>
 
-  <div class="sec-label">サマリー</div>
-  <div class="filter-bar" id="kpi-toggle">
-    <button class="filter-btn active" onclick="toggleKPI('full',this)">全員参加</button>
-    <button class="filter-btn" onclick="toggleKPI('partial',this)">2人参加</button>
-    <button class="filter-btn" onclick="toggleKPI('all',this)">部活動全体</button>
+  <div class="card-section">
+    <div class="sec-title">日々の獲得ポイント</div>
+    <div id="tm-daily"></div>
   </div>
-  <div id="kpi-section"><div class="loading">読み込み中…</div></div>
 
-  <div class="sec-label" style="margin-top:28px">今後の活動予定</div>
-  <div id="top-upcoming"><div class="loading">読み込み中…</div></div>
-  <div class="sec-label" style="margin-top:28px">直近の活動実績</div>
-  <div id="top-recent"><div class="loading">読み込み中…</div></div>
+  <div class="card-section">
+    <div class="sec-title">月ごとの記録</div>
+    <div id="tm-overall"></div>
+    <div class="mlist" id="tm-months"></div>
+  </div>
 </div>
 </div>
 
-<!-- MYPAGE -->
-<div id="mypage" class="page">
+<!-- ========== ランニング ========== -->
+<div id="run" class="page">
 <div class="container">
-  <div class="page-header"><h1>マイページ</h1><p>メンバーごとのマンホールカードの取得実績</p></div>
-  <div class="member-pills" id="mypage-pills"></div>
-  <div id="mypage-body"><div class="loading">読み込み中…</div></div>
+  <div class="page-header"><h1>ランニング</h1><p>走った記録と、自分の中のランキング</p></div>
+  <div class="hero" id="run-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="card-section">
+    <div class="sec-title">今月の距離目標</div>
+    <div id="run-goal"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">ランキング TOP10</div>
+    <div class="day-tabs" id="run-tabs"></div>
+    <div id="run-rank"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">ペースの推移（直近10回）</div>
+    <div id="run-trend"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">月ごとの距離</div>
+    <p class="kk-note-s" style="margin:-6px 0 4px">棒の縦線が月間目標（100km）</p>
+    <div class="mlist" id="run-months"></div>
+  </div>
 </div>
 </div>
 
-<!-- ACTIVITIES -->
-<div id="activities" class="page">
+<!-- ========== 自転車 ========== -->
+<div id="bike" class="page">
 <div class="container">
-  <div class="page-header"><h1>活動実績</h1><p>これまでの活動実績の記録</p></div>
-  <div class="filter-bar" id="participation-bar">
-    <button class="filter-btn active" onclick="filterParticipation('full',this)">全員参加</button>
-    <button class="filter-btn" onclick="filterParticipation('partial',this)">2人参加</button>
-    <button class="filter-btn" onclick="filterParticipation('all',this)">部活動全体</button>
+  <div class="page-header"><h1>自転車</h1><p>走った距離と行き先の記録</p></div>
+  <div class="hero" id="bk-hero"><div class="loading">読み込み中…</div></div>
+  <div class="card-section">
+    <div class="sec-title">距離ランキング TOP10</div>
+    <div id="bk-rank"></div>
   </div>
-  <div class="filter-bar" id="filter-bar">
-    <button class="filter-btn active" onclick="filterAct('all',this)">すべて</button>
+  <div class="card-section">
+    <div class="sec-title">年ごとの距離</div>
+    <div class="mlist" id="bk-years"></div>
   </div>
-  <div class="tbl-wrap">
-    <table class="act-table">
-      <thead><tr>
-        <th style="width:40px">No</th>
-        <th style="width:96px">日付</th>
-        <th style="width:110px">分類</th>
-        <th>活動内容</th>
-        <th style="width:56px"></th>
-      </tr></thead>
-      <tbody id="act-tbody"><tr><td colspan="5" class="loading">読み込み中…</td></tr></tbody>
-    </table>
-  </div>
-  <div class="act-list" id="act-list"></div>
 </div>
 </div>
 
-<!-- DETAIL -->
-<div id="detail" class="page">
+<!-- ========== 経県値マップ ========== -->
+<div id="keiken" class="page">
 <div class="container">
-  <button class="back-btn" onclick="goBackFromDetail()">← 活動実績に戻る</button>
-  <div class="det-header">
-    <h1 id="det-title"></h1>
-    <div class="det-meta"><span id="det-date"></span><span id="det-badge"></span></div>
+  <div class="page-header"><h1>経県値マップ</h1><p>日本の市区町村、どこまで行った？</p></div>
+  <div id="kk-slot-keiken">
+  <div id="kk-shared">
+  <div class="card-section" id="kk-nation-card">
+    <div class="sec-title" id="kk-nation-title">全国</div>
+    <div class="stats-row" id="kk-nation-stats"></div>
+    <div id="kk-nation"><div class="loading">読み込み中…</div></div>
+    <div class="kk-note" id="kk-note" hidden></div>
   </div>
-  <!-- 参加者 -->
-  <div id="det-participants"></div>
-  <!-- 運転手・距離 info grid -->
-  <div class="det-info-grid" id="det-info-grid"></div>
-  <div class="comment-box">
-    <div class="comment-label">コメント</div>
-    <div class="comment-text" id="det-comment"></div>
+
+  <div class="card-section">
+    <div class="sec-title" id="kk-pref-anchor">都道府県</div>
+    <div class="trip-selbox"><select id="kk-pref-sel" aria-label="都道府県を選ぶ"></select></div>
+    <div class="stats-row" id="kk-stats"></div>
+    <div class="kk-legend" id="kk-legend" role="group" aria-label="レベルで絞り込む"></div>
+    <div class="kk-mapwrap" id="kk-mapwrap">
+      <div class="kk-ctrl" role="group" aria-label="地図の拡大・縮小">
+        <button type="button" data-z="in" aria-label="拡大" title="拡大">＋</button>
+        <button type="button" data-z="out" aria-label="縮小" title="縮小">－</button>
+        <button type="button" data-z="home" aria-label="元の表示に戻す" title="元の表示に戻す">⟲</button>
+      </div>
+      <div class="kk-map" id="kk-map"><div class="loading">読み込み中…</div></div>
+      <div class="kk-tip" id="kk-tip" hidden></div>
+    </div>
+    <div class="kk-info" id="kk-info" aria-live="polite"><p class="kk-info-empty">地図の市区町村をタップすると、ここに記録が表示されます。</p></div>
+    <div class="kk-sub">市区町村の一覧</div>
+    <div id="kk-list"></div>
   </div>
-</div>
-</div>
-
-<!-- MANHOLE TRIP -->
-<div id="manhole" class="page">
-<div class="container">
-  <div class="page-header"><h1>マンホールカード旅程</h1><p>訪問先・移動時間・収集状況をまとめた旅行の行程表</p></div>
-  <div class="trip-selbox"><select id="trip-sel"><option>読み込み中…</option></select></div>
-  <div class="trip-stats" id="trip-stats"></div>
-  <div class="trip-day-tabs" id="trip-day-tabs"></div>
-  <div id="trip-days"><div class="loading">読み込み中…</div></div>
-</div>
-</div>
-
-<!-- MICHINOEKI (道の駅切符) -->
-<div id="michinoeki" class="page">
-<div class="container">
-  <div class="page-header"><h1>道の駅切符</h1><p>部内で集めている道の駅記念切符の取得状況</p></div>
-  <div id="michinoeki-body"><div class="loading">読み込み中…</div></div>
-</div>
-</div>
-
-<!-- CYCLE (自転車旅) -->
-<div id="cycle" class="page">
-<div class="container">
-  <div class="page-header"><h1>自転車旅</h1><p>出発地点から各目的地を巡るサイクリング行程</p></div>
-  <div class="cycle-selbox"><select id="cycle-sel"><option>読み込み中…</option></select></div>
-  <div class="cycle-hero" id="cycle-hero"></div>
-  <div id="cycle-body"><div class="loading">読み込み中…</div></div>
-</div>
-</div>
-
-<!-- PROGRESS -->
-<div id="progress" class="page">
-<div class="container">
-  <div class="page-header"><h1>マンホールカード収集進捗</h1><p>エリア・都道府県ごとにメンバー3人の取得状況を比較</p></div>
-  <div class="tab-bar">
-    <button class="tab-btn active" onclick="switchTab('area',this)">エリア別</button>
-    <button class="tab-btn" onclick="switchTab('pref',this)">都道府県別</button>
   </div>
-  <div class="sort-bar">
-    <span style="font-size:11px;color:var(--text3)">並び順</span>
-    <button class="sort-btn active" onclick="setSort('name',this)">都道府県順</button>
-    <button class="sort-btn" onclick="setSort('sum',this)">取得数が多い順</button>
-    <button class="sort-btn" onclick="setSort('asc',this)">取得数が少ない順</button>
-  </div>
-  <div id="tab-area"></div>
-  <div id="tab-pref" style="display:none"></div>
-</div>
-</div>
-
-<!-- RULES -->
-<div id="rules" class="page">
-<div class="container">
-  <div class="page-header"><h1>規程</h1><p>本部活動における参加者の遵守事項</p></div>
-  <div class="rules-body">
-    <p>本規程は、本部活動の円滑かつ安全な遂行を図るため、参加者が遵守すべき事項を定めるものである。なお、本規程において「本旅行」とは、マンホールカード取得を目的として実施する旅行をいう。</p>
-
-    <h2 class="chapter">第1章　総則</h2>
-    <h2>第1条（適用範囲）</h2>
-    <ol><li>西川</li><li>小林</li><li>森角</li></ol>
-
-    <h2 class="chapter">第2章　部活動全般</h2>
-    <h2>第2条（分野別担当）</h2>
-    <p>本部活動における各分野について、以下の者を主担当とし、企画立案および実行を主導するものとする。</p>
-    <ol>
-      <li>二郎：小林</li>
-      <li>マンホールカード：西川</li>
-      <li>ロード：小林</li>
-      <li>食事：森角</li>
-      <li>釣り：森角</li>
-      <li>マラソン：小林</li>
-    </ol>
-    <h2>第3条（禁止事項）</h2>
-    <ol>
-      <li>参加者は、マンホールカードを転売してはならない。ここでいう転売とは、フリマサイト、オークションサイトその他手段のいかんを問わず、有償で第三者に譲渡する一切の行為をいう。</li>
-      <li>参加者は、フリマサイト、オークションサイトその他の売買仲介サービスを通じてマンホールカードを購入してはならない。</li>
-      <li>前二項に違反した場合、当該参加者は部から除籍するものとする。</li>
-    </ol>
-
-    <h2 class="chapter">第3章　旅行</h2>
-    <h2>第4条（費用負担）</h2>
-    <ol>
-      <li>運転担当者に対しては、走行距離100km（端数切上げ）につき500円を負担金として支給するものとする。<br>例）西川が782km運転した場合<br>小林と森角が西川に4,000円（500円 × 800km ÷ 100)を支給する </li>
-      <li>旅費その他費用の精算については、原則として「Walica」（<a href="https://walica.jp/" target="_blank">https://walica.jp/</a>）を用いるものとする。</li>
-    </ol>
-    <h2>第5条（役割分担）</h2>
-    <ol>
-      <li>運転担当：西川、小林、森角</li>
-      <li>旅程管理：西川</li>
-      <li>宿泊予約：小林</li>
-      <li>食事予約：森角</li>
-    </ol>
-    <h2>第6条（行程管理）</h2>
-    <ol>
-      <li>集合場所・時刻は西川が決定するものとする。</li>
-      <li>遅刻をする場合は、事前に連絡を必ず行うものとする。</li>
-    </ol>
-
-    <h2 class="chapter">第4章　雑則</h2>
-    <h2>第7条（特記事項）</h2>
-    <ol>
-      <li>西川は、本活動において多大なる貢献があるため、その遅刻は想定内とする。</li>
-      <li>小林は、本活動におけるパイオニア的存在のため、その二日酔いは想定内とする。</li>
-      <li>森角は、本活動における雪道走行になくてはならない存在のため、その忘れ物は想定内とする。</li>
-    </ol>
   </div>
 </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-<script src="js/config.js"></script>
-<script src="js/pref-shapes.js"></script>
-<script src="js/app.js"></script>
+<!-- ========== グルメ（食べログ） ========== -->
+<div id="gourmet" class="page">
+<div class="container">
+  <div class="page-header"><h1>グルメ</h1><p>食べログに投稿したお店</p></div>
+  <div class="hero" id="gm-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="card-section">
+    <div class="sec-title">評価ランキング</div>
+    <div class="day-tabs" id="gm-tabs"></div>
+    <div id="gm-rank"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">よく食べるジャンル</div>
+    <div class="mlist" id="gm-genre"></div>
+  </div>
+
+  <div class="sec-title gm-map-title">グルメ地図</div>
+  <div id="kk-slot-gourmet"></div>
+</div>
+</div>
+
+<!-- ========== 栄冠ナイン ========== -->
+<div id="eikan" class="page">
+<div class="container">
+  <div class="page-header"><h1>栄冠ナイン</h1><p>試合・スタメン・卒業生の記録</p></div>
+  <div class="hero" id="es-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="day-tabs es-subnav" id="es-subnav" role="tablist" aria-label="表示の切り替え">
+    <button type="button" class="day-tab active" role="tab" data-pane="year" aria-selected="true">年度</button>
+    <button type="button" class="day-tab" role="tab" data-pane="player" aria-selected="false">選手</button>
+    <button type="button" class="day-tab" role="tab" data-pane="rec" aria-selected="false">記録</button>
+    <button type="button" class="day-tab" role="tab" data-pane="opp" aria-selected="false">対戦校</button>
+  </div>
+
+  <div class="es-pane" data-pane="year">
+  <div class="card-section">
+    <div class="sec-title">年度別成績</div>
+    <div id="es-years"><div class="loading">読み込み中…</div></div>
+  </div>
+
+  <div class="card-section" id="es-year-anchor">
+    <div class="sec-title">年度の記録</div>
+    <div class="trip-selbox"><select id="es-year-sel" aria-label="年度を選ぶ"><option>読み込み中…</option></select></div>
+    <div id="es-year"></div>
+  </div>
+  </div>
+
+  <div class="es-pane" data-pane="player" hidden>
+  <div class="card-section">
+    <div class="sec-title">選手名鑑</div>
+    <div class="trip-selbox"><select id="es-roster-sel" aria-label="入学年度を選ぶ"></select></div>
+    <div id="es-roster"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">歴代ベスト9</div>
+    <div class="day-tabs" id="es-b9-tabs"></div>
+    <div class="trip-selbox" id="es-b9-team" hidden><select id="es-team-sel" aria-label="球団を選ぶ"></select></div>
+    <div id="es-b9"></div>
+    <p class="kk-note-s" id="es-b9-note"></p>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">歴代ランキング TOP10</div>
+    <div class="day-tabs" id="es-rk-tabs"></div>
+    <div id="es-rk"></div>
+    <p class="kk-note-s" id="es-rk-note"></p>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">ドラフト</div>
+    <div id="es-draft"></div>
+  </div>
+
+  </div>
+
+  <div class="es-pane" data-pane="rec" hidden>
+  <div class="card-section">
+    <div class="sec-title">記録</div>
+    <div id="es-records"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">相手の戦力別の成績</div>
+    <div id="es-pw"></div>
+  </div>
+  </div>
+
+  <div class="es-pane" data-pane="opp" hidden>
+  <div class="card-section">
+    <div class="sec-title">対戦校</div>
+    <div id="es-rivals"></div>
+  </div>
+  </div>
+</div>
+</div>
+
+<footer class="foot">
+  西川記録<br>
+  データはGoogleスプレッドシートから取得しています。
+</footer>
+
+<script src="app.js?v=20261019b"></script>
 </body>
 </html>
