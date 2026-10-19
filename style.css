@@ -980,3 +980,4 @@ details.kk-group[open] summary::after{content:"－";}
 @media (max-width:640px){ .pw2-head{grid-template-columns:minmax(0,1fr);} }
 .pw2-def.low{opacity:.8;}
 .pw2-def.none{opacity:.75;}
+@media (max-width:640px){ .pw2-sk.pad4{display:none;} }

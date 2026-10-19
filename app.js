@@ -1439,7 +1439,10 @@ async function loadEikan(){
     const yr=esYear(F(o,"入学年度"));
     const g=ES.grads.find(x=>x.name===name && (yr==null || x.year===yr)) || ES.grads.find(x=>x.name===name);
     if(!g) return;
-    (g.ab=g.ab||{})[when]=esParseAbil(o);
+    const a=esParseAbil(o);
+    /* 利き腕（投げ・打ち）は能力シートの時点ごと。空欄なら卒業生シートの値を使う */
+    const th=F(o,"投げ"), bt=F(o,"打ち"); if(th) a.th=th; if(bt) a.bt=bt;
+    (g.ab=g.ab||{})[when]=a;
   });
   const esMainPos = p => /^[左中右]$/.test(p) ? "外" : p;
   ES.grads.forEach(g=>{
@@ -1571,6 +1574,7 @@ function esRenderYears(){
 /* ---------- 年度の記録 ---------- */
 function esInitYearSel(){
   const sel=document.getElementById("es-year-sel");
+  sel.parentElement.hidden = !ES.years.length;   // 試合がないときは空の選択欄を出さない
   if(!ES.years.length){ sel.innerHTML=""; document.getElementById("es-year").innerHTML=errBox("まだ記録がありません。"); return; }
   sel.innerHTML=ES.years.map(Y=>`<option value="${Y.y}">${Y.y}年度${Y.pref?`（${escHtml(Y.pref)}）`:""}</option>`).join("");
   sel.onchange=()=>esShowYear(+sel.value);
@@ -1918,15 +1922,17 @@ function esPitchChart(P, lefty){
     }
     if(L.length){
       /* 横の腕は先端の上、斜め・下は先端の外側に名前 */
-      const horiz=Math.abs(vy)<0.1, t=r0+7*(cell+gap)+(horiz?-4:6), x=cx+vx*t, y=cy+vy*t+(horiz?-10:vy>0.9?14:10);
-      const anchor = horiz ? (vx<0?"start":"end") : vx<-0.3 ? "end" : vx>0.3 ? "start" : "middle";
+      const horiz=Math.abs(vy)<0.1, t=r0+7*(cell+gap)+(horiz?-4:0); let x=cx+vx*t; const y=cy+vy*t+(horiz?-10:16);
+      const anchor = horiz ? (vx<0?"start":"end") : "middle";
+      /* 斜め・下は先端の下に中央ぞろえ。長い名前でも枠からはみ出さないように寄せる */
+      if(!horiz){ const hw=L.map(p=>p.name).join("・").length*5.6+2; x=Math.max(hw, Math.min(320-hw, x)); }
       svg+=`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" class="es-pc-t">${escHtml(L.map(p=>p.name).join("・"))}</text>`;
     }
   });
   const up=dirs.UP.map(p=>p.name);
   svg+=`<path d="M${cx-6} ${cy-14} L${cx} ${cy-22} L${cx+6} ${cy-14} Z" fill="#f08a24"/><text x="${cx}" y="${cy-27}" text-anchor="middle" class="es-pc-t">ストレート${up.length?"・"+escHtml(up.join("・")):""}</text>`;
   svg+=`<circle cx="${cx}" cy="${cy}" r="9" fill="#fff" stroke="#4a8fe0" stroke-width="2"/>`;
-  return `<svg class="es-pc" viewBox="0 0 320 170" role="img" aria-label="変化球">${svg}</svg>`;
+  return `<svg class="es-pc" viewBox="0 0 320 182" role="img" aria-label="変化球">${svg}</svg>`;
 }
 function esParseAbil(o){
   /* 守備力は位置ごと（投〜外）、変化球は方向ごとの列 */
@@ -1991,7 +1997,8 @@ function esAbilityParts(g, prev){
       if(m){ nm=m[1]; rk=m[2]; if(cls!=="gold") cls=/[AB◎◯○〇ＡＢ]/.test(rk)?"blue":/[CDＣＤ]/.test(rk)?"":"red"; }
       cells.push(`<div class="pw2-sk ${cls}"><span>${escHtml(nm)}</span>${rk?`<b class="pw2-skr">${escHtml(rk)}</b>`:""}</div>`);
     });
-    while(cells.length<8 || cells.length%4) cells.push(`<div class="pw2-sk empty"></div>`);
+    while(cells.length<8 || cells.length%2) cells.push(`<div class="pw2-sk empty"></div>`);
+    while(cells.length%4) cells.push(`<div class="pw2-sk empty pad4"></div>`);  // PC（4列）用の穴埋め。スマホでは出さない
     return `<div class="pw2-sks">${cells.join("")}</div>`;
   };
   const out={};
@@ -2075,7 +2082,12 @@ function esPlayerCard(l, g){
   /* --- 上段（ゲームの選手画面の上の部分） --- */
   const num = (l && l.num) || (g ? esPwNum(g) : "");
   const apt = (A["卒業時"]||A["入学時"]||{}).apt;
-  const hand = g && (g.th||g.bt) ? `${g.th?escHtml(g.th)+"投":""}${g.bt?escHtml(g.bt==="両"?"両打":g.bt+"打"):""}` : "";
+  const handOf = o => o && (o.th||o.bt) ? `${o.th?escHtml(o.th)+"投":""}${o.bt?escHtml(o.bt==="両"?"両打":o.bt+"打"):""}` : "";
+  /* 投打も入学時／卒業時の切り替えに合わせる */
+  const hands = ws.map(w=>[w, handOf({...base, th:g.th, bt:g.bt, ...A[w]})]);
+  const hand = hands.length>1 && hands[0][1]!==hands[1][1]
+    ? hands.map(([w,h])=>`<span class="es-abview" data-w="${w}"${w===cur?"":" hidden"}>${h||"-"}</span>`).join("")
+    : (hands.length ? hands[hands.length-1][1] : handOf(g));
   const star = g ? (g.star!=null ? g.star : g.star0) : null;
   const sur = String(name).split(/[\s　]+/)[0];
   const isPit = pos==="投";
@@ -2203,6 +2215,11 @@ function esRenderB9(){
          : ES.b9==="amateur" ? "プロ野球選手にならなかった卒業生の中で、卒業時の★が一番高い選手（守備は卒業時）。"
          : "卒業時の★が一番高い選手（守備は卒業時）。";
   }
+  /* 1人もいないときは「該当なし」を9行並べず、ひとことだけ */
+  if(!picks.some(x=>x.g)){
+    document.getElementById("es-b9").innerHTML=errBox(ES.b9==="stats" ? "まだ規定の試合数・投球回に届いた選手がいません。" : "まだ卒業時の★が入った卒業生がいません。");
+    document.getElementById("es-b9-note").textContent=note; return;
+  }
   document.getElementById("es-b9").innerHTML=`<div class="es-b9">${picks.map(x=>{
     const inner=`
       <span class="es-pos lg ${esPosCls(x.p)}">${x.p}</span>
@@ -2249,15 +2266,18 @@ function esGradMeta(g){
 /* ---------- 歴代ランキング ---------- */
 const esBatQ = g => g.games>=ES_BAT_MIN && g.pos!=="投";
 const ES_BAT_NOTE = `${ES_BAT_MIN}試合以上の野手`, ES_PIT_NOTE = `投球回${ES_PIT_IP_MIN}以上（投球回が空欄なら登板10以上）`;
+/* 投手の能力ランキングは投手（守備位置が投、または適性が入っている選手）だけ */
+const esIsPit = g => g.pos==="投" || !!g.apt;
 const esCnt = u => v => `${v}<small>${u}</small>`;
 /* g: 総合／打撃／投手 */
 const ES_RK=[
-  {g:"総合", k:"star", t:"★", get:g=>g.star, fmt:v=>v},
+  {g:"総合", k:"star", t:"卒業時★", get:g=>g.star, fmt:v=>v},
+  {g:"総合", k:"star0",t:"入学時★", get:g=>g.star0, fmt:v=>v},
   {g:"総合", k:"grow", t:"★の伸び", get:g=>g.grow, fmt:v=>`+${v}`},
   {g:"総合", k:"games",t:"出場試合", get:g=>g.games||null, fmt:esCnt("試合")},
-  {g:"能力", k:"velo", t:"球速", get:g=>g.velo||null, fmt:v=>`${v}<small>km/h</small>`},
-  {g:"能力", k:"ctl",  t:"コントロール", get:g=>g.ctl||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
-  {g:"能力", k:"sta",  t:"スタミナ", get:g=>g.sta||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
+  {g:"能力", k:"velo", t:"球速", get:g=>esIsPit(g)&&g.velo||null, fmt:v=>`${v}<small>km/h</small>`},
+  {g:"能力", k:"ctl",  t:"コントロール", get:g=>esIsPit(g)&&g.ctl||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
+  {g:"能力", k:"sta",  t:"スタミナ", get:g=>esIsPit(g)&&g.sta||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
   {g:"能力", k:"meet", t:"ミート", get:g=>g.meet||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
   {g:"能力", k:"pow",  t:"パワー", get:g=>g.pow||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
   {g:"能力", k:"run",  t:"走力", get:g=>g.run||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
@@ -2328,7 +2348,7 @@ function esRenderRk(){
 /* ---------- 記録 ---------- */
 function esRenderRecords(){
   const G=ES.games, el=document.getElementById("es-records");
-  if(!G.length){ el.innerHTML=errBox("まだ試合の記録がありません。"); return; }
+  if(!G.length){ el.innerHTML=errBox("まだ試合の記録がありません。"); document.getElementById("es-pw").innerHTML=errBox("相手戦力が入った試合がまだありません。"); return; }
   const st=esStreaks().best;
   const W=G.filter(g=>g.wl==="勝");
   const most=G.slice().sort((a,b)=>b.rs-a.rs||a.no-b.no)[0];
