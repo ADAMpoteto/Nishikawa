@@ -1390,6 +1390,7 @@ async function loadEikan(){
   (got.inn||[]).forEach(o=>{
     const no=esInt(F(o,"試合No")); if(!no) return;
     const inns=[]; for(let k=1;k<=15;k++) inns.push(F(o,String(k)));
+    if(inns.every(v=>v==="") && !F(o,"R") && !F(o,"H") && !F(o,"E")) return;   // 試合No・先攻後攻だけ自動で並んだ未入力の行
     (ES.inn[no]=ES.inn[no]||[]).push({ side:F(o,"先攻後攻"), team:F(o,"高校名"), inns, R:F(o,"R"), H:F(o,"H"), E:F(o,"E") });
   });
 
@@ -1441,7 +1442,7 @@ async function loadEikan(){
     if(!g) return;
     const a=esParseAbil(o);
     /* 利き腕（投げ・打ち）は能力シートの時点ごと。空欄なら卒業生シートの値を使う */
-    const th=F(o,"投げ"), bt=F(o,"打ち"); if(th) a.th=th; if(bt) a.bt=bt;
+    const th=F(o,"投げ"), bt=F(o,"打ち"), ch=F(o,"性格"); if(th) a.th=th; if(bt) a.bt=bt; if(ch) a.chara=ch;
     (g.ab=g.ab||{})[when]=a;
   });
   const esMainPos = p => /^[左中右]$/.test(p) ? "外" : p;
@@ -2076,7 +2077,8 @@ function esPlayerCard(l, g){
 
   /* --- プロフィール --- */
   const pro = g ? (g.team ? `${g.team}${g.rank?` ${g.rank}位`:""}` : g.course) : "";
-  const prof = g ? [["氏名", escHtml(g.name)], ["よびかた", escHtml(g.kana)], ["誕生日", escHtml(esBirthFmt(g.birth))], ["出身", escHtml(g.from)], ["性格", escHtml(g.chara)],
+  const prof = g ? [["氏名", escHtml(g.name)], ["よびかた", escHtml(g.kana)], ["誕生日", escHtml(esBirthFmt(g.birth))], ["出身", escHtml(g.from)], ["性格", (()=>{ const c0=A["入学時"]&&A["入学時"].chara, c1=A["卒業時"]&&A["卒業時"].chara;
+      return c0&&c1&&c0!==c1 ? `${escHtml(c0)}<small class="pw2-arrow">→</small>${escHtml(c1)}` : escHtml(c1||c0||g.chara); })()],
     ["スカウト", [g.scout?"スカウト":"", g.tensei?"転生":""].filter(Boolean).join("・")], ["進路", escHtml(pro)]].filter(([,v])=>v) : [];
 
   /* --- 上段（ゲームの選手画面の上の部分） --- */
