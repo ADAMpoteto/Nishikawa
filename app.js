@@ -1331,7 +1331,7 @@ const URL_EIKAN = [
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=130539493&single=true&output=csv"    // 能力
 ].filter(Boolean);
 const ES_SCHOOL = "東洋大姫路";   // 自校名（ページの見出しに使います）
-const ES_BAT_MIN = 30;           // 打者ランキングの規定試合数
+const ES_BAT_MIN = 40;           // 打者ランキングの規定打席（打数＋四死球＋犠打）
 const ES_PIT_IP_MIN = 50;        // 投手ランキングの規定投球回（投球回が空欄の選手は登板・試合10以上で判定）
 
 const ES_TAIKAI = [
@@ -1818,7 +1818,7 @@ function esFillFromBox(g){
   });
   const set=(k,v)=>{ if(g[k]==null && v!=null){ g[k]=v; g.auto=true; } };
   if(t.bat){ set("games",t.g); set("avg",t.avg); set("hr",t.hr); set("rbi",t.rbi); set("sb",t.sb); set("ops",t.ops);
-    set("h",t.h); set("r",t.r); set("d2",t.d2); set("d3",t.d3); set("bbb",t.bb); set("sh",t.sh); set("obp",t.obp); set("slg",t.slg); }
+    set("pa",t.ab+t.bb+t.sh); set("h",t.h); set("r",t.r); set("d2",t.d2); set("d3",t.d3); set("bbb",t.bb); set("sh",t.sh); set("obp",t.obp); set("slg",t.slg); }
   else set("games",t.g);
   set("mvpB", B.filter(b=>esIsMvp(b,"bat")).length || null);
   set("mvpP", B.filter(b=>esIsMvp(b,"pit")).length || null);
@@ -1826,8 +1826,10 @@ function esFillFromBox(g){
     set("ip",t.ip); set("k",t.k); set("bb",t.pbb); set("era",t.era); set("ha",t.ha); set("hd",t.hd||null);
     if(t.outs>0){ set("k9",t.k*27/t.outs); set("whip",(t.ha+t.pbb)*3/t.outs); } }
 }
+/* 打率などの規定：打席（打数＋四死球＋犠打）が ES_BAT_MIN 以上の野手 */
+function esBatQ(g){ return (g.pa!=null ? g.pa : (g.games||0)*4) >= ES_BAT_MIN && g.pos!=="投"; }
 function esGradDerived(g){
-  g.batScore = (g.games!=null && g.games>=ES_BAT_MIN && g.pos!=="投" && g.avg!=null)
+  g.batScore = (esBatQ(g) && g.avg!=null)
     ? g.avg*100 + (g.hr||0)*3 + (g.rbi||0) + (g.sb||0) : null;
   g.pitQual = g.era!=null && (g.ip!=null ? g.ip>=ES_PIT_IP_MIN : ((g.app||g.games||0)>=10));
 }
@@ -1983,7 +1985,9 @@ const esPwRk = (r, sm) => `<b class="pw2-rk rk-${r}${sm?" sm":""}">${r}</b>`;
 function esAbilityParts(g, prev){
   const dif=k=> (prev && prev[k]!=null && g[k]!=null && g[k]!==prev[k]) ? `<small class="${g[k]>prev[k]?"up":"dn"}">${g[k]>prev[k]?"+":""}${g[k]-prev[k]}</small>` : "";
   const row=(lbl,k)=>{ const v=g[k]; if(v==null) return ""; return `<div class="pw2-row"><span class="pw2-lbl">${lbl}</span>${esPwRk(esRankOf(v))}<span class="pw2-v">${v}${dif(k)}</span></div>`; };
-  const hasP = g.velo!=null || g.ctl!=null || g.sta!=null || (g.pitches&&g.pitches.length) || ["対ピンチ","対左打者","打たれ強さ","ノビ","クイック"].some(k=>g.rk&&g.rk[k]) || !!g.skillsP;
+  /* 野手の初期値（球速120・コントロール1・スタミナ1で変化球なし）は投手能力として出さない */
+  const pitDefault = g.pos!=="投" && !g.apt && (g.ctl||0)<=1 && (g.sta||0)<=1 && !(g.pitches&&g.pitches.length) && !g.skillsP;
+  const hasP = !pitDefault && (g.velo!=null || g.ctl!=null || g.sta!=null || (g.pitches&&g.pitches.length) || ["対ピンチ","対左打者","打たれ強さ","ノビ","クイック"].some(k=>g.rk&&g.rk[k]) || !!g.skillsP);
   const hasF = [g.traj,g.meet,g.pow,g.run,g.arm,g.fld,g.catch_].some(v=>v!=null) || ["チャンス","対左投手","キャッチャー","盗塁","走塁","送球"].some(k=>g.rk&&g.rk[k]) || !!g.skillsF;
   const hasD = g.def && Object.keys(g.def).length;
   const mainP = /^[左中右]$/.test(g.pos) ? "外" : g.pos;
@@ -2207,7 +2211,7 @@ function esRenderB9(){
     picks=bat.map(x=>x.p==="投"?{p:"投", g:pit}:x);
     val=(x)=> x.p==="投" ? `<b>${x.g.era.toFixed(2)}</b><small>防御率</small>`
       : `<b>${esAvgFmt(x.g.avg)}</b><small>${x.g.hr||0}本 ${x.g.rbi||0}点 ${x.g.sb||0}盗</small>`;
-    note=`打者は「打率×100＋本塁打×3＋打点＋盗塁」の点数で守備ごとに1位（${ES_BAT_MIN}試合以上）。投手は防御率1位（投球回${ES_PIT_IP_MIN}以上、投球回が空欄なら登板10以上）。`;
+    note=`打者は「打率×100＋本塁打×3＋打点＋盗塁」の点数で守備ごとに1位（${ES_BAT_MIN}打席以上）。投手は防御率1位（投球回${ES_PIT_IP_MIN}以上、投球回が空欄なら登板10以上）。`;
   } else {
     const pool = ES.b9==="team" ? ES.grads.filter(g=>g.team===ES.team)
                : ES.b9==="amateur" ? ES.grads.filter(g=>!g.pro) : ES.grads;
@@ -2266,8 +2270,8 @@ function esGradMeta(g){
 }
 
 /* ---------- 歴代ランキング ---------- */
-const esBatQ = g => g.games>=ES_BAT_MIN && g.pos!=="投";
-const ES_BAT_NOTE = `${ES_BAT_MIN}試合以上の野手`, ES_PIT_NOTE = `投球回${ES_PIT_IP_MIN}以上（投球回が空欄なら登板10以上）`;
+
+const ES_BAT_NOTE = `${ES_BAT_MIN}打席以上の野手`, ES_PIT_NOTE = `投球回${ES_PIT_IP_MIN}以上（投球回が空欄なら登板10以上）`;
 /* 投手の能力ランキングは投手（守備位置が投、または適性が入っている選手）だけ */
 const esIsPit = g => g.pos==="投" || !!g.apt;
 const esCnt = u => v => `${v}<small>${u}</small>`;
@@ -2356,16 +2360,27 @@ function esRenderRecords(){
   const most=G.slice().sort((a,b)=>b.rs-a.rs||a.no-b.no)[0];
   const big=W.slice().sort((a,b)=>(b.rs-b.ra)-(a.rs-a.ra)||a.no-b.no)[0];
   const has=(g,w)=>g.note.includes(w);
-  const ext=G.filter(g=>has(g,"延長")), sayo=G.filter(g=>has(g,"サヨナラ"));
+  /* 延長・サヨナラは補足の文字に加えて、イニングスコアからも判定する */
+  const num=v=>{ const n=parseInt(String(v).replace(/[^0-9]/g,""),10); return isNaN(n)?0:n; };
+  const lastIdx=r=>{ let i=-1; (r.inns||[]).forEach((v,k)=>{ if(String(v).trim()!=="") i=k; }); return i; };
+  const isExt=g=>has(g,"延長") || (ES.inn[g.no]||[]).some(r=>lastIdx(r)>=9);
+  /* サヨナラ：後攻が最終回（9回以降）の裏に、同点か負けている状態から勝ち越して終わった試合 */
+  const isSayo=g=>{ if(has(g,"サヨナラ")) return true; if(has(g,"コールド")) return false;
+    const L=ES.inn[g.no]||[], home=L.find(r=>r.side==="後攻"), away=L.find(r=>r.side==="先攻"); if(!home||!away) return false;
+    const k=lastIdx(home); if(k<8 || lastIdx(away)>k) return false;
+    const lastV=String(home.inns[k]); if(/[✕×xX]/.test(lastV)) return false;
+    const hr=home.inns.reduce((a,v)=>a+num(v),0), ar=away.inns.reduce((a,v)=>a+num(v),0);
+    return hr>ar && hr-num(lastV)<=ar; };
+  const ext=G.filter(isExt), sayo=G.filter(isSayo);
   const recs=[
     {t:"最長連勝", v:`${st.n}<small>連勝</small>`, s: st.from?`${esGameLbl(st.from)}〜${st.to.year}年度 ${st.to.taikai} ${st.to.round}${st.stop?`／止めたのは ${st.stop.opp}`:"／継続中"}`:""},
     {t:"最多得点", v:`${most.rs}<small>点</small>`, s:`vs ${most.opp}（${esGameLbl(most)}・${most.rs}-${most.ra}）`},
     big?{t:"最大点差の勝利", v:`${big.rs-big.ra}<small>点差</small>`, s:`vs ${big.opp}（${esGameLbl(big)}・${big.rs}-${big.ra}）`}:null,
     {t:"完封勝利", v:`${W.filter(g=>g.ra===0).length}<small>試合</small>`, s:"相手を0点に抑えた勝利"},
     {t:"コールド勝ち", v:`${W.filter(g=>has(g,"コールド")).length}<small>試合</small>`, s:"補足に「コールド」とある試合"},
-    {t:"延長戦", v:`${ext.filter(g=>g.wl==="勝").length}<small>勝</small>${ext.filter(g=>g.wl==="負").length}<small>敗</small>`, s:"補足に「延長」とある試合"},
-    sayo.length?{t:"サヨナラ", v:`${sayo.filter(g=>g.wl==="勝").length}<small>勝</small>${sayo.filter(g=>g.wl==="負").length}<small>敗</small>`, s:"補足に「サヨナラ」とある試合"}:null,
-    {t:"戦力Sの相手", v:`${W.filter(g=>g.power==="S").length}<small>勝</small>${G.filter(g=>g.power==="S"&&g.wl==="負").length}<small>敗</small>`, s:"格上相手の成績"}
+    ext.length?{t:"延長戦", v:`${ext.filter(g=>g.wl==="勝").length}<small>勝</small>${ext.filter(g=>g.wl==="負").length}<small>敗</small>`, s:"10回以上まで行った試合"}:null,
+    sayo.length?{t:"サヨナラ", v:`${sayo.filter(g=>g.wl==="勝").length}<small>勝</small>${sayo.filter(g=>g.wl==="負").length}<small>敗</small>`, s:"最終回の裏で決着した試合"}:null,
+    G.some(g=>g.power==="S")?{t:"戦力Sの相手", v:`${W.filter(g=>g.power==="S").length}<small>勝</small>${G.filter(g=>g.power==="S"&&g.wl==="負").length}<small>敗</small>`, s:"格上相手の成績"}:null
   ].filter(Boolean);
   el.innerHTML=`<div class="es-recs">${recs.map(r=>`
     <div class="es-rec"><div class="es-rec-t">${r.t}</div><div class="es-rec-v">${r.v}</div><div class="es-rec-s">${escHtml(r.s)}</div></div>`).join("")}</div>`;
