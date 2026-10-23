@@ -1952,14 +1952,18 @@ function esParseAbil(o){
     velo:esInt(F(o,"球速")), ctl:esInt(F(o,"コントロール")), sta:esInt(F(o,"スタミナ")),
     pitches, skillsF:F(o,"野手特能")||F(o,"特能"), skillsP:F(o,"投手特能"),
     skills:[F(o,"野手特能")||F(o,"特能"), F(o,"投手特能")].filter(Boolean).join("、"),
-    rk:Object.fromEntries(ES_RANK_SK.map(k=>[k, esHalf(F(o,k)).toUpperCase().replace(/[^A-G]/g,"")]).filter(([,v])=>v)) };
+    /* ランク特能は A〜G。それ以外の文字（例：チャンスの列に「勝負師」）は金特として「★勝負師」で持つ */
+    rk:Object.fromEntries(ES_RANK_SK.map(k=>{ const v=esHalf(F(o,k)).trim();
+      return [k, /^[A-Ga-g]$/.test(v) ? v.toUpperCase() : v ? "★"+v.replace(/^[★☆]/,"") : ""]; }).filter(([,v])=>v)) };
 }
 /* ランクで記録する特能（能力シートの列名） */
 const ES_RANK_P = ["対ピンチ","対左打者","打たれ強さ","ケガしにくさ","ノビ","クイック","回復"];
 const ES_RANK_F = ["チャンス","対左投手","キャッチャー","ケガしにくさ","盗塁","走塁","送球","回復"];
 const ES_RANK_SK = [...new Set([...ES_RANK_F, ...ES_RANK_P])];
-/* 「特能」セルの赤特（よくあるもの）。ここにない赤特は末尾に×を付ければ赤になる */
-const ES_RED_SK = /^(四球|寸前|一発|乱調|負け運|軽い球|短気|抜け球|シュート回転|スロースターター|調子極端|三振|併殺|エラー|扇風機|チャンス×|ムード×|ケガしやすい|鈍足|速球中心|変化球中心)$/;
+/* 「特能」セルの赤特（よくあるもの）。ここにない赤特は先頭に▼か末尾に×を付ければ赤になる */
+const ES_RED_SK = /^(四球|寸前|一発|乱調|負け運|軽い球|短気|抜け球|シュート回転|スロースターター|調子極端|三振|併殺|エラー|扇風機|チャンス×|ムード×|ケガしやすい|鈍足|速球中心|変化球中心|調子不安定|ムラッ気|ノミの心臓|ランナー×|送球×|守備職人×|対ストレート×|対変化球×|初球×|三振男|悪球打ち|退場癖|拙攻|打球反応×|ピンチ×|内角×|外角×|チキン)$/;
+/* ランク特能の色：A・Bは青特、C〜Eはふつう、F・Gは赤特、文字なら金特 */
+const esRankCls = r => /^★/.test(r) ? "gold" : /^[AB]$/.test(r) ? "blue" : /^[FG]$/.test(r) ? "red" : "";
 function esRankGrid(g, keys){
   const L=keys.filter(k=>g.rk && g.rk[k]); if(!L.length) return "";
   return `<div class="es-rks">${L.map(k=>`<div class="es-rkc"><span>${k}</span><b class="rkt-${g.rk[k]}">${g.rk[k]}</b></div>`).join("")}</div>`;
@@ -1995,11 +1999,12 @@ function esAbilityParts(g, prev){
   const grid=(keys, list)=>{
     /* 固定の項目は空欄でも項目名だけ出す（並びも固定）。null は空きマス */
     const cells=keys.map(k=>{ if(k==null) return `<div class="pw2-sk empty gap"></div>`; const r=(g.rk&&g.rk[k])||"";
-      return `<div class="pw2-sk"><span>${k}</span><b class="pw2-skr${r?"":" none"}">${r||"-"}</b></div>`; });
+      if(/^★/.test(r)) return `<div class="pw2-sk gold" title="${k}"><span>${escHtml(r.slice(1))}</span></div>`;
+      return `<div class="pw2-sk ${esRankCls(r)}"><span>${k}</span><b class="pw2-skr${r?"":" none"}">${r||"-"}</b></div>`; });
     esSplitList(list).forEach(x=>{
-      let cls="blue"; if(/^[★☆]/.test(x)){ x=x.slice(1); cls="gold"; } else if(ES_RED_SK.test(x)) cls="red";
+      let cls="blue"; if(/^[★☆]/.test(x)){ x=x.slice(1); cls="gold"; } else if(/^[▼▽]/.test(x)){ x=x.slice(1); cls="red"; } else if(ES_RED_SK.test(x)) cls="red";
       const m=x.match(/^(.*?)([A-GＡ-Ｇ◎◯○〇×✕])$/); let nm=x, rk="";
-      if(m){ nm=m[1]; rk=m[2]; if(cls!=="gold") cls=/[AB◎◯○〇ＡＢ]/.test(rk)?"blue":/[CDＣＤ]/.test(rk)?"":"red"; }
+      if(m && m[1]){ nm=m[1]; rk=m[2]; if(cls==="blue") cls=/[ABＡＢ◎◯○〇]/.test(rk)?"blue":/[CDEＣＤＥ]/.test(rk)?"":"red"; }
       cells.push(`<div class="pw2-sk ${cls}"><span>${escHtml(nm)}</span>${rk?`<b class="pw2-skr">${escHtml(rk)}</b>`:""}</div>`);
     });
     while(cells.length<8 || cells.length%2) cells.push(`<div class="pw2-sk empty"></div>`);
@@ -2289,7 +2294,7 @@ const ES_RK=[
   {g:"能力", k:"run",  t:"走力", get:g=>g.run||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
   {g:"能力", k:"arm",  t:"肩力", get:g=>g.arm||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
   {g:"能力", k:"fld",  t:"守備力", get:g=>g.fld||null, fmt:v=>`<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`},
-  {g:"能力", k:"gold", t:"金特の数", get:g=>esSplitList(g.skills).filter(x=>/^[★☆]/.test(x)).length||null, fmt:esCnt("個")},
+  {g:"能力", k:"gold", t:"金特の数", get:g=>(esSplitList(g.skills).filter(x=>/^[★☆]/.test(x)).length + Object.values(g.rk||{}).filter(v=>/^★/.test(v)).length)||null, fmt:esCnt("個")},
   {g:"打撃", k:"mvpB", t:"打撃MVP", get:g=>g.mvpB||null, fmt:esCnt("回"), note:"試合ごとの打撃MVPに選ばれた回数。打席の中身を得点の価値で数え、チームの得点に絡んだ割合（接戦ほど重く）を足して選ぶ"},
   {g:"打撃", k:"avg",  t:"打率", get:g=>esBatQ(g)?g.avg:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
   {g:"打撃", k:"ops",  t:"OPS", get:g=>esBatQ(g)?g.ops:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
