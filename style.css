@@ -982,3 +982,4 @@ details.kk-group[open] summary::after{content:"－";}
 .pw2-def.none{opacity:.75;}
 @media (max-width:640px){ .pw2-sk.pad4{display:none;} }
 .pw2-arrow{margin:0 6px;color:#5a7aa8;font-size:12px;}
+.es-tag.tr{background:#0f8a7e;color:#fff;}

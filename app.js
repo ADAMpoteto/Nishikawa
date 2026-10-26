@@ -1418,7 +1418,7 @@ async function loadEikan(){
   /* 卒業生 */
   ES.grads=(got.grads||[]).map(o=>{
     const name=F(o,"名前"); if(!name) return null;
-    const g={ name, year:esYear(F(o,"入学年度")), from:F(o,"出身"), scout:esMark(F(o,"スカウト")), tensei:esMark(F(o,"転生")),
+    const g={ name, year:esYear(F(o,"入学年度")), from:F(o,"出身"), scout:esMark(F(o,"スカウト")), tensei:esMark(F(o,"転生")), transfer:esMark(F(o,"転校生")),
       pos0:F(o,"入学時守備"), star0:esInt(F(o,"入学時★")), pos:F(o,"卒業時守備")||F(o,"入学時守備"), star:esInt(F(o,"卒業時★")),
       games:esInt(F(o,"試合")), avg:esNum(F(o,"打率")), hr:esInt(F(o,"本塁打")), rbi:esInt(F(o,"打点")), sb:esInt(F(o,"盗塁")),
       app:esInt(F(o,"登板")), gs:esInt(F(o,"先発")), w:esInt(F(o,"勝")), l:esInt(F(o,"敗")), sv:esInt(F(o,"セーブ")),
@@ -2079,8 +2079,9 @@ function esPlayerCard(l, g){
   const base=g?{...g}:{}; ES_ABIL_KEYS.forEach(k=>delete base[k]);
   const views = ws.map(w=>[w, esAbilityParts({...base, ...A[w]}, w==="卒業時"?A["入学時"]:null)]);
   const cur = ws[ws.length-1];
-  const seg = ws.length>1 ? `<div class="es-abseg">${ws.map(w=>`<button type="button" class="es-abseg-b${w===cur?" active":""}" data-w="${w}">${w}</button>`).join("")}</div>`
-            : (cur ? `<div class="es-abseg one"><span>${cur}</span></div>` : "");
+  const wl = w => (w==="入学時" && g && g.transfer) ? "転校時" : w;   // 転校生は「入学時」を「転校時」と表示
+  const seg = ws.length>1 ? `<div class="es-abseg">${ws.map(w=>`<button type="button" class="es-abseg-b${w===cur?" active":""}" data-w="${w}">${wl(w)}</button>`).join("")}</div>`
+            : (cur ? `<div class="es-abseg one"><span>${wl(cur)}</span></div>` : "");
   const abPane = k => { const vs=views.filter(([,o])=>o[k]); if(!vs.length) return "";
     return seg + vs.map(([w,o])=>`<div class="es-abview" data-w="${w}"${w===cur?"":" hidden"}>${o[k]}</div>`).join(""); };
 
@@ -2088,7 +2089,7 @@ function esPlayerCard(l, g){
   const pro = g ? (g.team ? `${g.team}${g.rank?` ${g.rank}位`:""}` : g.course) : "";
   const prof = g ? [["氏名", escHtml(g.name)], ["よびかた", escHtml(g.kana)], ["誕生日", escHtml(esBirthFmt(g.birth))], ["出身", escHtml(g.from)], ["性格", (()=>{ const c0=A["入学時"]&&A["入学時"].chara, c1=A["卒業時"]&&A["卒業時"].chara;
       return c0&&c1&&c0!==c1 ? `${escHtml(c0)}<small class="pw2-arrow">→</small>${escHtml(c1)}` : escHtml(c1||c0||g.chara); })()],
-    ["スカウト", [g.scout?"スカウト":"", g.tensei?"転生":""].filter(Boolean).join("・")], ["進路", escHtml(pro)]].filter(([,v])=>v) : [];
+    ["スカウト", [g.scout?"スカウト":"", g.tensei?"転生":"", g.transfer?"転校生":""].filter(Boolean).join("・")], ["進路", escHtml(pro)]].filter(([,v])=>v) : [];
 
   /* --- 上段（ゲームの選手画面の上の部分） --- */
   const num = (l && l.num) || (g ? esPwNum(g) : "");
@@ -2245,7 +2246,7 @@ function esRenderB9(){
 function esPl(cls, inner, g){
   return `<details class="es-pl"><summary class="${cls}">${inner}</summary>${esPlayerCard(null, g)}</details>`;
 }
-function esTags(g){ return (g.tensei?`<span class="es-tag t">転生</span>`:"") + (g.scout?`<span class="es-tag">スカウト</span>`:""); }
+function esTags(g){ return (g.tensei?`<span class="es-tag t">転生</span>`:"") + (g.transfer?`<span class="es-tag tr">転校生</span>`:"") + (g.scout?`<span class="es-tag">スカウト</span>`:""); }
 /* ---------- 選手名鑑：入学年度ごとに全選手（在学中も）。タップで成績と能力カード ---------- */
 function esRenderRoster(){
   const sel=document.getElementById("es-roster-sel"), box=document.getElementById("es-roster"); if(!sel||!box) return;
@@ -2283,7 +2284,8 @@ const esCnt = u => v => `${v}<small>${u}</small>`;
 /* g: 総合／打撃／投手 */
 const ES_RK=[
   {g:"総合", k:"star", t:"卒業時★", get:g=>g.star, fmt:v=>v},
-  {g:"総合", k:"star0",t:"入学時★", get:g=>g.star0, fmt:v=>v},
+  {g:"総合", k:"star0",t:"入学時★", get:g=>g.transfer?null:g.star0, fmt:v=>v, note:"新入生として入学した選手だけ（転校生は「転校生★」で別に並べる）"},
+  {g:"総合", k:"trans",t:"転校生★", get:g=>g.transfer?g.star0:null, fmt:v=>v, note:"転校してきた時点の★（卒業生シートの入学時★）"},
   {g:"総合", k:"grow", t:"★の伸び", get:g=>g.grow, fmt:v=>`+${v}`},
   {g:"総合", k:"games",t:"出場試合", get:g=>g.games||null, fmt:esCnt("試合")},
   {g:"能力", k:"velo", t:"球速", get:g=>esIsPit(g)&&g.velo||null, fmt:v=>`${v}<small>km/h</small>`},
