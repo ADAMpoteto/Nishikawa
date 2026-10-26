@@ -1158,15 +1158,30 @@ function gmGenreStats(){
   return Object.values(m).sort((a,b)=>b.n-a.n);
 }
 
+/* ジャンルのタブ：よく行くジャンル（5軒以上）はボタン、残りも含む全ジャンルは最後の「ほかのジャンル」から選ぶ。
+   どちらも1行に収めて横にスクロールするので、ジャンルが増えても縦に伸びない */
+const GM_TAB_MIN = 5;
 function gmRenderTabs(){
-  const tabs=["すべて"].concat(gmGenreStats().slice(0,5).map(s=>s.g));
-  document.getElementById("gm-tabs").innerHTML=tabs.map(t=>
-    `<button type="button" class="day-tab${t===GM.tab?" active":""}" data-t="${escHtml(t)}">${escHtml(t)}</button>`).join("");
-  document.querySelectorAll("#gm-tabs .day-tab").forEach(b=>b.onclick=()=>{
-    GM.tab=b.dataset.t;
-    document.querySelectorAll("#gm-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
-    gmRenderRank();
-  });
+  const rated=GM.list.filter(r=>r.my!=null).length;
+  const S=gmGenreStats().filter(s=>s.rn>0);
+  if(GM.tab!=="すべて" && !S.some(s=>s.g===GM.tab)) GM.tab="すべて";
+  const chips=[{g:"すべて", rn:rated}].concat(S.filter(s=>s.n>=GM_TAB_MIN));
+  const inChips=chips.some(t=>t.g===GM.tab);
+  const box=document.getElementById("gm-tabs");
+  box.classList.add("gm-tabs-scroll");
+  box.innerHTML=chips.map(t=>
+    `<button type="button" class="day-tab${t.g===GM.tab?" active":""}" data-t="${escHtml(t.g)}">${escHtml(t.g)}<small>${t.rn}</small></button>`).join("")
+    + `<label class="day-tab gm-tab-more${inChips?"":" active"}"><span>${inChips?"ほかのジャンル":escHtml(GM.tab)}</span>${inChips?"":`<small>${(S.find(s=>s.g===GM.tab)||{}).rn}</small>`}
+        <select aria-label="ジャンルを選ぶ"><option value="">ジャンルを選ぶ（全${S.length}）</option>${S.map(s=>`<option value="${escHtml(s.g)}"${s.g===GM.tab?" selected":""}>${escHtml(s.g)}（${s.rn}）</option>`).join("")}</select></label>`;
+  box.querySelectorAll("button.day-tab").forEach(b=>b.onclick=()=>gmSelectTab(b.dataset.t));
+  box.querySelector("select").onchange=e=>{ if(e.target.value) gmSelectTab(e.target.value); };
+}
+function gmSelectTab(t, scroll){
+  GM.tab=t;
+  gmRenderTabs(); gmRenderRank();
+  const box=document.getElementById("gm-tabs"), on=box.querySelector(".day-tab.active");
+  if(on) box.scrollTo({left: on.offsetLeft - box.clientWidth/2 + on.offsetWidth/2, behavior:"smooth"});
+  if(scroll) box.closest(".card-section").scrollIntoView({behavior:"smooth", block:"start"});
 }
 
 function gmShopHtml(r, rank){
@@ -1191,8 +1206,11 @@ function gmRenderRank(){
 
 function gmRenderGenre(){
   const S=gmGenreStats().slice(0,5), max=Math.max(1,...S.map(s=>s.n));
-  document.getElementById("gm-genre").innerHTML=S.map(s=>`
-    <div class="gm-genre">
+  const el=document.getElementById("gm-genre");
+  /* タップするとそのジャンルの評価ランキングへ */
+  el.onclick=e=>{ const r=e.target.closest(".gm-genre[data-g]"); if(r) gmSelectTab(r.dataset.g, true); };
+  el.innerHTML=S.map(s=>`
+    <div class="gm-genre"${s.rn?` data-g="${escHtml(s.g)}" role="button" tabindex="0"`:""}>
       <span class="gm-genre-name">${escHtml(s.g)}</span>
       <span class="gm-genre-bar"><span style="width:${s.n/max*100}%"></span></span>
       <span class="gm-genre-n">${s.n}</span>

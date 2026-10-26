@@ -983,3 +983,14 @@ details.kk-group[open] summary::after{content:"－";}
 @media (max-width:640px){ .pw2-sk.pad4{display:none;} }
 .pw2-arrow{margin:0 6px;color:#5a7aa8;font-size:12px;}
 .es-tag.tr{background:#0f8a7e;color:#fff;}
+/* グルメ：ジャンルのタブは1行で横スクロール */
+.gm-tabs-scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-left:-16px;margin-right:-16px;padding:0 16px 2px;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 16px,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,transparent 0,#000 16px,#000 calc(100% - 28px),transparent);}
+.gm-tabs-scroll::-webkit-scrollbar{display:none;}
+.gm-tabs-scroll .day-tab{flex:0 0 auto;}
+.gm-tabs-scroll .day-tab small{font-size:10px;font-weight:700;opacity:.6;}
+.gm-genre[data-g]{cursor:pointer;}
+.gm-genre[data-g]:hover .gm-genre-name{text-decoration:underline;}
+.gm-tab-more{position:relative;}
+.gm-tab-more::after{content:"";width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;margin-left:2px;}
+.gm-tab-more select{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer;font-size:16px;}
