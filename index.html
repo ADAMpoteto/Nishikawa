@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>西川記録</title>
-<link rel="stylesheet" href="style.css?v=20261027b">
+<link rel="stylesheet" href="style.css?v=20261027h">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
@@ -14,7 +14,8 @@
     <div class="nav-brand">西川記録</div>
   </div>
   <div class="nav-links">
-    <button class="nav-btn active" data-nav="torima" onclick="goto('torima')">トリマ</button>
+    <button class="nav-btn active" data-nav="home" onclick="goto('home')">ホーム</button>
+<button class="nav-btn" data-nav="torima" onclick="goto('torima')">トリマ</button>
     <button class="nav-btn" data-nav="run" onclick="goto('run')">ランニング</button>
     <button class="nav-btn" data-nav="bike" onclick="goto('bike')">自転車</button>
     <button class="nav-btn" data-nav="keiken" onclick="goto('keiken')">経県値</button>
@@ -23,8 +24,40 @@
   </div>
 </nav>
 
+<!-- ========== ホーム ========== -->
+<div id="home" class="page active">
+<div class="container">
+  <div class="hero" id="hm-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="card-section">
+    <div class="sec-title">今月</div>
+    <div class="hm-grid" id="hm-month"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">今年のまとめ</div>
+    <div id="hm-year"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">最近の記録</div>
+    <div id="hm-recent"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">○年前の今日</div>
+    <div id="hm-otd"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">これまでの記録</div>
+    <div class="hm-grid" id="hm-total"></div>
+  </div>
+</div>
+</div>
+
 <!-- ========== トリマ ========== -->
-<div id="torima" class="page active">
+<div id="torima" class="page">
 <div class="container">
   <div class="trip-selbox">
     <select id="tm-month-sel" aria-label="月を選ぶ"><option>読み込み中…</option></select>
@@ -236,6 +269,6 @@
   データはGoogleスプレッドシートから取得しています。
 </footer>
 
-<script src="app.js?v=20261027b"></script>
+<script src="app.js?v=20261027h"></script>
 </body>
 </html>

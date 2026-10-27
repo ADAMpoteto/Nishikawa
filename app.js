@@ -80,7 +80,7 @@ function bindBarChart(id, items, defIdx){
 }
 
 /* ---------- ルーティング（戻る/進む・直リンク対応） ---------- */
-const PAGES=["torima","run","bike","keiken","gourmet","eikan"];
+const PAGES=["home","torima","run","bike","keiken","gourmet","eikan"];
 function applyPage(page){
   if(!PAGES.includes(page)) page=PAGES[0];
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
@@ -2549,12 +2549,229 @@ function esRenderDraft(){
   draw();
 }
 
+/* =====================================================================
+   ホーム（各タブの記録をまとめて表示）
+   各タブの読み込みが終わるたびに描き直すので、遅いタブがあっても先に出せるものから出る
+   ===================================================================== */
+const HM = { done:{} };
+const HM_CAT = {
+  torima:{ t:"トリマ",     c:"#7a5cc8" },
+  run:   { t:"ランニング", c:"#2e8b57" },
+  bike:  { t:"自転車",     c:"#1a4db0" },
+  keiken:{ t:"経県値",     c:"#d9453f" },
+  gourmet:{t:"グルメ",     c:"#ea7a3b" },
+  eikan: { t:"栄冠ナイン", c:"#111111" }
+};
+const hmYMD = d => `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+const hmWait = k => `<div class="hm-wait">${HM.done[k]?"記録なし":"読み込み中…"}</div>`;
+/* 今日から見た「○日前」 */
+function hmAgo(d){
+  const n=Math.round((today0()-d)/864e5);
+  return n<=0?"今日" : n===1?"昨日" : n<7?`${n}日前` : n<31?`${Math.floor(n/7)}週間前` : n<365?`${Math.floor(n/30)}か月前` : `${Math.floor(n/365)}年前`;
+}
+
+/* ---- 日付のある記録を1つの一覧にする（最近の記録・○年前の今日・今年のまとめで共通） ---- */
+function hmEvents(){
+  const E=[];
+  RUN.list.forEach(r=>E.push({ k:"run", dt:r.dt, main:`${r.km.toFixed(2)}km 走った`, sub:`${fmtPace(r.pace)}/km・${fmtDur(r.sec)}` }));
+  BK.list.forEach(r=>E.push({ k:"bike", dt:r.dt, main:`${r.dest||"行き先なし"}へ`, sub:`${r.km.toFixed(1)}km` }));
+  GM.list.forEach(r=>{ if(r.dt) E.push({ k:"gourmet", dt:r.dt, main:r.name, sub:[r.pref+(r.muni||""), r.genre, r.my!=null?`評価 ${r.my.toFixed(1)}`:""].filter(Boolean).join("・") }); });
+  const seen={};
+  KK.rows.forEach(r=>{
+    const dt=pd(r.date); if(!dt || !r.lv) return;
+    const key=r.pref+r.name+hmYMD(dt); if(seen[key]) return; seen[key]=1;
+    E.push({ k:"keiken", dt, main:`${r.pref}${r.name}`, sub:KK_BY_LV[r.lv].label, lv:r.lv });
+  });
+  return E.sort((a,b)=>b.dt-a.dt);
+}
+function hmEventRow(e, showAgo){
+  const C=HM_CAT[e.k];
+  return `<button type="button" class="hm-ev" data-go="${e.k}">
+    <span class="hm-ev-d">${fmtMD(e.dt)}${showAgo?`<small>${hmAgo(e.dt)}</small>`:`<small>${e.dt.getFullYear()}</small>`}</span>
+    <span class="hm-ev-tag" style="--c:${C.c}">${C.t}</span>
+    <span class="hm-ev-main">${escHtml(e.main)}${e.sub?`<small>${escHtml(e.sub)}</small>`:""}</span>
+  </button>`;
+}
+
+/* ---- カード ---- */
+function hmCard(k, label, value, unit, sub, bar){
+  const C=HM_CAT[k];
+  return `<button type="button" class="hm-card" data-go="${k}" style="--c:${C.c}">
+    <span class="hm-card-k">${C.t}<em>${label}</em></span>
+    <span class="hm-card-v">${value}<small>${unit||""}</small></span>
+    ${bar!=null?`<span class="hm-bar"><span style="width:${Math.min(100,Math.max(0,bar))}%"></span></span>`:""}
+    ${sub?`<span class="hm-card-s">${sub}</span>`:""}
+  </button>`;
+}
+function hmEmptyCard(k, label){
+  const C=HM_CAT[k];
+  return `<div class="hm-card off" style="--c:${C.c}"><span class="hm-card-k">${C.t}<em>${label}</em></span>${hmWait(k)}</div>`;
+}
+
+/* 今月 */
+function hmMonthHtml(){
+  const t=today0(), key=ymKey(t), out=[];
+  /* トリマ */
+  const mo=TM.months.find(m=>m.isCur);
+  if(mo){
+    const rem=tmRemaining(mo), fc=mo.total+mo.avg*rem, T=TM_TARGETS.find(x=>mo.total<x);
+    const sub = T ? `次の目標 ${nf(T)}P まであと ${nf(T-mo.total)}P` + (rem?`<br>月末予測 ${nf(ceil10(fc))}P${fc>=T?"（届く）":""}`:"") : "全部の目標を達成！";
+    out.push(hmCard("torima","今月", nf(mo.total), "P", sub, T?mo.total/T*100:100));
+  } else out.push(hmEmptyCard("torima","今月"));
+  /* ランニング */
+  if(HM.done.run && RUN.list.length){
+    const R=RUN.list.filter(r=>ymKey(r.dt)===key), km=R.reduce((s,r)=>s+r.km,0), G=RUN_MONTH_GOAL;
+    const last=RUN.list[RUN.list.length-1];
+    out.push(hmCard("run","今月", km.toFixed(1), "km",
+      `${R.length}本・目標 ${G}km ${km>=G?"達成！":`まであと ${(G-km).toFixed(1)}km`}<br>最後に走ったのは${hmAgo(last.dt)}`, km/G*100));
+  } else out.push(hmEmptyCard("run","今月"));
+  /* 自転車 */
+  if(HM.done.bike && BK.list.length){
+    const R=BK.list.filter(r=>ymKey(r.dt)===key), km=R.reduce((s,r)=>s+r.km,0), last=BK.list[BK.list.length-1];
+    out.push(hmCard("bike","今月", km.toFixed(1), "km", `${R.length}回<br>最後：${escHtml(last.dest||"行き先なし")}（${hmAgo(last.dt)}）`));
+  } else out.push(hmEmptyCard("bike","今月"));
+  /* グルメ（訪問月しかないお店も今月に数える） */
+  if(HM.done.gourmet && GM.list.length){
+    const R=GM.list.filter(r=>r.ym && ymKey(r.ym)===key), rated=R.filter(r=>r.my!=null);
+    const best=rated.slice().sort((a,b)=>b.my-a.my)[0];
+    out.push(hmCard("gourmet","今月", nf(R.length), "軒",
+      best?`いちばん良かった店<br>${escHtml(best.name)}（${best.my.toFixed(1)}）`:(R.length?"":"今月はまだ投稿なし")));
+  } else out.push(hmEmptyCard("gourmet","今月"));
+  return out.join("");
+}
+
+/* これまで */
+function hmTotalHtml(){
+  const out=[];
+  /* 経県値（全国のまとめと同じ数え方） */
+  if(KK.ready && KK.rows.length){
+    let score=0, pv=0, mv=0, mt=0;
+    KK_PREFS.forEach(([pref,total])=>{
+      const {byCode,byName}=kkPrefRecords(pref, null), vals=Object.values(byCode).concat(Object.values(byName));
+      const max=vals.reduce((m,v)=>Math.max(m,v.lv),0);
+      score+=max; if(max>0) pv++; mv+=Math.min(total, vals.filter(v=>v.lv>0).length); mt+=total;
+    });
+    out.push(hmCard("keiken","全国の経県値", score, `/ ${KK_PREFS.length*KK_MAX}点`,
+      `${pv}都道府県・市区町村 ${nf(mv)} / ${nf(mt)}（${(mv/mt*100).toFixed(1)}%）`, mv/mt*100));
+  } else out.push(hmEmptyCard("keiken","全国の経県値"));
+  /* グルメ */
+  if(HM.done.gourmet && GM.list.length){
+    const rated=GM.list.filter(r=>r.my!=null), avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:null;
+    const top=gmGenreStats()[0];
+    out.push(hmCard("gourmet","投稿したお店", nf(GM.list.length), "軒",
+      `${Object.keys(GM.byPref).length}都道府県${avg!=null?`・評価の平均 ${avg.toFixed(2)}`:""}${top?`<br>一番多いジャンル：${escHtml(top.g)}（${top.n}軒）`:""}`));
+  } else out.push(hmEmptyCard("gourmet","投稿したお店"));
+  /* ランニング */
+  if(HM.done.run && RUN.list.length){
+    const km=RUN.list.reduce((s,r)=>s+r.km,0), best=RUN.list.reduce((b,r)=>(!b||r.pace<b.pace)?r:b,null);
+    out.push(hmCard("run","累計", nf(km), "km", `${RUN.list.length}本<br>自己ベスト ${fmtPace(best.pace)}/km（${hmYMD(best.dt)}）`));
+  } else out.push(hmEmptyCard("run","累計"));
+  /* 自転車 */
+  if(HM.done.bike && BK.list.length){
+    const km=BK.list.reduce((s,r)=>s+r.km,0), best=BK.list.reduce((b,r)=>(!b||r.km>b.km)?r:b,null);
+    out.push(hmCard("bike","累計", nf(km), "km", `${BK.list.length}回<br>最長 ${best.km.toFixed(1)}km（${escHtml(best.dest||"")}）`));
+  } else out.push(hmEmptyCard("bike","累計"));
+  /* トリマ */
+  if(TM.months.length){
+    const tot=TM.months.reduce((s,m)=>s+m.total,0), bestM=TM.months.reduce((b,m)=>(!b||m.total>b.total)?m:b,null);
+    out.push(hmCard("torima","累計", nf(tot), "P", `ベストの月：${bestM.label}（${nf(bestM.total)}P）`));
+  } else out.push(hmEmptyCard("torima","累計"));
+  /* 栄冠ナイン */
+  if(HM.done.eikan && ES.games.length){
+    const G=ES.games, w=G.filter(g=>g.wl==="勝").length, l=G.filter(g=>g.wl==="負").length;
+    const v=k=>ES.years.filter(y=>y.res[k]==="優勝").length;
+    const last=G.slice().sort((a,b)=>a.year-b.year||a.no-b.no)[G.length-1];
+    out.push(hmCard("eikan","通算成績", `${nf(w)}<small>勝</small>${nf(l)}`, "敗",
+      `甲子園優勝 夏${v("夏の甲子園")}回・春${v("春の甲子園")}回<br>最新：${last.year}年度 ${escHtml(last.taikai)} ${escHtml(last.round)}<br>${last.wl==="勝"?"○":last.wl==="負"?"●":"△"} ${last.rs}-${last.ra} ${escHtml(last.opp)}`));
+  } else out.push(hmEmptyCard("eikan","通算成績"));
+  return out.join("");
+}
+
+/* 今年のまとめ：去年の同じ日までと比べる */
+function hmYearHtml(E){
+  const t=today0(), y=t.getFullYear();
+  const upto=(d,yy)=>d.getFullYear()===yy && (d.getMonth()<t.getMonth() || (d.getMonth()===t.getMonth() && d.getDate()<=t.getDate()));
+  const rows=[];
+  const add=(k, label, f, unit, fmt)=>{ const a=f(y), b=f(y-1); rows.push({k,label,a,b,unit,fmt}); };
+  if(RUN.list.length) add("run","ランニング", yy=>RUN.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
+  if(BK.list.length)  add("bike","自転車", yy=>BK.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
+  if(TM.days.length)  add("torima","トリマ", yy=>TM.days.filter(d=>d.p!=null && upto(d.dt,yy)).reduce((s,d)=>s+d.p,0), "P", nf);
+  if(GM.list.length)  add("gourmet","グルメ", yy=>GM.list.filter(r=>r.dt ? upto(r.dt,yy) : (r.ym && r.ym.getFullYear()===yy && r.ym.getMonth()<=t.getMonth())).length, "軒", nf);
+  const kk=E.filter(e=>e.k==="keiken");
+  if(kk.length) add("keiken","経県値の記録", yy=>new Set(kk.filter(e=>upto(e.dt,yy)).map(e=>e.main)).size, "市区町村", nf);
+  if(!rows.length) return `<div class="hm-wait">読み込み中…</div>`;
+  return `<div class="hm-yr">${rows.map(r=>{
+    const d=r.a-r.b, cls=r.b===0?"":d>0?"up":d<0?"down":"";
+    return `<button type="button" class="hm-yr-row" data-go="${r.k}" style="--c:${HM_CAT[r.k].c}">
+      <span class="hm-yr-k">${r.label}</span>
+      <span class="hm-yr-v">${r.fmt(r.a)}<small>${r.unit}</small></span>
+      <span class="hm-yr-c ${cls}">${r.b===0?"去年の記録なし":`去年の同じ時期 ${r.fmt(r.b)}${r.unit}<b>${d>0?"+":d<0?"−":"±"}${r.fmt(Math.abs(d))}</b>`}</span>
+    </button>`; }).join("")}</div>
+    <p class="kk-note-s">${y}年1月1日〜今日まで。右は${y-1}年の同じ日までとの比較。</p>`;
+}
+
+/* ○年前の今日（ぴったりの日がなければ前後3日） */
+function hmOtdHtml(E){
+  const t=today0();
+  const md=d=>d.getMonth()*100+d.getDate();
+  let L=E.filter(e=>e.dt.getFullYear()<t.getFullYear() && md(e.dt)===md(t)), wide=false;
+  if(!L.length){
+    wide=true;
+    L=E.filter(e=>{ if(e.dt.getFullYear()>=t.getFullYear()) return false;
+      const same=new Date(t.getFullYear(), e.dt.getMonth(), e.dt.getDate()); return Math.abs(same-t)<=3*864e5; });
+  }
+  if(!L.length) return `<p class="kk-info-empty">去年までの、この時期の記録はまだありません。</p>`;
+  const byY={}; L.forEach(e=>(byY[e.dt.getFullYear()]=byY[e.dt.getFullYear()]||[]).push(e));
+  return (wide?`<p class="kk-note-s hm-otd-note">今日ぴったりの記録はないので、前後3日の記録です。</p>`:"") +
+    Object.keys(byY).sort((a,b)=>b-a).map(yy=>`<div class="hm-otd-y">${t.getFullYear()-yy}年前（${yy}年）</div>
+      <div class="hm-tl">${byY[yy].map(e=>hmEventRow(e,false)).join("")}</div>`).join("");
+}
+
+/* お知らせ：入力忘れなど */
+function hmAlertsHtml(){
+  const t=today0(), A=[];
+  const ent=TM.days.filter(d=>d.p!=null);
+  if(ent.length){
+    let miss=0; const have=new Set(ent.map(d=>d.dt.toDateString()));
+    for(let d=new Date(ent[0].dt); d<t; d.setDate(d.getDate()+1)) if(!have.has(d.toDateString())) miss++;
+    if(miss) A.push({k:"torima", m:`トリマの未入力が <strong>${miss}</strong> 日あります`});
+  }
+  if(RUN.list.length){
+    const n=Math.round((t-RUN.list[RUN.list.length-1].dt)/864e5);
+    if(n>=7) A.push({k:"run", m:`ランニングは <strong>${n}</strong> 日走っていません`});
+  }
+  return A.length ? `<div class="hm-alerts">${A.map(a=>`<button type="button" class="hm-alert" data-go="${a.k}" style="--c:${HM_CAT[a.k].c}"><span>${a.m}</span><span class="hm-alert-go">›</span></button>`).join("")}</div>` : "";
+}
+
+function hmRender(){
+  const t=today0(), E=hmEvents();
+  const todayE=E.filter(e=>sameDay(e.dt,t));
+  document.getElementById("hm-hero").innerHTML=`
+    <div class="tm-hero-label">${t.getFullYear()}年</div>
+    <div class="tm-big hm-date">${t.getMonth()+1}月${t.getDate()}日<small>（${WD[t.getDay()]}）</small></div>
+    <div class="gm-hero-sub">${todayE.length?`今日の記録 ${todayE.length}件`:"今日の記録はまだありません"}${E.length?`・最後の記録は${hmAgo(E[0].dt)}（${HM_CAT[E[0].k].t}）`:""}</div>
+    ${hmAlertsHtml()}`;
+  document.getElementById("hm-month").innerHTML=hmMonthHtml();
+  document.getElementById("hm-year").innerHTML=hmYearHtml(E);
+  document.getElementById("hm-recent").innerHTML=E.length?`<div class="hm-tl">${E.slice(0,12).map(e=>hmEventRow(e,true)).join("")}</div>`:`<div class="hm-wait">読み込み中…</div>`;
+  document.getElementById("hm-otd").innerHTML=E.length?hmOtdHtml(E):`<div class="hm-wait">読み込み中…</div>`;
+  document.getElementById("hm-total").innerHTML=hmTotalHtml();
+  document.querySelectorAll("#home [data-go]").forEach(b=>b.onclick=()=>goto(b.dataset.go));
+}
+/* 読み込みが終わったら（失敗しても）ホームを描き直す */
+function hmTrack(k, p){
+  return Promise.resolve(p).catch(e=>console.error(k, e)).finally(()=>{ HM.done[k]=true; try{ hmRender(); }catch(e){ console.error("home", e); } });
+}
+
 /* ---------- 初期化 ---------- */
-loadTorima();
-loadRun();
-loadBike();
-loadKeiken().then(loadGourmet);
-loadEikan();
+hmRender();
+hmTrack("torima", loadTorima());
+hmTrack("run", loadRun());
+hmTrack("bike", loadBike());
+const pKeiken=loadKeiken();
+hmTrack("keiken", pKeiken);
+hmTrack("gourmet", pKeiken.then(loadGourmet));
+hmTrack("eikan", loadEikan());
 (function initRouting(){
   const st=parseHash();
   history.replaceState({page:st.page}, "", location.hash||"#"+PAGES[0]);
