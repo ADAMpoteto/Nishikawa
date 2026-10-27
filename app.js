@@ -1158,29 +1158,34 @@ function gmGenreStats(){
   return Object.values(m).sort((a,b)=>b.n-a.n);
 }
 
-/* ジャンルのタブ：よく行くジャンル（5軒以上）はボタン、残りも含む全ジャンルは最後の「ほかのジャンル」から選ぶ。
-   どちらも1行に収めて横にスクロールするので、ジャンルが増えても縦に伸びない */
-const GM_TAB_MIN = 5;
+/* よく食べるジャンル TOP10。それより下のジャンルは「その他」にまとめる（タブもグラフも同じ分け方） */
+const GM_TOP = 10, GM_OTHER = "その他";
+function gmTopGenres(){
+  /* 軒数の多い順。同じ軒数なら評価の平均が高い順 */
+  return gmGenreStats().sort((a,b)=>b.n-a.n || (b.rn?b.sum/b.rn:0)-(a.rn?a.sum/a.rn:0)).slice(0,GM_TOP).map(s=>s.g);
+}
+/* そのお店がタブ t に入るか（その他＝TOP10のジャンルが1つもないお店） */
+function gmInTab(r, t, top){
+  if(t==="すべて") return true;
+  if(t===GM_OTHER) return !r.genres.some(g=>top.includes(g));
+  return r.genres.includes(t);
+}
 function gmRenderTabs(){
-  const rated=GM.list.filter(r=>r.my!=null).length;
-  const S=gmGenreStats().filter(s=>s.rn>0);
-  if(GM.tab!=="すべて" && !S.some(s=>s.g===GM.tab)) GM.tab="すべて";
-  const chips=[{g:"すべて", rn:rated}].concat(S.filter(s=>s.n>=GM_TAB_MIN));
-  const inChips=chips.some(t=>t.g===GM.tab);
+  const top=gmTopGenres(), rated=GM.list.filter(r=>r.my!=null);
+  const tabs=["すべて", ...top]; if(GM.list.some(r=>gmInTab(r, GM_OTHER, top))) tabs.push(GM_OTHER);
+  if(!tabs.includes(GM.tab)) GM.tab="すべて";
   const box=document.getElementById("gm-tabs");
   box.classList.add("gm-tabs-scroll");
-  box.innerHTML=chips.map(t=>
-    `<button type="button" class="day-tab${t.g===GM.tab?" active":""}" data-t="${escHtml(t.g)}">${escHtml(t.g)}<small>${t.rn}</small></button>`).join("")
-    + `<label class="day-tab gm-tab-more${inChips?"":" active"}"><span>${inChips?"ほかのジャンル":escHtml(GM.tab)}</span>${inChips?"":`<small>${(S.find(s=>s.g===GM.tab)||{}).rn}</small>`}
-        <select aria-label="ジャンルを選ぶ"><option value="">ジャンルを選ぶ（全${S.length}）</option>${S.map(s=>`<option value="${escHtml(s.g)}"${s.g===GM.tab?" selected":""}>${escHtml(s.g)}（${s.rn}）</option>`).join("")}</select></label>`;
-  box.querySelectorAll("button.day-tab").forEach(b=>b.onclick=()=>gmSelectTab(b.dataset.t));
-  box.querySelector("select").onchange=e=>{ if(e.target.value) gmSelectTab(e.target.value); };
+  box.innerHTML=tabs.map(t=>{ const n=rated.filter(r=>gmInTab(r, t, top)).length;
+    return `<button type="button" class="day-tab${t===GM.tab?" active":""}" data-t="${escHtml(t)}">${escHtml(t)}<small>${n}</small></button>`; }).join("");
+  box.querySelectorAll(".day-tab").forEach(b=>b.onclick=()=>gmSelectTab(b.dataset.t));
 }
 function gmSelectTab(t, scroll){
   GM.tab=t;
-  gmRenderTabs(); gmRenderRank();
-  const box=document.getElementById("gm-tabs"), on=box.querySelector(".day-tab.active");
-  if(on) box.scrollTo({left: on.offsetLeft - box.clientWidth/2 + on.offsetWidth/2, behavior:"smooth"});
+  const box=document.getElementById("gm-tabs");
+  box.querySelectorAll(".day-tab").forEach(x=>{ const on=x.dataset.t===t; x.classList.toggle("active", on);
+    if(on) box.scrollTo({left: x.offsetLeft - box.clientWidth/2 + x.offsetWidth/2, behavior:"smooth"}); });
+  gmRenderRank();
   if(scroll) box.closest(".card-section").scrollIntoView({behavior:"smooth", block:"start"});
 }
 
@@ -1199,19 +1204,24 @@ function gmShopHtml(r, rank){
 const gmScore=v=>v==null?"-":v.toFixed(1);     // 自分の評価（1桁）
 
 function gmRenderRank(){
-  const L=GM.list.filter(r=>r.my!=null && (GM.tab==="すべて" || r.genres.includes(GM.tab)))
+  const top=gmTopGenres();
+  const L=GM.list.filter(r=>r.my!=null && gmInTab(r, GM.tab, top))
     .sort((a,b)=>b.my-a.my || (b.ym||0)-(a.ym||0)).slice(0,10);
   document.getElementById("gm-rank").innerHTML = L.length ? L.map((r,i)=>gmShopHtml(r, i)).join("") : errBox("このジャンルの記録はまだありません。");
 }
 
 function gmRenderGenre(){
-  const S=gmGenreStats().slice(0,5), max=Math.max(1,...S.map(s=>s.n));
+  const top=gmTopGenres(), st=Object.fromEntries(gmGenreStats().map(x=>[x.g,x]));
+  const S=top.map(g=>({g, n:st[g].n}));
+  const others=GM.list.filter(r=>r.genres.length && gmInTab(r, GM_OTHER, top));
+  if(others.length) S.push({g:GM_OTHER, n:others.length, kinds:new Set(others.flatMap(r=>r.genres)).size});
+  const max=Math.max(1,...S.map(s=>s.n));
   const el=document.getElementById("gm-genre");
   /* タップするとそのジャンルの評価ランキングへ */
   el.onclick=e=>{ const r=e.target.closest(".gm-genre[data-g]"); if(r) gmSelectTab(r.dataset.g, true); };
-  el.innerHTML=S.map(s=>`
-    <div class="gm-genre"${s.rn?` data-g="${escHtml(s.g)}" role="button" tabindex="0"`:""}>
-      <span class="gm-genre-name">${escHtml(s.g)}</span>
+  el.innerHTML=S.map((s,i)=>`
+    <div class="gm-genre${s.g===GM_OTHER?" other":""}" data-g="${escHtml(s.g)}" role="button" tabindex="0">
+      <span class="gm-genre-name">${s.g===GM_OTHER?"":`<b class="gm-genre-rk">${i+1}</b>`}${escHtml(s.g)}${s.kinds?`<small>${s.kinds}ジャンル</small>`:""}</span>
       <span class="gm-genre-bar"><span style="width:${s.n/max*100}%"></span></span>
       <span class="gm-genre-n">${s.n}</span>
     </div>`).join("");

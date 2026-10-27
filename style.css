@@ -991,6 +991,7 @@ details.kk-group[open] summary::after{content:"－";}
 .gm-tabs-scroll .day-tab small{font-size:10px;font-weight:700;opacity:.6;}
 .gm-genre[data-g]{cursor:pointer;}
 .gm-genre[data-g]:hover .gm-genre-name{text-decoration:underline;}
-.gm-tab-more{position:relative;}
-.gm-tab-more::after{content:"";width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;margin-left:2px;}
-.gm-tab-more select{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer;font-size:16px;}
+.gm-genre-rk{display:inline-block;min-width:16px;font-size:11px;color:var(--text3,#999);margin-right:4px;font-weight:700;}
+.gm-genre-name small{font-size:10px;color:var(--text3,#999);margin-left:4px;font-weight:600;}
+.gm-genre.other .gm-genre-bar span{opacity:.45;}
+.gm-genre{grid-template-columns:128px 1fr 36px;}
