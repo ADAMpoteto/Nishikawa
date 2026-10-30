@@ -1107,3 +1107,6 @@ details.kk-group[open] summary::after{content:"－";}
 .stat-chip{border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);}
 .rk.rk-c .rk-conv{color:var(--text3);}
 .rk.rk-c .rk-conv b{font-weight:700;color:var(--text2);}
+/* 換算は画面が狭いと「ハーフ」「フル」の間で折り返す（途中で切れない） */
+.rk.rk-c .rk-conv{white-space:normal;overflow:visible;text-overflow:clip;display:flex;flex-wrap:wrap;gap:0 10px;}
+.rk.rk-c .rk-conv span{white-space:nowrap;}

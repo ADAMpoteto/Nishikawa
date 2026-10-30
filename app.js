@@ -437,8 +437,8 @@ function runRenderRanking(){
       <div class="rk-pos">${showRank?(i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:`${i+1}`):`<span class="rk-no">#${r.no}</span>`}</div>
       <div class="rk-body">
         <div class="rk-date">${r.dt.getFullYear()}/${fmtMD(r.dt)}${r===latest?'<span class="rk-new">NEW</span>':""}</div>
-        <div class="rk-sub">${subOf(r).join("・")}</div>
-        <div class="rk-sub rk-conv">ハーフ換算 <b>${fmtDur(r.pace*21.0975)}</b>・フル換算 <b>${fmtDur(r.pace*42.195)}</b></div>
+        <div class="rk-sub">${subOf(r).join("／")}</div>
+        <div class="rk-sub rk-conv"><span>ハーフ換算 <b>${fmtDur(r.pace*21.0975)}</b></span><span>フル換算 <b>${fmtDur(r.pace*42.195)}</b></span></div>
       </div>
       <div class="rk-val">${valOf(r)}</div>
     </div>`).join("");
