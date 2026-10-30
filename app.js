@@ -86,7 +86,7 @@ function bindBarChart(id, items, defIdx){
 }
 
 /* ---------- ルーティング（戻る/進む・直リンク対応） ---------- */
-const PAGES=["home","torima","run","bike","keiken","gourmet"];
+const PAGES=["home","torima","run","bike","gourmet","keiken"];
 function applyPage(page){
   if(!PAGES.includes(page)) page=PAGES[0];
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
@@ -311,8 +311,7 @@ const RUN={ list:[], sort:"pace" };
 const RUN_SORTS=[
   { key:"pace", label:"ペースが速い順", cmp:(a,b)=>a.pace-b.pace, val:r=>fmtPace(r.pace), unit:"/km" },
   { key:"dist", label:"距離が長い順",   cmp:(a,b)=>b.km-a.km,     val:r=>r.km.toFixed(2), unit:"km" },
-  { key:"time", label:"時間が長い順",   cmp:(a,b)=>b.sec-a.sec,   val:r=>fmtDur(r.sec), unit:"" },
-  { key:"date", label:"新しい順",       cmp:(a,b)=>b.dt-a.dt,     val:r=>fmtPace(r.pace), unit:"/km" }
+  { key:"time", label:"時間が長い順",   cmp:(a,b)=>b.sec-a.sec,   val:r=>fmtDur(r.sec), unit:"" }
 ];
 function parseDur(s){ const p=String(s||"").trim().split(":").map(Number); if(p.some(isNaN)||!p.length||p[0]==="") return null;
   if(p.length===3) return p[0]*3600+p[1]*60+p[2]; if(p.length===2) return p[0]*60+p[1]; return null; }
@@ -422,19 +421,16 @@ function runRenderRanking(){
   const latest=RUN.list[RUN.list.length-1];
   const medal=["🥇","🥈","🥉"];
   const showRank=s.key!=="date";
-  /* 右に並び替えの基準の値を大きく、下にそれ以外の項目を小さく */
-  const half=r=>`ハーフ換算 ${fmtDur(r.pace*21.0975)}`;
+  /* 右に並び替えの基準の値を大きく、下にそれ以外の項目とハーフ・フル換算 */
   const subOf={
-    pace:r=>[`${r.km.toFixed(2)}km`, fmtDur(r.sec), half(r)],
+    pace:r=>[`${r.km.toFixed(2)}km`, fmtDur(r.sec)],
     dist:r=>[fmtDur(r.sec), `${fmtPace(r.pace)}/km`],
-    time:r=>[`${r.km.toFixed(2)}km`, `${fmtPace(r.pace)}/km`],
-    date:r=>[`${r.km.toFixed(2)}km`, fmtDur(r.sec)]
+    time:r=>[`${r.km.toFixed(2)}km`, `${fmtPace(r.pace)}/km`]
   }[s.key];
   const valOf={
     pace:r=>`${fmtPace(r.pace)}<small>/km</small>`,
     dist:r=>`${r.km.toFixed(2)}<small>km</small>`,
-    time:r=>fmtDur(r.sec),
-    date:r=>`${fmtPace(r.pace)}<small>/km</small>`
+    time:r=>fmtDur(r.sec)
   }[s.key];
   document.getElementById("run-rank").innerHTML=L.map((r,i)=>`
     <div class="rk rk-c${showRank&&i<3?" top top"+(i+1):""}">
@@ -442,10 +438,10 @@ function runRenderRanking(){
       <div class="rk-body">
         <div class="rk-date">${r.dt.getFullYear()}/${fmtMD(r.dt)}${r===latest?'<span class="rk-new">NEW</span>':""}</div>
         <div class="rk-sub">${subOf(r).join("・")}</div>
+        <div class="rk-sub rk-conv">ハーフ換算 <b>${fmtDur(r.pace*21.0975)}</b>・フル換算 <b>${fmtDur(r.pace*42.195)}</b></div>
       </div>
       <div class="rk-val">${valOf(r)}</div>
-    </div>`).join("")
-    + (s.key==="pace" && L[0] ? `<p class="kk-note-s">1位のペースでフルマラソンを走ると ${fmtDur(L[0].pace*42.195)}</p>` : "");
+    </div>`).join("");
 }
 
 function runRenderTrend(){
@@ -1389,12 +1385,6 @@ function hmEvents(){
   RUN.list.forEach(r=>E.push({ k:"run", dt:r.dt, main:`${r.km.toFixed(2)}km 走った`, sub:`${fmtPace(r.pace)}/km・${fmtDur(r.sec)}` }));
   BK.list.forEach(r=>E.push({ k:"bike", dt:r.dt, main:`${r.dest||"行き先なし"}へ`, sub:`${r.km.toFixed(1)}km` }));
   GM.list.forEach(r=>{ if(r.dt) E.push({ k:"gourmet", dt:r.dt, main:r.name, sub:[r.pref+(r.muni||""), r.genre, r.my!=null?`評価 ${r.my.toFixed(1)}`:""].filter(Boolean).join("・") }); });
-  const seen={};
-  KK.rows.forEach(r=>{
-    const dt=pd(r.date); if(!dt || !r.lv) return;
-    const key=r.pref+r.name+hmYMD(dt); if(seen[key]) return; seen[key]=1;
-    E.push({ k:"keiken", dt, main:`${r.pref}${r.name}`, sub:KK_BY_LV[r.lv].label, lv:r.lv });
-  });
   return E.sort((a,b)=>b.dt-a.dt);
 }
 function hmEventRow(e, showAgo){
@@ -1456,17 +1446,6 @@ function hmMonthHtml(){
 /* これまで */
 function hmTotalHtml(){
   const out=[];
-  /* 経県値（全国のまとめと同じ数え方） */
-  if(KK.ready && KK.rows.length){
-    let score=0, pv=0, mv=0, mt=0;
-    KK_PREFS.forEach(([pref,total])=>{
-      const {byCode,byName}=kkPrefRecords(pref, null), vals=Object.values(byCode).concat(Object.values(byName));
-      const max=vals.reduce((m,v)=>Math.max(m,v.lv),0);
-      score+=max; if(max>0) pv++; mv+=Math.min(total, vals.filter(v=>v.lv>0).length); mt+=total;
-    });
-    out.push(hmCard("keiken","全国の経県値", score, `/ ${KK_PREFS.length*KK_MAX}点`,
-      `${pv}都道府県・市区町村 ${nf(mv)} / ${nf(mt)}（${(mv/mt*100).toFixed(1)}%）`, mv/mt*100));
-  } else out.push(hmEmptyCard("keiken","全国の経県値"));
   /* グルメ */
   if(HM.done.gourmet && GM.list.length){
     const rated=GM.list.filter(r=>r.my!=null), avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:null;
@@ -1502,8 +1481,6 @@ function hmYearHtml(E){
   if(BK.list.length)  add("bike","自転車", yy=>BK.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
   if(TM.days.length)  add("torima","トリマ", yy=>TM.days.filter(d=>d.p!=null && upto(d.dt,yy)).reduce((s,d)=>s+d.p,0), "P", nf);
   if(GM.list.length)  add("gourmet","グルメ", yy=>GM.list.filter(r=>r.dt ? upto(r.dt,yy) : (r.ym && r.ym.getFullYear()===yy && r.ym.getMonth()<=t.getMonth())).length, "軒", nf);
-  const kk=E.filter(e=>e.k==="keiken");
-  if(kk.length) add("keiken","経県値の記録", yy=>new Set(kk.filter(e=>upto(e.dt,yy)).map(e=>e.main)).size, "市区町村", nf);
   if(!rows.length) return `<div class="hm-wait">読み込み中…</div>`;
   return `<div class="hm-yr">${rows.map(r=>{
     const d=r.a-r.b, cls=r.b===0?"":d>0?"up":d<0?"down":"";
@@ -1574,7 +1551,6 @@ hmTrack("torima", loadTorima());
 hmTrack("run", loadRun());
 hmTrack("bike", loadBike());
 const pKeiken=loadKeiken();
-hmTrack("keiken", pKeiken);
 hmTrack("gourmet", pKeiken.then(loadGourmet));
 (function initRouting(){
   const st=parseHash();

@@ -1105,3 +1105,5 @@ details.kk-group[open] summary::after{content:"－";}
 .mlist-row .mlist-name{display:flex !important;flex-direction:row !important;align-items:baseline;}
 .mlist-row .mlist-y{display:inline !important;margin-right:2px;}
 .stat-chip{border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);}
+.rk.rk-c .rk-conv{color:var(--text3);}
+.rk.rk-c .rk-conv b{font-weight:700;color:var(--text2);}
