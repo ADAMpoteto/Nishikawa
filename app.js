@@ -1366,7 +1366,7 @@ function bkRenderYears(){
 const HM = { done:{} };
 const HM_CAT = {
   torima:{ t:"トリマ",     c:"#7a5cc8" },
-  run:   { t:"ラン", c:"#2e8b57" },
+  run:   { t:"ランニング", c:"#2e8b57" },
   bike:  { t:"自転車",     c:"#1a4db0" },
   keiken:{ t:"経県値",     c:"#d9453f" },
   gourmet:{t:"グルメ",     c:"#ea7a3b" }
@@ -1477,7 +1477,7 @@ function hmYearHtml(E){
   const upto=(d,yy)=>d.getFullYear()===yy && (d.getMonth()<t.getMonth() || (d.getMonth()===t.getMonth() && d.getDate()<=t.getDate()));
   const rows=[];
   const add=(k, label, f, unit, fmt)=>{ const a=f(y), b=f(y-1); rows.push({k,label,a,b,unit,fmt}); };
-  if(RUN.list.length) add("run","ラン", yy=>RUN.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
+  if(RUN.list.length) add("run","ランニング", yy=>RUN.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
   if(BK.list.length)  add("bike","自転車", yy=>BK.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
   if(TM.days.length)  add("torima","トリマ", yy=>TM.days.filter(d=>d.p!=null && upto(d.dt,yy)).reduce((s,d)=>s+d.p,0), "P", nf);
   if(GM.list.length)  add("gourmet","グルメ", yy=>GM.list.filter(r=>r.dt ? upto(r.dt,yy) : (r.ym && r.ym.getFullYear()===yy && r.ym.getMonth()<=t.getMonth())).length, "軒", nf);
