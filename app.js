@@ -420,7 +420,6 @@ function runRenderRanking(){
   const L=RUN.list.slice().sort(s.cmp).slice(0,10);
   const latest=RUN.list[RUN.list.length-1];
   const medal=["🥇","🥈","🥉"];
-  const showRank=s.key!=="date";
   /* 右に並び替えの基準の値を大きく、下にそれ以外の項目とハーフ・フル換算 */
   const subOf={
     pace:r=>[`${r.km.toFixed(2)}km`, fmtDur(r.sec)],
@@ -432,15 +431,16 @@ function runRenderRanking(){
     dist:r=>`${r.km.toFixed(2)}<small>km</small>`,
     time:r=>fmtDur(r.sec)
   }[s.key];
+  /* どのタブ・どの画面幅でも4行：①日付と基準の値 ②距離／タイムなど ③ハーフ換算 ④フル換算 */
   document.getElementById("run-rank").innerHTML=L.map((r,i)=>`
-    <div class="rk rk-c${showRank&&i<3?" top top"+(i+1):""}">
-      <div class="rk-pos">${showRank?(i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:`${i+1}`):`<span class="rk-no">#${r.no}</span>`}</div>
+    <div class="rk rk-run${i<3?" top top"+(i+1):""}">
+      <div class="rk-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:`${i+1}`}</div>
       <div class="rk-body">
-        <div class="rk-date">${r.dt.getFullYear()}/${fmtMD(r.dt)}${r===latest?'<span class="rk-new">NEW</span>':""}</div>
+        <div class="rk-l1"><span class="rk-date">${r.dt.getFullYear()}/${fmtMD(r.dt)}${r===latest?'<span class="rk-new">NEW</span>':""}</span><span class="rk-val">${valOf(r)}</span></div>
         <div class="rk-sub">${subOf(r).join("／")}</div>
-        <div class="rk-sub rk-conv"><span>ハーフ換算 <b>${fmtDur(r.pace*21.0975)}</b></span><span>フル換算 <b>${fmtDur(r.pace*42.195)}</b></span></div>
+        <div class="rk-sub rk-conv">ハーフ換算 <b>${fmtDur(r.pace*21.0975)}</b></div>
+        <div class="rk-sub rk-conv">フル換算 <b>${fmtDur(r.pace*42.195)}</b></div>
       </div>
-      <div class="rk-val">${valOf(r)}</div>
     </div>`).join("");
 }
 

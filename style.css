@@ -1110,3 +1110,17 @@ details.kk-group[open] summary::after{content:"－";}
 /* 換算は画面が狭いと「ハーフ」「フル」の間で折り返す（途中で切れない） */
 .rk.rk-c .rk-conv{white-space:normal;overflow:visible;text-overflow:clip;display:flex;flex-wrap:wrap;gap:0 10px;}
 .rk.rk-c .rk-conv span{white-space:nowrap;}
+/* 右の値の欄を固定幅にして、どのタブでも左の文字の幅（＝折り返し方）をそろえる */
+.rk.rk-c{grid-template-columns:34px minmax(0,1fr) 96px;}
+.rk.rk-c .rk-val{text-align:right;}
+/* ランニングのランキング：常に4行（値は1行目の右端） */
+.rk.rk-run{display:grid;grid-template-columns:30px minmax(0,1fr);align-items:center;gap:8px;padding:9px 4px;}
+.rk.rk-run .rk-pos{padding-top:0;font-size:14px;}
+.rk.rk-run .rk-medal{font-size:20px;}
+.rk.rk-run .rk-l1{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
+.rk.rk-run .rk-date{font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:6px;white-space:nowrap;}
+.rk.rk-run .rk-val{font-size:17px;white-space:nowrap;}
+.rk.rk-run.top1 .rk-val{font-size:19px;}
+.rk.rk-run .rk-sub{font-size:11.5px;margin-top:1px;white-space:nowrap;}
+.rk.rk-run .rk-conv{white-space:nowrap;color:var(--text3);margin-top:0;}
+.rk.rk-run .rk-conv b{font-weight:700;color:var(--text2);}
