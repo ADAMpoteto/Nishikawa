@@ -46,6 +46,12 @@ function ymKey(dt){ return `${dt.getFullYear()}-${String(dt.getMonth()+1).padSta
 function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
 function errBox(msg){ return `<div class="loading">${escHtml(msg)}</div>`; }
 
+/* 長い一覧は最初の n 件だけ見せ、残りは「それ以前」を開くと出る */
+function foldRows(rows, n, unit){
+  if(rows.length<=n+2) return rows.join("");
+  return rows.slice(0,n).join("")+`<details class="fold"><summary>それ以前の${rows.length-n}${unit||"件"}を見る</summary>${rows.slice(n).join("")}</details>`;
+}
+
 /* 縦棒グラフ（HTML/CSSで描くので画面幅に追従）。items: [{label, value, sub, cls, tip}] */
 function barChartHtml(id, items, opt){
   opt=opt||{};
@@ -285,12 +291,12 @@ function tmRenderOverall(){
   const mo=TM.months.filter(m=>m.entered>0);
   const maxT=Math.max(1,...mo.map(m=>m.total));
   const bestM=mo.reduce((b,m)=>(!b||m.total>b.total)?m:b,null);
-  document.getElementById("tm-months").innerHTML=mo.slice().reverse().map(m=>`
+  document.getElementById("tm-months").innerHTML=foldRows(mo.slice().reverse().map(m=>`
     <button type="button" class="mlist-row" data-m="${m.key}">
       <span class="mlist-name"><span class="mlist-y">${m.y}年</span><span class="mlist-m">${m.m}月</span>${m===bestM&&mo.length>1?'<em>ベスト</em>':""}</span>
       <span class="mlist-bar"><span style="width:${m.total/maxT*100}%"></span></span>
       <span class="mlist-val">${nf(m.total)} P<small>平均 ${nf(ceil10(m.avg))}／${m.entered}日</small></span>
-    </button>`).join("");
+    </button>`), 6, "か月");
   document.querySelectorAll("#tm-months .mlist-row").forEach(r=>r.onclick=()=>{
     tmShow(r.dataset.m);
     const a=document.getElementById("torima"); window.scrollTo({top:a.offsetTop, behavior:prefersReduced()?"auto":"smooth"});
@@ -416,23 +422,30 @@ function runRenderRanking(){
   const latest=RUN.list[RUN.list.length-1];
   const medal=["🥇","🥈","🥉"];
   const showRank=s.key!=="date";
-  /* 並び替えの基準になっている項目を強調する */
-  const hl={pace:"pace", dist:"dist", time:"time", date:""}[s.key];
-  const cell=(k,label,val)=>`<div class="rk-cell${k===hl?" hl":""}"><dt>${label}</dt><dd>${val}</dd></div>`;
+  /* 右に並び替えの基準の値を大きく、下にそれ以外の項目を小さく */
+  const half=r=>`ハーフ換算 ${fmtDur(r.pace*21.0975)}`;
+  const subOf={
+    pace:r=>[`${r.km.toFixed(2)}km`, fmtDur(r.sec), half(r)],
+    dist:r=>[fmtDur(r.sec), `${fmtPace(r.pace)}/km`],
+    time:r=>[`${r.km.toFixed(2)}km`, `${fmtPace(r.pace)}/km`],
+    date:r=>[`${r.km.toFixed(2)}km`, fmtDur(r.sec)]
+  }[s.key];
+  const valOf={
+    pace:r=>`${fmtPace(r.pace)}<small>/km</small>`,
+    dist:r=>`${r.km.toFixed(2)}<small>km</small>`,
+    time:r=>fmtDur(r.sec),
+    date:r=>`${fmtPace(r.pace)}<small>/km</small>`
+  }[s.key];
   document.getElementById("run-rank").innerHTML=L.map((r,i)=>`
-    <div class="rk${showRank&&i<3?" top top"+(i+1):""}">
-      <div class="rk-pos">${showRank?(i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:`${i+1}`):`#${r.no}`}</div>
+    <div class="rk rk-c${showRank&&i<3?" top top"+(i+1):""}">
+      <div class="rk-pos">${showRank?(i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:`${i+1}`):`<span class="rk-no">#${r.no}</span>`}</div>
       <div class="rk-body">
         <div class="rk-date">${r.dt.getFullYear()}/${fmtMD(r.dt)}${r===latest?'<span class="rk-new">NEW</span>':""}</div>
-        <dl class="rk-grid">
-          ${cell("dist","距離",`${r.km.toFixed(2)}<small>km</small>`)}
-          ${cell("time","タイム",fmtDur(r.sec))}
-          ${cell("pace","1kmあたり",`${fmtPace(r.pace)}<small>/km</small>`)}
-          ${cell("half","ハーフ換算",fmtDur(r.pace*21.0975))}
-          ${cell("full","フル換算",fmtDur(r.pace*42.195))}
-        </dl>
+        <div class="rk-sub">${subOf(r).join("・")}</div>
       </div>
-    </div>`).join("");
+      <div class="rk-val">${valOf(r)}</div>
+    </div>`).join("")
+    + (s.key==="pace" && L[0] ? `<p class="kk-note-s">1位のペースでフルマラソンを走ると ${fmtDur(L[0].pace*42.195)}</p>` : "");
 }
 
 function runRenderTrend(){
@@ -453,12 +466,12 @@ function runRenderMonths(){
   const mo=Object.values(mm).sort((a,b)=>a.key<b.key?1:-1);
   const max=Math.max(...mo.map(m=>m.km));
   const scale=Math.max(max, RUN_MONTH_GOAL);
-  document.getElementById("run-months").innerHTML=mo.map(m=>`
+  document.getElementById("run-months").innerHTML=foldRows(mo.map(m=>`
     <div class="mlist-row static">
       <span class="mlist-name"><span class="mlist-y">${m.y}年</span><span class="mlist-m">${m.m}月</span>${m.km>=RUN_MONTH_GOAL?`<em>${RUN_MONTH_GOAL}km達成</em>`:m.km===max&&mo.length>1?'<em>ベスト</em>':""}</span>
       <span class="mlist-bar goal"><span style="width:${m.km/scale*100}%"></span><i style="left:${RUN_MONTH_GOAL/scale*100}%"></i></span>
       <span class="mlist-val">${m.km.toFixed(2)} km<small>${m.n}本・平均 ${fmtPace(m.sec/m.km)}/km</small></span>
-    </div>`).join("");
+    </div>`), 6, "か月");
 }
 
 /* ---------- 経県値マップ（全国・市区町村単位） ----------
@@ -1328,15 +1341,13 @@ function bkRenderRank(){
   const L=BK.list.slice().sort((a,b)=>b.km-a.km).slice(0,10), latest=BK.list[BK.list.length-1];
   const medal=["🥇","🥈","🥉"];
   document.getElementById("bk-rank").innerHTML=L.map((r,i)=>`
-    <div class="rk${i<3?" top top"+(i+1):""}">
+    <div class="rk rk-c${i<3?" top top"+(i+1):""}">
       <div class="rk-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:i+1}</div>
       <div class="rk-body">
         <div class="rk-date">${escHtml(r.dest||"（行き先なし）")}${r===latest?'<span class="rk-new">NEW</span>':""}</div>
-        <dl class="rk-grid">
-          <div class="rk-cell hl"><dt>距離</dt><dd>${r.km.toFixed(2)}<small>km</small></dd></div>
-          <div class="rk-cell"><dt>日付</dt><dd>${bkDate(r.dt)}</dd></div>
-        </dl>
+        <div class="rk-sub">${bkDate(r.dt)}</div>
       </div>
+      <div class="rk-val">${r.km.toFixed(1)}<small>km</small></div>
     </div>`).join("");
 }
 
@@ -1547,7 +1558,7 @@ function hmRender(){
     ${hmAlertsHtml()}`;
   document.getElementById("hm-month").innerHTML=hmMonthHtml();
   document.getElementById("hm-year").innerHTML=hmYearHtml(E);
-  document.getElementById("hm-recent").innerHTML=E.length?`<div class="hm-tl">${E.slice(0,12).map(e=>hmEventRow(e,true)).join("")}</div>`:`<div class="hm-wait">読み込み中…</div>`;
+  document.getElementById("hm-recent").innerHTML=E.length?`<div class="hm-tl">${foldRows(E.slice(0,15).map(e=>hmEventRow(e,true)), 6)}</div>`:`<div class="hm-wait">読み込み中…</div>`;
   document.getElementById("hm-otd").innerHTML=E.length?hmOtdHtml(E):`<div class="hm-wait">読み込み中…</div>`;
   document.getElementById("hm-total").innerHTML=hmTotalHtml();
   document.querySelectorAll("#home [data-go]").forEach(b=>b.onclick=()=>goto(b.dataset.go));
