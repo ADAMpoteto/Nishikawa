@@ -1,35 +1,27 @@
 /* =====================================================================
    データソース（Googleスプレッドシートの公開CSV）
-   ・旅の記録 : 旅行日 / 旅行タイトル / 何日目 / 到着時刻 / 出発時刻 / 訪問先名 / メモ（到着時刻は任意）
-   ・ヒストリー : 日付 / 内容
+   ・トリマ     : No / 日付 / 曜日 / ポイント
+   ・ランニング : No / 日付 / 曜日 / 距離 / 時間
+   ・経県値     : 下の「経県値マップ」の項を参照
    ===================================================================== */
-const URL_SHIORI  = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo5stnTOsjo7t3y-IsCX96ryADJWD0Es6eqRRyYlS99QgWqtLGRMGMCywYysxk47Q-q3nUqW0lea9A/pub?gid=0&single=true&output=csv";
-const URL_HISTORY = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo5stnTOsjo7t3y-IsCX96ryADJWD0Es6eqRRyYlS99QgWqtLGRMGMCywYysxk47Q-q3nUqW0lea9A/pub?gid=566552673&single=true&output=csv";
-const URL_CLEANING = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo5stnTOsjo7t3y-IsCX96ryADJWD0Es6eqRRyYlS99QgWqtLGRMGMCywYysxk47Q-q3nUqW0lea9A/pub?gid=649917247&single=true&output=csv";
-const URL_KAJI = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo5stnTOsjo7t3y-IsCX96ryADJWD0Es6eqRRyYlS99QgWqtLGRMGMCywYysxk47Q-q3nUqW0lea9A/pub?gid=918542610&single=true&output=csv";
+const URL_TORIMA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=619333186&single=true&output=csv";
+const URL_RUN    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=2019901314&single=true&output=csv";
+
+/* トリマの月間目標（ここを書き換えれば目標が変わります） */
+const TM_TARGETS = [10000, 50000, 100000, 300000];
+
+/* ランニングの月間距離目標（km） */
+const RUN_MONTH_GOAL = 100;
 
 /* ---------- ユーティリティ ---------- */
 const WD=["日","月","火","水","木","金","土"];
 function pd(s){ if(!s) return null; const m=String(s).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/); return m?new Date(+m[1], +m[2]-1, +m[3]):null; }
-function addDays(dt,n){ const d=new Date(dt.getTime()); d.setDate(d.getDate()+n); return d; }
 function fmtMD(dt){ return `${dt.getMonth()+1}/${dt.getDate()}(${WD[dt.getDay()]})`; }
-function daysUntil(dt){ const t=new Date(); t.setHours(0,0,0,0); return Math.round((dt-t)/86400000); }
-/* 日付を短く：今年なら 10/27(火)、それ以外は 2025/10/27 */
-function shortDate(raw){
-  const d=pd(raw); if(!d) return escHtml(raw||"");
-  return d.getFullYear()===new Date().getFullYear() ? fmtMD(d) : `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
-}
-function agoText(raw){
-  const d=pd(raw); if(!d) return "";
-  const n=-daysUntil(d);
-  return n<=0?"今日":n===1?"昨日":`${n}日前`;
-}
-function mapLink(q){ return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q||"")}`; }
 function prefersReduced(){ return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); }
 function escHtml(s){ return String(s==null?"":s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function F(o,k){ return (o && o[k]!=null) ? String(o[k]).trim() : ""; }
 function cleanRows(rows){
-  return (rows||[]).map(o=>{ const n={}; Object.keys(o).forEach(k=>{ n[k.replace(/^\uFEFF/,"").trim()]=o[k]; }); return n; });
+  return (rows||[]).map(o=>{ const n={}; Object.keys(o).forEach(k=>{ n[k.replace(/^\uFEFF/,"").replace(/\s+/g,"").trim()]=o[k]; }); return n; });
 }
 function fetchCSV(url){
   return new Promise((resolve,reject)=>{
@@ -37,416 +29,445 @@ function fetchCSV(url){
     Papa.parse(url, { download:true, header:true, skipEmptyLines:"greedy", complete:resolve, error:reject });
   });
 }
-/* ヘッダーなしの行列としてCSVを取得（掃除当番のサマリー表のように結合セルを含む表用） */
 function fetchCSVRaw(url){
   return new Promise((resolve,reject)=>{
     if(typeof Papa==="undefined"){ reject(new Error("PapaParse 未読み込み")); return; }
     Papa.parse(url, { download:true, header:false, skipEmptyLines:false, complete:resolve, error:reject });
   });
 }
-/* 旅行の日数（何日目の最大値）と、今日が旅行中なら何日目か */
-function tripSpan(t){ return t.dayList.length ? Math.max(...t.dayList.map(d=>d.day)) : 1; }
-function tripTodayDay(t){
-  if(!t.dateObj) return 0;
-  const du=daysUntil(t.dateObj);
-  return (du<=0 && -du<tripSpan(t)) ? (-du+1) : 0;
+/* "1,234" "1234P" → 1234 / 空欄 → null（0 は 0 のまま） */
+function num(s){ const t=String(s==null?"":s).replace(/[０-９．]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/[,，\sPpｐ円km]/gi,""); if(t==="") return null; const n=Number(t); return isFinite(n)?n:null; }
+const nf=n=>Math.round(n).toLocaleString("ja-JP");
+/* トリマは10ポイント単位なので、計算で出た値は10の位に切り上げる */
+const ceil10=n=>Math.ceil(n/10)*10;
+function today0(){ const t=new Date(); t.setHours(0,0,0,0); return t; }
+function sameDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+function ymKey(dt){ return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`; }
+function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
+function errBox(msg){ return `<div class="loading">${escHtml(msg)}</div>`; }
+
+/* 長い一覧は最初の n 件だけ見せ、残りは「それ以前」を開くと出る */
+function foldRows(rows, n, unit){
+  if(rows.length<=n+2) return rows.join("");
+  return rows.slice(0,n).join("")+`<details class="fold"><summary>それ以前の${rows.length-n}${unit||"件"}を見る</summary>${rows.slice(n).join("")}</details>`;
 }
-function countdownHtml(t){
-  const dt=t.dateObj;
-  if(!dt) return "";
-  const du=daysUntil(dt), today=tripTodayDay(t);
-  if(du>0) return `<div class="hero-count"><span class="hero-count-label">出発まで</span><span class="hero-count-num">${du}<small>日</small></span></div>`;
-  if(du===0) return `<div class="hero-count live"><span class="hero-count-label">いよいよ</span><span class="hero-count-text">本日出発！</span></div>`;
-  if(today) return `<div class="hero-count live"><span class="hero-count-label">旅行中</span><span class="hero-count-num">${today}<small>日目</small></span></div>`;
-  const n=-du;   // 出発日から何日たったか
-  const [v,u]= n<31 ? [n,"日前"] : n<365 ? [Math.floor(n/30.4),"か月前"] : [Math.floor(n/365),"年前"];
-  return `<div class="hero-count past"><span class="hero-count-label">いまから</span><span class="hero-count-num">${v}<small>${u}</small></span></div>`;
+
+/* 縦棒グラフ（HTML/CSSで描くので画面幅に追従）。items: [{label, value, sub, cls, tip}] */
+function barChartHtml(id, items, opt){
+  opt=opt||{};
+  const vals=items.map(i=>i.value||0);
+  const lines=(opt.lines||[]).filter(l=>l.value>0);
+  const max=Math.max(1, ...vals, ...lines.map(l=>l.value))*1.08;
+  const cols=items.map((it,i)=>{
+    const h=it.value==null?0:Math.max(it.value>0?1.5:0, it.value/max*100);
+    return `<button type="button" class="bc-col ${it.cls||""}" data-i="${i}" aria-label="${escHtml(it.tip||"")}">
+      <span class="bc-bar" style="height:${h}%"></span>
+      <span class="bc-lbl">${it.label||""}</span>
+    </button>`;
+  }).join("");
+  const lineHtml=lines.map(l=>`<div class="bc-line ${l.cls||""}" style="bottom:${l.value/max*100}%"><span>${escHtml(l.label)}</span></div>`).join("");
+  return `<div class="bc" id="${id}">
+    <div class="bc-readout" aria-live="polite"></div>
+    <div class="bc-plot">${lineHtml}<div class="bc-cols">${cols}</div></div>
+  </div>`;
 }
-function syncNavHeight(){
-  const n=document.querySelector("nav");
-  if(n) document.documentElement.style.setProperty("--nav-h", n.offsetHeight+"px");
+function bindBarChart(id, items, defIdx){
+  const root=document.getElementById(id); if(!root) return;
+  const out=root.querySelector(".bc-readout");
+  const pick=i=>{
+    root.querySelectorAll(".bc-col").forEach(c=>c.classList.toggle("on", +c.dataset.i===i));
+    out.innerHTML=items[i] ? items[i].tip : "";
+  };
+  root.querySelectorAll(".bc-col").forEach(c=>{
+    c.addEventListener("click", ()=>pick(+c.dataset.i));
+    c.addEventListener("mouseenter", ()=>pick(+c.dataset.i));
+  });
+  if(defIdx!=null && defIdx>=0) pick(defIdx);
 }
-window.addEventListener("resize", syncNavHeight);
 
 /* ---------- ルーティング（戻る/進む・直リンク対応） ---------- */
-const NAV_OF={ shiori:"shiori", history:"history", cleaning:"cleaning", kaji:"kaji", keiken:"keiken" };
+const PAGES=["home","torima","run","bike","gourmet","keiken"];
 function applyPage(page){
+  if(!PAGES.includes(page)) page=PAGES[0];
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-  const el=document.getElementById(page); if(!el) return;
-  el.classList.add("active");
-  const nav=NAV_OF[page]||page;
-  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active", b.dataset.nav===nav));
+  document.getElementById(page).classList.add("active");
+  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active", b.dataset.nav===page));
+  /* タブ名：西川記録 | ページ名（ナビのボタンの文字を使う） */
+  const nb=document.querySelector(`.nav-btn[data-nav="${page}"]`);
+  document.title = nb ? `西川記録 | ${nb.textContent.trim()}` : "西川記録";
+  if(page==="keiken"||page==="gourmet") kkSetMode(page);
   window.scrollTo(0,0);
-  if(page==="shiori") fitTripSelect();
 }
 function goto(page, push){
   if(push===undefined) push=true;
   applyPage(page);
   if(push){ const h="#"+page; if(location.hash!==h) history.pushState({page}, "", h); }
 }
-function parseHash(){ const h=(location.hash||"").replace(/^#/,""); return {page:h||"shiori"}; }
-window.addEventListener("popstate", e=>{ const st=e.state||parseHash(); applyPage(st.page||"shiori"); });
+function parseHash(){ const h=(location.hash||"").replace(/^#/,""); return {page:h||PAGES[0]}; }
+window.addEventListener("popstate", e=>{ const st=e.state||parseHash(); applyPage(st.page); });
 window.addEventListener("scroll", ()=>{ document.querySelector("nav").classList.toggle("scrolled", window.scrollY>4); }, {passive:true});
 
-/* ---------- 旅の記録（あとで見返す用。URL・関数名は shiori のまま） ---------- */
-let TRIPS=[], currentTripKey=null, currentDay=0, currentIdx=0;
+/* =====================================================================
+   トリマ
+   ===================================================================== */
+const TM={ days:[], months:[], sel:null };
 
-function buildTrips(rows){
-  const map={};
+async function loadTorima(){
+  let rows=[];
+  try{ rows=cleanRows((await fetchCSV(URL_TORIMA)).data); }
+  catch(e){ document.getElementById("tm-hero").innerHTML=errBox("トリマのデータを読み込めませんでした。"); return; }
+
+  const byKey={};
   rows.forEach(o=>{
-    const dateRaw=F(o,"旅行日");
-    const title=F(o,"旅行タイトル");
-    if(!dateRaw && !title) return;            // 空行はスキップ
-    const key=dateRaw+"\u0001"+title;
-    if(!map[key]) map[key]={ key, dateRaw, title, dateObj:pd(dateRaw), days:{} };
-    const dnum=Number(F(o,"何日目"))||1;
-    (map[key].days[dnum]=map[key].days[dnum]||[]).push({
-      arr:F(o,"到着時刻"), dep:F(o,"出発時刻"), name:F(o,"訪問先名"), note:F(o,"メモ")
-    });
+    const dt=pd(F(o,"日付")); if(!dt) return;
+    byKey[dt.toDateString()]={ dt, p:num(F(o,"ポイント")) };
   });
-  const list=Object.values(map);
-  list.forEach(t=>{
-    t.dayList=Object.keys(t.days).map(Number).sort((a,b)=>a-b).map(n=>({ day:n, items:t.days[n] }));
-    t.stops=t.dayList.reduce((s,d)=>s+d.items.length, 0);
+  TM.days=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
+
+  /* 月ごとにまとめる（記録のある月＋今月） */
+  const t=today0(), curKey=ymKey(t), mm={};
+  TM.days.forEach(d=>{ if(d.p!=null){ const k=ymKey(d.dt); mm[k]=true; } });
+  mm[curKey]=true;
+  TM.months=Object.keys(mm).sort().map(k=>{
+    const [y,m]=k.split("-").map(Number);
+    const n=daysInMonth(y,m-1), list=[];
+    for(let i=1;i<=n;i++){
+      const dt=new Date(y,m-1,i), hit=byKey[dt.toDateString()];
+      list.push({ dt, p:hit?hit.p:null });
+    }
+    const ent=list.filter(d=>d.p!=null);
+    const total=ent.reduce((s,d)=>s+d.p,0);
+    return { key:k, y, m, label:`${y}年${m}月`, days:list, total, entered:ent.length,
+             avg:ent.length?total/ent.length:0, best:ent.reduce((b,d)=>(!b||d.p>b.p)?d:b,null),
+             isCur:k===curKey, isPast:k<curKey };
   });
-  list.sort((a,b)=>{
-    if(!a.dateObj && !b.dateObj) return 0;
-    if(!a.dateObj) return 1;
-    if(!b.dateObj) return -1;
-    return a.dateObj-b.dateObj;
-  });
-  return list;
-}
-function pickDefaultTrip(list){
-  const t=new Date(); t.setHours(0,0,0,0);
-  let idx=list.findIndex(x=>tripTodayDay(x)>0);                 // 旅行中ならそれ
-  if(idx<0) idx=list.findIndex(x=>x.dateObj && x.dateObj>=t);   // 次の予定
-  if(idx<0){                                                     // 予定がなければいちばん最近に行った旅
-    for(let i=list.length-1;i>=0;i--){ if(list[i].dateObj){ idx=i; break; } }
-  }
-  return idx<0?0:idx;
-}
-/* 年 → その年の予定、の2段階セレクトでプルダウンの肥大化を防ぐ */
-let YEAR_GROUPS={}, YEAR_ORDER=[];
-function yearLabelOf(t){ return t.dateObj ? `${t.dateObj.getFullYear()}年` : "日付未定"; }
-function buildYearGroups(list){
-  YEAR_GROUPS={}; YEAR_ORDER=[];
-  list.forEach((t,i)=>{
-    const label=yearLabelOf(t);
-    if(!YEAR_GROUPS[label]){ YEAR_GROUPS[label]=[]; YEAR_ORDER.push(label); }
-    YEAR_GROUPS[label].push(i);
-  });
-}
-function populateYearSelect(defaultLabel){
-  const ySel=document.getElementById("trip-year-sel");
-  ySel.innerHTML=YEAR_ORDER.map(label=>`<option value="${escHtml(label)}">${escHtml(label)}</option>`).join("");
-  ySel.value=defaultLabel;
-}
-function populateTripSelect(yearLabel, defaultGlobalIdx){
-  const tSel=document.getElementById("trip-sel");
-  const idxs=YEAR_GROUPS[yearLabel]||[];
-  tSel.innerHTML=idxs.map(i=>{
-    const t=TRIPS[i];
-    const md=t.dateObj?`${t.dateObj.getMonth()+1}/${t.dateObj.getDate()} `:(t.dateRaw?t.dateRaw+" ":"");
-    return `<option value="${i}">${escHtml(md+(t.title||"（無題の旅）"))}</option>`;
-  }).join("");
-  if(defaultGlobalIdx!=null) tSel.value=String(defaultGlobalIdx);
+
+  tmRenderMissing(byKey);
+  const sel=document.getElementById("tm-month-sel");
+  sel.innerHTML=TM.months.slice().reverse().map(m=>`<option value="${m.key}">${m.label}${m.isCur?"（今月）":""}</option>`).join("");
+  sel.onchange=()=>tmShow(sel.value);
+  tmShow(curKey);
+  tmRenderOverall();
 }
 
-async function loadShiori(){
-  let rows;
-  try{ const r=await fetchCSV(URL_SHIORI); rows=cleanRows(r.data); }
-  catch(e){
-    document.getElementById("sch-body").innerHTML='<div class="loading">読み込みに失敗しました。ネットワーク環境をご確認ください。</div>';
-    document.getElementById("trip-year-sel").innerHTML='<option>読み込み失敗</option>';
-    document.getElementById("trip-sel").innerHTML='<option>読み込み失敗</option>';
-    return;
+/* 未入力日のお知らせ（最初の記録日〜昨日のうち、ポイントが空欄の日） */
+function tmRenderMissing(byKey){
+  const el=document.getElementById("tm-alert");
+  const ent=TM.days.filter(d=>d.p!=null);
+  if(!ent.length){ el.hidden=true; return; }
+  const t=today0(), miss=[];
+  for(let d=new Date(ent[0].dt); d<t; d.setDate(d.getDate()+1)){
+    const hit=byKey[d.toDateString()];
+    if(!hit || hit.p==null) miss.push(new Date(d));
   }
-  TRIPS=buildTrips(rows);
-  const ySel=document.getElementById("trip-year-sel");
-  const tSel=document.getElementById("trip-sel");
-  if(!TRIPS.length){
-    ySel.innerHTML='<option>データがありません</option>';
-    tSel.innerHTML='<option>データがありません</option>';
-    document.getElementById("sh-hero").innerHTML="";
-    document.getElementById("sch-tabs").innerHTML="";
-    document.getElementById("sch-body").innerHTML='<div class="loading">スケジュールがありません</div>';
-    return;
-  }
-  buildYearGroups(TRIPS);
-  {
-    const t0=new Date(); t0.setHours(0,0,0,0);
-    const done=TRIPS.filter(t=>t.dateObj && t.dateObj<=t0);
-    const nights=done.reduce((s,t)=>s+tripSpan(t)-1,0), places=done.reduce((s,t)=>s+t.stops,0);
-    document.getElementById("trip-total").innerHTML=done.length
-      ? `これまで <strong>${done.length}</strong> 回・<strong>${nights}</strong> 泊・<strong>${places}</strong> か所` : "";
-  }
-  const di=pickDefaultTrip(TRIPS);
-  const defaultLabel=yearLabelOf(TRIPS[di]);
-  populateYearSelect(defaultLabel);
-  populateTripSelect(defaultLabel, di);
-  renderShiori(di);
-
-  ySel.onchange=()=>{
-    const label=ySel.value;
-    const firstIdx=(YEAR_GROUPS[label]||[])[0];
-    populateTripSelect(label, firstIdx);
-    if(firstIdx!=null) renderShiori(firstIdx);
-  };
-  tSel.onchange=()=>renderShiori(Number(tSel.value));
+  if(!miss.length){ el.hidden=true; return; }
+  const show=miss.slice(-5).reverse().map(fmtMD).join("、");
+  el.innerHTML=`<strong>未入力の日があります</strong>${escHtml(show)}${miss.length>5?` ほか${miss.length-5}日`:""}
+    <small>入力すると「1日あと何P」の計算が正しくなります。</small>`;
+  el.hidden=false;
 }
 
-/* 選んでいる旅行名がセレクトに収まらなければ、セレクトを1行まるごと使う */
-let _measureCtx=null;
-function fitTripSelect(){
-  const box=document.getElementById("trip-selbox"), ySel=document.getElementById("trip-year-sel"), tSel=document.getElementById("trip-sel");
-  if(!box || !tSel.options.length || !box.offsetWidth) return;
-  const opt=tSel.options[tSel.selectedIndex]; if(!opt) return;
-  _measureCtx=_measureCtx||document.createElement("canvas").getContext("2d");
-  const cs=getComputedStyle(tSel);
-  _measureCtx.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-  const need=_measureCtx.measureText(opt.text).width+parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)+4;
-  const avail=box.clientWidth-ySel.offsetWidth-parseFloat(getComputedStyle(box).columnGap||6);
-  box.classList.toggle("stack", need>avail);
-}
-window.addEventListener("resize", fitTripSelect);
-
-function renderShiori(idx){
-  const t=TRIPS[idx]; if(!t) return;
-  currentIdx=idx;
-  if(t.key!==currentTripKey){
-    currentTripKey=t.key;
-    // 旅行中ならその日のタブを最初に開く
-    const td=tripTodayDay(t);
-    const di=td ? t.dayList.findIndex(d=>d.day===td) : -1;
-    currentDay=di>=0?di:0;
+/* 先月の同じ日との比較 */
+function tmCompareHtml(mo){
+  const pd0=new Date(mo.y, mo.m-2, 1), prev=TM.months.find(m=>m.key===ymKey(pd0));
+  if(!prev || !prev.entered) return "";
+  let diff, label;
+  if(mo.isCur){
+    let lastDay=0; mo.days.forEach((d,i)=>{ if(d.p!=null) lastDay=i+1; });
+    if(!lastDay) return "";
+    const upto=Math.min(lastDay, prev.days.length);
+    const prevCum=prev.days.slice(0,upto).reduce((s,d)=>s+(d.p||0),0);
+    diff=mo.total-prevCum;
+    label=`先月の同じ日（${prev.m}/${upto}）時点より`;
+  }else{
+    diff=mo.total-prev.total; label="先月より";
   }
-  fitTripSelect();
-
-  const span=tripSpan(t);
-  let when=escHtml(t.dateRaw||"日付未定");
-  if(t.dateObj){
-    const y=t.dateObj.getFullYear();
-    when=`${y}年 ${fmtMD(t.dateObj)}`+(span>1?` 〜 ${fmtMD(addDays(t.dateObj, span-1))}`:"");
-  }
-  document.getElementById("sh-hero").innerHTML=`
-    <div class="hero-main">
-      <div class="hero-eyebrow">${when}</div>
-      <div class="hero-title">${escHtml(t.title||"（無題の旅）")}</div>
-      <div class="hero-meta">
-        <span class="hero-chip">日程 <strong>${span===1?"日帰り":`${span-1}泊${span}日`}</strong></span>
-        <span class="hero-chip">行った場所 <strong>${t.stops}</strong> か所</span>
-      </div>
-    </div>
-    ${countdownHtml(t)}`;
-
-  renderSchedule(t);
+  const cls=diff>0?"up":diff<0?"down":"";
+  return `<span class="hero-chip cmp ${cls}">${label} <strong>${diff>0?"+":diff<0?"−":"±"}${nf(Math.abs(diff))}</strong> P</span>`;
 }
 
-/* "9:30" "09:30" "9時30分" → 分。読めなければ null */
-function toMin(v){ const m=kkZen2Han(v).match(/(\d{1,2})\D+(\d{2})/); return m?(+m[1])*60+(+m[2]):null; }
-function stayText(arr, dep){
-  const a=toMin(arr||""), d=toMin(dep||"");
-  if(a==null || d==null || d<=a) return "";
-  const n=d-a, h=Math.floor(n/60), m=n%60;
-  return (h?`${h}時間`:"")+(m?`${m}分`:"");
+/* 今月の残り日数：今日の分がまだ未入力なら今日も数える */
+function tmRemaining(mo){
+  if(!mo.isCur) return 0;
+  const t=today0(), last=daysInMonth(mo.y, mo.m-1);
+  let r=last-t.getDate()+1;
+  const td=mo.days[t.getDate()-1];
+  if(td && td.p!=null) r-=1;
+  return Math.max(0,r);
 }
-function durText(n){ const h=Math.floor(n/60), m=n%60; return (h?`${h}時間`:"")+(m?`${m}分`:"")||"0分"; }
-/* 左＝着いた時刻（大きく）。到着時刻がない最初の場所だけは出発時刻に「発」を付ける。
-   名前の下に「〜出発（滞在）」、次の場所との間に「移動 ◯」 */
-function schItemHtml(s, next){
-  const time = s.arr ? `<div class="sch-time">${escHtml(s.arr)}</div>`
-             : s.dep ? `<div class="sch-time">${escHtml(s.dep)}<i>発</i></div>`
-             : `<div class="sch-time empty">－</div>`;
-  const stay=stayText(s.arr, s.dep);
-  const until=(s.arr && s.dep) ? `<div class="sch-until">〜${escHtml(s.dep)}${stay?`（${stay}）`:""}</div>` : "";
-  const note=s.note?`<div class="sch-note">${escHtml(s.note)}</div>`:"";
-  let move="";
-  if(next){
-    const a=toMin(s.dep||""), b=toMin(next.arr||next.dep||"");
-    if(a!=null && b!=null && b>a) move=`<div class="sch-move">移動 ${durText(b-a)}</div>`;
-  }
-  return `<div class="sch-item">
-      ${time}
-      <div class="sch-body">
-        <div class="sch-title">${escHtml(s.name||"（未設定）")}</div>
-        ${until}${note}${move}
-      </div>
+
+function tmShow(key){
+  const mo=TM.months.find(m=>m.key===key)||TM.months[TM.months.length-1];
+  TM.sel=mo;
+  document.getElementById("tm-month-sel").value=mo.key;
+  const rem=tmRemaining(mo);
+  const forecast=mo.isCur ? mo.total + mo.avg*rem : mo.total;
+  const t=today0();
+
+  /* HERO */
+  const progressTxt = mo.isCur
+    ? `${t.getMonth()+1}月${t.getDate()}日時点・残り <strong>${rem}</strong> 日`
+    : (mo.isPast ? "確定" : "");
+  document.getElementById("tm-hero").innerHTML=`
+    <div class="tm-hero-label">${escHtml(mo.label)}の獲得ポイント</div>
+    <div class="tm-big">${nf(mo.total)}<small>P</small></div>
+    <div class="hero-meta">
+      ${progressTxt?`<span class="hero-chip accent">${progressTxt}</span>`:""}
+      ${tmCompareHtml(mo)}
+      <span class="hero-chip">1日平均 <strong>${nf(ceil10(mo.avg))}</strong> P</span>
+      ${mo.isCur && mo.entered?`<span class="hero-chip">このペースの月末予測 <strong>${nf(ceil10(forecast))}</strong> P</span>`:""}
     </div>`;
-}
-function renderSchedule(t){
-  const days=t.dayList;
-  if(currentDay>days.length-1) currentDay=0;
-  const td=tripTodayDay(t);
-  document.getElementById("sch-tabs").innerHTML=days.map((d,i)=>{
-    const sub=t.dateObj?`<span class="tab-sub">${fmtMD(addDays(t.dateObj, d.day-1))}</span>`:"";
-    const today=td===d.day?`<span class="tab-today">今日</span>`:"";
-    return `<button class="day-tab${i===currentDay?" active":""}" onclick="selectDay(${i})" aria-pressed="${i===currentDay}">${d.day}日目${sub}${today}</button>`;
-  }).join("");
-  const d=days[currentDay];
-  document.getElementById("sch-sub").textContent=d?`${d.items.length}か所`:"";
-  document.getElementById("sch-body").innerHTML=d?`<div class="sch-list">${d.items.map((s,i)=>schItemHtml(s, d.items[i+1])).join("")}</div>`:'<div class="loading">予定がありません</div>';
-}
-function selectDay(i){
-  currentDay=i;
-  const t=TRIPS.find(x=>x.key===currentTripKey);
-  if(t) renderSchedule(t);
-  const a=document.getElementById("sch-anchor");
-  // 日程を下まで読んでいたときだけ、その日の先頭まで戻す（上にいるときは画面を動かさない）
-  if(a){
-    const nav=document.querySelector("nav"), navH=nav?nav.offsetHeight:0;
-    const top=a.getBoundingClientRect().top;
-    if(top<navH) window.scrollTo({top:Math.max(0, window.scrollY+top-navH-8), behavior:prefersReduced()?"auto":"smooth"});
-  }
-}
 
-/* ---------- ヒストリー ---------- */
-async function loadHistory(){
-  let rows;
-  try{ const r=await fetchCSV(URL_HISTORY); rows=cleanRows(r.data); }
-  catch(e){
-    document.getElementById("hist-list").innerHTML='<div class="loading">読み込みに失敗しました。ネットワーク環境をご確認ください。</div>';
-    return;
-  }
-  const items=rows.map(o=>({ dateRaw:F(o,"日付"), dateObj:pd(F(o,"日付")), content:F(o,"内容") }))
-                  .filter(x=>x.dateRaw || x.content);
-
-  // 古い順（昇順）にソート
-  items.sort((a,b)=>{
-    if(!a.dateObj && !b.dateObj) return 0;
-    if(!a.dateObj) return 1;
-    if(!b.dateObj) return -1;
-    return a.dateObj-b.dateObj;                 // 古い順
-  });
-
-  const body=document.getElementById("hist-list");
-  if(!items.length){ body.innerHTML='<div class="loading">まだ記録がありません</div>'; return; }
-
-  // 年ごとに見出しを付けて区切る
-  const groups=[];
-  items.forEach(it=>{
-    const y=it.dateObj?`${it.dateObj.getFullYear()}年`:"日付不明";
-    if(!groups.length || groups[groups.length-1].y!==y) groups.push({y, list:[]});
-    groups[groups.length-1].list.push(it);
-  });
-  body.innerHTML=groups.map(g=>`
-    <div class="hist-year">${escHtml(g.y)}<span>${g.list.length}件</span></div>
-    <div class="hist-timeline">${g.list.map(it=>`
-      <div class="hist-item">
-        <div class="hist-date">${escHtml(it.dateRaw||"")}</div>
-        <div class="hist-content">${escHtml(it.content||"")}</div>
-      </div>`).join("")}</div>`).join("");
-}
-
-/* ---------- 掃除当番（サマリー部分のみ） ---------- */
-async function loadCleaning(){
-  const box=document.getElementById("clean-grid");
-  let rows;
-  try{ const r=await fetchCSVRaw(URL_CLEANING); rows=r.data; }
-  catch(e){
-    box.innerHTML='<div class="loading">読み込みに失敗しました。ネットワーク環境をご確認ください。</div>';
-    return;
-  }
-  // サマリー表の行構成: 0=場所 1=担当者 2=頻度 3=実施回数 4=実施忘れ回数 5=最終実施日
-  // 各行とも列0〜3はラベル用（結合セル）で、実データは列4以降に場所ごとに並ぶ
-  const DATA_START_COL=4;
-  const get=(r,c)=>(rows[r] && rows[r][c]!=null) ? String(rows[r][c]).trim() : "";
-
-  const cols=[];
-  for(let c=DATA_START_COL; get(0,c); c++) cols.push(c);
-
-  if(!cols.length){ box.innerHTML='<div class="loading">データがありません</div>'; return; }
-
-  const items=cols.map(c=>({
-    name:get(0,c), person:get(1,c), freq:get(2,c),
-    done:get(3,c), missed:get(4,c), last:get(5,c)
-  }));
-
-  box.innerHTML=items.map(it=>{
-    const doneN=Number(it.done)||0, missedN=Number(it.missed)||0;
-    const last=it.last
-      ? `最終 <b>${shortDate(it.last)}</b>${agoText(it.last)?`（${agoText(it.last)}）`:""}`
-      : `<span class="none-red">未実施</span>`;
-    return `
-    <div class="duty">
-      <div class="duty-row">
-        <div class="duty-name"><span>${escHtml(it.name)}</span><span class="duty-who${it.person?"":" none"}">${escHtml(it.person||"担当なし")}</span></div>
-        <span class="duty-freq">${escHtml(it.freq||"")}</span>
-      </div>
-      <div class="duty-row duty-sub">
-        <span>${last}</span>
-        <span class="duty-nums">
-          <span class="${doneN===0?"zero":""}">実施<b>${doneN}</b></span>
-          <span class="${missedN>0?"miss":"zero"}">忘れ<b>${missedN}</b></span>
-        </span>
-      </div>
+  /* 目標カード */
+  const nextIdx=TM_TARGETS.findIndex(T=>mo.total<T);
+  document.getElementById("tm-targets").innerHTML=TM_TARGETS.map((T,i)=>{
+    const pct=Math.min(100, mo.total/T*100);
+    let cls="", main="", sub="";
+    if(mo.total>=T){
+      /* 達成した日を探す */
+      let c=0, hitDay=null; for(const d of mo.days){ if(d.p!=null){ c+=d.p; if(c>=T){ hitDay=d.dt; break; } } }
+      cls="done"; main="達成！"; sub=hitDay?`${fmtMD(hitDay)} に到達`:"";
+    }else if(mo.isCur && rem>0){
+      const left=T-mo.total, per=ceil10(left/rem);
+      main=`1日 <strong>${nf(per)}</strong> P`;
+      if(forecast>=T){ cls="ok"; sub=`あと ${nf(left)} P／今のペースなら届く`; }
+      else{
+        const up=ceil10(per-mo.avg);
+        cls= per>mo.avg*3 ? "far" : "push";
+        sub=`あと ${nf(left)} P／平均より +${nf(up)} P/日`;
+      }
+    }else{
+      cls="miss"; main="未達"; sub=`${pct.toFixed(1)}%（あと ${nf(T-mo.total)} P だった）`;
+    }
+    return `<div class="tgt ${cls}${i===nextIdx&&mo.isCur?" next":""}">
+      <div class="tgt-head"><span class="tgt-goal">${nf(T)} P</span>${i===nextIdx&&mo.isCur?'<span class="tgt-tag">次の目標</span>':""}</div>
+      <div class="tgt-main">${main}</div>
+      <div class="tgt-bar"><span style="width:${pct}%"></span></div>
+      <div class="tgt-sub">${sub}</div>
     </div>`;
   }).join("");
+  document.getElementById("tm-target-note").textContent = mo.isCur
+    ? "「1日◯P」は（目標 − 今月の獲得P）÷ 残り日数。毎日入力するたびに自動で変わります。"
+    : "過去の月は結果のみ表示しています。";
+
+  /* 日別グラフ */
+  const items=mo.days.map(d=>{
+    const future=d.dt>t, wk=d.dt.getDay();
+    const lbl=(d.dt.getDate()===1||d.dt.getDate()%5===0)?String(d.dt.getDate()):"";
+    return { value:d.p, label:lbl,
+      cls:[d.p==null?(future?"future":"blank"):"", wk===0?"sun":wk===6?"sat":"", sameDay(d.dt,t)?"today":""].join(" "),
+      tip:`${fmtMD(d.dt)}　${d.p==null?(future?"これから":"未入力"):`<strong>${nf(d.p)}</strong> P`}` };
+  });
+  const lines=[{value:mo.avg, label:`平均 ${nf(ceil10(mo.avg))}`, cls:"avg"}];
+  if(mo.isCur && rem>0 && nextIdx>=0){
+    const per=ceil10((TM_TARGETS[nextIdx]-mo.total)/rem);
+    const maxDay=Math.max(0,...mo.days.map(d=>d.p||0));
+    if(per<=Math.max(maxDay,1)*1.6) lines.push({value:per, label:`${nf(TM_TARGETS[nextIdx])}P に必要 ${nf(per)}`, cls:"need"});
+  }
+  let lastIdx=-1; mo.days.forEach((d,i)=>{ if(d.p!=null) lastIdx=i; });
+  document.getElementById("tm-daily").innerHTML=barChartHtml("tm-chart", items, {lines})
+    + `<div class="stats-row tm-mini">
+        <div class="stat-chip">入力日数 <strong>${mo.entered}</strong> 日</div>
+        ${mo.best?`<div class="stat-chip">この月の最高 <strong>${nf(mo.best.p)}</strong> P（${fmtMD(mo.best.dt)}）</div>`:""}
+      </div>
+      <details class="tm-table"><summary>日別の一覧を開く</summary>
+        <table><thead><tr><th>日付</th><th>ポイント</th><th>累計</th></tr></thead><tbody>${
+          (()=>{ let c=0; return mo.days.filter(d=>d.p!=null).map(d=>{ c+=d.p; return `<tr><td>${fmtMD(d.dt)}</td><td>${nf(d.p)}</td><td>${nf(c)}</td></tr>`; }).join(""); })()
+        }</tbody></table>
+      </details>`;
+  bindBarChart("tm-chart", items, lastIdx);
+  document.querySelectorAll(".mlist-row[data-m]").forEach(r=>r.classList.toggle("on", r.dataset.m===mo.key));
 }
 
-/* ---------- 家事当番（買い物・料理・ゴミ出し・洗濯・家計簿） ---------- */
-async function loadKaji(){
-  const box=document.getElementById("kaji-grid");
-  let rows;
-  try{ const r=await fetchCSV(URL_KAJI); rows=cleanRows(r.data); }
-  catch(e){
-    box.innerHTML='<div class="loading">読み込みに失敗しました。ネットワーク環境をご確認ください。</div>';
-    return;
-  }
-  if(!rows.length){ box.innerHTML='<div class="loading">データがありません</div>'; return; }
-
-  // No・日付以外の列＝家事の種類。列の並び順はCSVの見出し順をそのまま使う
-  const chores=Object.keys(rows[0]).filter(k=>k!=="No" && k!=="日付");
-  // "両方"のように複数人を表す語は、集計時に該当する全員へカウントする
-  const MULTI_WORDS=["両方","全員"];
-  const people=new Set();
-  rows.forEach(r=>chores.forEach(c=>{
-    const v=F(r,c);
-    if(v && !MULTI_WORDS.includes(v)) people.add(v);
-  }));
-
-  const cards=chores.map(chore=>{
-    const personCount={}, personLast={};
-    people.forEach(p=>{ personCount[p]=0; personLast[p]=""; });
-    rows.forEach(r=>{
-      const v=F(r,chore);
-      if(!v) return;
-      const dateRaw=F(r,"日付");
-      const d=pd(dateRaw);
-      const targets = MULTI_WORDS.includes(v) ? Array.from(people) : [v];
-      targets.forEach(p=>{
-        personCount[p]=(personCount[p]||0)+1;
-        const pd2=pd(personLast[p]);
-        if(d && (!pd2 || d>pd2)) personLast[p]=dateRaw;
-      });
-    });
-    return { chore, personCount, personLast };
-  });
-
-  // 人ごとの色はどのカードでも同じにする（並び順も固定）
-  const PERSON_COLORS=["#111111","#a3a3a8","#5f5f64","#d0d0d3"];
-  const order=Array.from(people);
-  const colorOf=p=>PERSON_COLORS[order.indexOf(p)%PERSON_COLORS.length];
-
-  box.innerHTML=cards.map(c=>{
-    const names=order.filter(p=>p in c.personCount);
-    const total=names.reduce((s,p)=>s+c.personCount[p],0);
-    const bar=total
-      ? names.filter(p=>c.personCount[p]>0).map(p=>`<span style="flex:${c.personCount[p]};background:${colorOf(p)}"></span>`).join("")
-      : "";
-    const legend=names.map(p=>{
-      const cnt=c.personCount[p], last=c.personLast[p];
-      return `<span><i style="background:${colorOf(p)}"></i>${escHtml(p)} <b>${cnt}</b>${last?`<em>${shortDate(last)}</em>`:`<em class="none-red">未実施</em>`}</span>`;
-    }).join("");
-    return `<div class="duty">
-      <div class="duty-row">
-        <div class="duty-name"><span>${escHtml(c.chore)}</span></div>
-        <span class="duty-total">計 ${total} 回</span>
-      </div>
-      <div class="split" role="img" aria-label="${escHtml(names.map(p=>`${p} ${c.personCount[p]}回`).join("、"))}">${bar}</div>
-      <div class="split-legend">${legend}</div>
+function tmRenderOverall(){
+  const ent=TM.days.filter(d=>d.p!=null);
+  const total=ent.reduce((s,d)=>s+d.p,0);
+  document.getElementById("tm-overall").innerHTML=`
+    <div class="stats-row">
+      <div class="stat-chip">累計 <strong>${nf(total)}</strong> P</div>
+      <div class="stat-chip">記録 <strong>${ent.length}</strong> 日</div>
     </div>`;
-  }).join("");
+
+  const mo=TM.months.filter(m=>m.entered>0);
+  const maxT=Math.max(1,...mo.map(m=>m.total));
+  const bestM=mo.reduce((b,m)=>(!b||m.total>b.total)?m:b,null);
+  document.getElementById("tm-months").innerHTML=foldRows(mo.slice().reverse().map(m=>`
+    <button type="button" class="mlist-row" data-m="${m.key}">
+      <span class="mlist-name"><span class="mlist-y">${m.y}年</span><span class="mlist-m">${m.m}月</span>${m===bestM&&mo.length>1?'<em>ベスト</em>':""}</span>
+      <span class="mlist-bar"><span style="width:${m.total/maxT*100}%"></span></span>
+      <span class="mlist-val">${nf(m.total)} P<small>平均 ${nf(ceil10(m.avg))}／${m.entered}日</small></span>
+    </button>`), 6, "か月");
+  document.querySelectorAll("#tm-months .mlist-row").forEach(r=>r.onclick=()=>{
+    tmShow(r.dataset.m);
+    const a=document.getElementById("torima"); window.scrollTo({top:a.offsetTop, behavior:prefersReduced()?"auto":"smooth"});
+  });
+  document.querySelectorAll(".mlist-row[data-m]").forEach(r=>r.classList.toggle("on", TM.sel && r.dataset.m===TM.sel.key));
+}
+
+/* =====================================================================
+   ランニング
+   ===================================================================== */
+const RUN={ list:[], sort:"pace" };
+const RUN_SORTS=[
+  { key:"pace", label:"ペースが速い順", cmp:(a,b)=>a.pace-b.pace, val:r=>fmtPace(r.pace), unit:"/km" },
+  { key:"dist", label:"距離が長い順",   cmp:(a,b)=>b.km-a.km,     val:r=>r.km.toFixed(2), unit:"km" },
+  { key:"time", label:"時間が長い順",   cmp:(a,b)=>b.sec-a.sec,   val:r=>fmtDur(r.sec), unit:"" }
+];
+function parseDur(s){ const p=String(s||"").trim().split(":").map(Number); if(p.some(isNaN)||!p.length||p[0]==="") return null;
+  if(p.length===3) return p[0]*3600+p[1]*60+p[2]; if(p.length===2) return p[0]*60+p[1]; return null; }
+function fmtDur(sec){ sec=Math.round(sec); const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=sec%60;
+  return h?`${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${m}:${String(s).padStart(2,"0")}`; }
+function fmtPace(sec){ sec=Math.round(sec); return `${Math.floor(sec/60)}'${String(sec%60).padStart(2,"0")}"`; }
+
+async function loadRun(){
+  let rows=[];
+  try{ rows=cleanRows((await fetchCSV(URL_RUN)).data); }
+  catch(e){ document.getElementById("run-hero").innerHTML=errBox("ランニングのデータを読み込めませんでした。"); return; }
+  RUN.list=rows.map(o=>{
+    const dt=pd(F(o,"日付")), km=num(F(o,"距離")), sec=parseDur(F(o,"時間"));
+    if(!dt||!km||!sec) return null;
+    return { dt, km, sec, pace:sec/km };
+  }).filter(Boolean).sort((a,b)=>a.dt-b.dt);
+  RUN.list.forEach((r,i)=>r.no=i+1);
+  if(!RUN.list.length){ document.getElementById("run-hero").innerHTML=errBox("まだ記録がありません。"); return; }
+  runRenderHero();
+  runRenderTabs();
+  runRenderRanking();
+  runRenderTrend();
+  runRenderMonths();
+  runRenderGoal();
+}
+
+/* 今月の距離目標 */
+function runRenderGoal(){
+  const t=today0(), key=ymKey(t), G=RUN_MONTH_GOAL;
+  const runs=RUN.list.filter(r=>ymKey(r.dt)===key);
+  const km=runs.reduce((s,r)=>s+r.km,0);
+  const last=daysInMonth(t.getFullYear(), t.getMonth());
+  let rem=last-t.getDate()+1; if(runs.some(r=>sameDay(r.dt,t))) rem--;
+  rem=Math.max(0,rem);
+  const left=Math.max(0,G-km), pct=Math.min(100,km/G*100);
+  let main, sub, cls="";
+  if(km>=G){ cls="done"; main="達成！"; sub=`今月 ${km.toFixed(2)} km`; }
+  else if(rem>0){
+    const per=left/rem;
+    main=`あと <strong>${left.toFixed(2)}</strong> km`;
+    sub=`残り ${rem} 日 → 1日 ${per.toFixed(2)} km／5kmランなら あと ${Math.ceil(left/5)} 回`;
+    cls = per<=2 ? "ok" : per<=5 ? "push" : "far";
+  }else{ cls="miss"; main="未達"; sub=`今月 ${km.toFixed(2)} km`; }
+  document.getElementById("run-goal").innerHTML=`
+    <div class="tgt goal-wide ${cls}">
+      <div class="tgt-head"><span class="tgt-goal">${t.getMonth()+1}月の目標 ${G} km</span><span class="tgt-goal">${km.toFixed(2)} km・${runs.length}本</span></div>
+      <div class="tgt-main">${main}</div>
+      <div class="tgt-bar"><span style="width:${pct}%"></span></div>
+      <div class="tgt-sub">${sub}</div>
+    </div>`;
+}
+
+function runRenderHero(){
+  const L=RUN.list, n=L.length;
+  const km=L.reduce((s,r)=>s+r.km,0);
+  const latest=L[n-1];
+  const byPace=L.slice().sort((a,b)=>a.pace-b.pace);
+  const rank=byPace.indexOf(latest)+1;
+  /* 最新ランが自己ベストか、何位か */
+  let headline;
+  if(n===1) headline="記念すべき1本目！";
+  else if(rank===1) headline=`最新ラン（${fmtMD(latest.dt)}）で自己ベスト更新！`;
+  else headline=`最新ラン（${fmtMD(latest.dt)}）はペース <strong>${rank}位</strong> / ${n}本`;
+
+  /* 前回との比較・自己ベストまで（秒/km） */
+  let cmpHtml="";
+  if(n>1){
+    const prev=L[n-2], d=Math.round(latest.pace-prev.pace);
+    const prevTxt = d<0 ? `前回（${fmtMD(prev.dt)}）より <strong>${-d}秒/km</strong> 速い`
+                  : d>0 ? `前回（${fmtMD(prev.dt)}）より <strong>${d}秒/km</strong> 遅い`
+                  : `前回（${fmtMD(prev.dt)}）と同じペース`;
+    let bestTxt;
+    if(rank===1){
+      const oldBest=Math.min(...L.slice(0,n-1).map(r=>r.pace));
+      bestTxt=`これまでのベストを <strong>${Math.round(oldBest-latest.pace)}秒/km</strong> 更新`;
+    }else{
+      const gap=Math.round(latest.pace-byPace[0].pace);
+      bestTxt= gap<=0 ? `ベスト（${fmtPace(byPace[0].pace)}）と同タイム` : `ベスト（${fmtPace(byPace[0].pace)}）まで あと <strong>${gap}秒/km</strong>`;
+    }
+    cmpHtml=`<div class="run-cmp"><span class="${d<0?"up":d>0?"down":""}">${prevTxt}</span><span>${bestTxt}</span></div>`;
+  }
+
+  document.getElementById("run-hero").innerHTML=`
+    <div class="tm-hero-label">これまでの累計距離</div>
+    <div class="tm-big">${km.toFixed(2)}<small>km</small></div>
+    <div class="run-headline${rank===1&&n>1?" pb":""}">${headline}</div>
+    ${cmpHtml}
+    <div class="hero-meta">
+      <span class="hero-chip">${n} 本</span>
+      <span class="hero-chip accent">ベスト <strong>${fmtPace(byPace[0].pace)}</strong>/km</span>
+    </div>`;
+}
+
+function runRenderTabs(){
+  document.getElementById("run-tabs").innerHTML=RUN_SORTS.map(s=>
+    `<button type="button" class="day-tab${s.key===RUN.sort?" active":""}" data-s="${s.key}">${s.label}</button>`).join("");
+  document.querySelectorAll("#run-tabs .day-tab").forEach(b=>b.onclick=()=>{
+    RUN.sort=b.dataset.s;
+    document.querySelectorAll("#run-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
+    runRenderRanking();
+  });
+}
+
+function runRenderRanking(){
+  const s=RUN_SORTS.find(x=>x.key===RUN.sort);
+  const L=RUN.list.slice().sort(s.cmp).slice(0,10);
+  const latest=RUN.list[RUN.list.length-1];
+  const medal=["🥇","🥈","🥉"];
+  /* 右に並び替えの基準の値を大きく、下にそれ以外の項目とハーフ・フル換算 */
+  const subOf={
+    pace:r=>[`${r.km.toFixed(2)}km`, fmtDur(r.sec)],
+    dist:r=>[fmtDur(r.sec), `${fmtPace(r.pace)}/km`],
+    time:r=>[`${r.km.toFixed(2)}km`, `${fmtPace(r.pace)}/km`]
+  }[s.key];
+  const valOf={
+    pace:r=>`${fmtPace(r.pace)}<small>/km</small>`,
+    dist:r=>`${r.km.toFixed(2)}<small>km</small>`,
+    time:r=>fmtDur(r.sec)
+  }[s.key];
+  /* どのタブ・どの画面幅でも4行：①日付と基準の値 ②距離／タイムなど ③ハーフ換算 ④フル換算 */
+  document.getElementById("run-rank").innerHTML=L.map((r,i)=>`
+    <div class="rk rk-run${i<3?" top top"+(i+1):""}">
+      <div class="rk-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:`${i+1}`}</div>
+      <div class="rk-body">
+        <div class="rk-l1"><span class="rk-date">${r.dt.getFullYear()}/${fmtMD(r.dt)}${r===latest?'<span class="rk-new">NEW</span>':""}</span><span class="rk-val">${valOf(r)}</span></div>
+        <div class="rk-sub">${subOf(r).join("／")}</div>
+        <div class="rk-sub rk-conv">ハーフ換算 <b>${fmtDur(r.pace*21.0975)}</b></div>
+        <div class="rk-sub rk-conv">フル換算 <b>${fmtDur(r.pace*42.195)}</b></div>
+      </div>
+    </div>`).join("");
+}
+
+function runRenderTrend(){
+  const L=RUN.list.slice(-10);
+  const sp=L.map(r=>3600/r.pace); // km/h
+  const lo=Math.min(...sp)*0.85;
+  const best=RUN.list.reduce((b,r)=>(!b||r.pace<b.pace)?r:b,null);
+  const items=L.map((r,i)=>({ value:sp[i]-lo, label:(i===0||i===L.length-1||L.length<=12)?`${r.dt.getMonth()+1}/${r.dt.getDate()}`:"",
+    cls:r===best?"best":"", tip:`#${r.no}　${fmtMD(r.dt)}　<strong>${fmtPace(r.pace)}</strong>/km（${r.km.toFixed(2)}km）${r===best?"　自己ベスト":""}` }));
+  document.getElementById("run-trend").innerHTML=barChartHtml("run-chart", items)
+    + `<p class="kk-note-s">棒が高いほど速い。タップでその日の記録。</p>`;
+  bindBarChart("run-chart", items, L.length-1);
+}
+
+function runRenderMonths(){
+  const mm={};
+  RUN.list.forEach(r=>{ const k=ymKey(r.dt); (mm[k]=mm[k]||{key:k, y:r.dt.getFullYear(), m:r.dt.getMonth()+1, km:0, n:0, sec:0}); mm[k].km+=r.km; mm[k].n++; mm[k].sec+=r.sec; });
+  const mo=Object.values(mm).sort((a,b)=>a.key<b.key?1:-1);
+  const max=Math.max(...mo.map(m=>m.km));
+  const scale=Math.max(max, RUN_MONTH_GOAL);
+  document.getElementById("run-months").innerHTML=foldRows(mo.map(m=>`
+    <div class="mlist-row static">
+      <span class="mlist-name"><span class="mlist-y">${m.y}年</span><span class="mlist-m">${m.m}月</span>${m.km>=RUN_MONTH_GOAL?`<em>${RUN_MONTH_GOAL}km達成</em>`:m.km===max&&mo.length>1?'<em>ベスト</em>':""}</span>
+      <span class="mlist-bar goal"><span style="width:${m.km/scale*100}%"></span><i style="left:${RUN_MONTH_GOAL/scale*100}%"></i></span>
+      <span class="mlist-val">${m.km.toFixed(2)} km<small>${m.n}本・平均 ${fmtPace(m.sec/m.km)}/km</small></span>
+    </div>`), 6, "か月");
 }
 
 /* ---------- 経県値マップ（全国・市区町村単位） ----------
@@ -456,7 +477,7 @@ async function loadKaji(){
    ・政令市の行（例: 名古屋市 231002）は、個別の記入がない配下の全区にまとめて反映
    地図データ : GEO_DIR に「{都道府県名}.geojson」「{都道府県名}_border.geojson」（国土数値情報 N03）
    ------------------------------------------------------------------------ */
-const URL_KEIKEN = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRo5stnTOsjo7t3y-IsCX96ryADJWD0Es6eqRRyYlS99QgWqtLGRMGMCywYysxk47Q-q3nUqW0lea9A/pub?gid=612468389&single=true&output=csv";        // ← 経県値シートの公開CSV URL（他のURLと同じ「ウェブに公開→CSV」で取得）
+const URL_KEIKEN = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=889344232&single=true&output=csv";        // ← 経県値シートの公開CSV URL（他のURLと同じ「ウェブに公開→CSV」で取得）
 const GEO_DIR = "geojson/";           // GeoJSON の置き場所。index.html と同じフォルダなら ""、geojson フォルダなら "geojson/"
 const KK_PREF_DEFAULT = "兵庫県";   // 最初に表示する都道府県
 
@@ -478,7 +499,7 @@ const KK_LEVELS=[
 KK_LEVELS.forEach(l=>l.tag=`${l.lv}：${l.label}`);
 const KK_MAX=KK_LEVELS[0].lv;
 const KK_BY_LV={}; KK_LEVELS.forEach(l=>KK_BY_LV[l.lv]=l);
-const KK={ rows:[], note:"", pref:null, feats:[], byCode:{}, rec:{}, selected:null, filter:null,
+const KK={ mode:"keiken", ready:false, rows:[], note:"", pref:null, feats:[], byCode:{}, rec:{}, selected:null, filter:null,
            home:null, limit:null, minW:1, view:null, anim:0, geoCache:{}, token:0 };
 
 const kkZen2Han=s=>String(s||"").replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
@@ -577,12 +598,30 @@ async function loadKeiken(){
     }
     catch(e){ KK.note="経県値シートを読み込めませんでした。シートが「ウェブに公開」されているか、URLが正しいかを確認してください。"; }
   }
+  KK.ready=true;
   kkRenderNation();
   kkShowPref(KK_PREF_IDX[KK_PREF_DEFAULT]!=null ? KK_PREF_DEFAULT : "東京都");
 }
 
+/* 経県値ページとグルメページで同じ地図を使い回す（表示中のページへ地図ごと移動） */
+function kkSetMode(mode){
+  const slot=document.getElementById("kk-slot-"+mode), box=document.getElementById("kk-shared");
+  if(slot && box && box.parentNode!==slot) slot.appendChild(box);
+  const changed=KK.mode!==mode;
+  KK.mode=mode;
+  document.getElementById("kk-nation-title").textContent = "全国";
+  document.getElementById("kk-pref-anchor").textContent = "都道府県";
+  box.classList.toggle("gm-mode", mode==="gourmet");
+  document.getElementById("kk-info").innerHTML=`<p class="kk-info-empty">地図の市区町村をタップすると、ここに${mode==="gourmet"?"お店の一覧":"記録"}が表示されます。</p>`;
+  if(!changed || !KK.ready) return;
+  KK.filter=null; KK.selected=null;
+  kkRenderNation();
+  if(document.getElementById("kk-svg")) kkRenderPref();
+}
+
 /* ---- 全国のまとめ（都道府県ごとの最高レベル＝本家の経県値） ---- */
 function kkRenderNation(){
+  if(KK.mode==="gourmet") return gmRenderNation();
   let nationScore=0, prefVisited=0, muniVisited=0, muniTotal=0;
   const tiles=KK_PREFS.map(([pref,total])=>{
     const {byCode,byName}=kkPrefRecords(pref, null);
@@ -732,7 +771,7 @@ function kkBuildMap(geo, border){
     ? `<path class="kk-muni" data-code="${f.code}" d="${f.d}" tabindex="0" role="button" aria-label="${escHtml(f.name)}"></path>`
     : `<path class="kk-muni kk-void" d="${f.d}" aria-hidden="true"></path>`).join("");
   document.getElementById("kk-map").innerHTML=
-    `<svg id="kk-svg" viewBox="${KK.view.join(" ")}" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="${escHtml(KK.pref)}の市区町村 経県値マップ">
+    `<svg id="kk-svg" viewBox="${KK.view.join(" ")}" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="${escHtml(KK.pref)}の市区町村 ${KK.mode==="gourmet"?"グルメ地図":"経県値マップ"}">
       <g id="kk-munis">${paths}</g>
       ${borderD?`<path class="kk-border" d="${borderD}"></path>`:""}
       <g id="kk-labels" class="kk-labels" aria-hidden="true">${feats.filter(f=>f.label).map(f=>
@@ -761,8 +800,9 @@ function kkBindMap(){
   svg.addEventListener("pointermove", e=>{
     const c=codeOf(e.target);
     if(e.pointerType!=="mouse" || !c){ tip.hidden=true; return; }
-    const f=KK.byCode[c], l=KK_BY_LV[kkLv(c)];
-    tip.innerHTML=`<span class="kk-sw" style="background:${l.color}"></span>${escHtml(f.name)}<em>${l.tag}</em>`;
+    const f=KK.byCode[c], l=kkByLv(kkLv(c));
+    const tag=KK.mode==="gourmet" ? `${(GM.byCode[c]||[]).length}軒` : l.tag;
+    tip.innerHTML=`<span class="kk-sw" style="background:${l.color}"></span>${escHtml(f.name)}<em>${tag}</em>`;
     const r=wrap.getBoundingClientRect();
     tip.hidden=false;
     tip.style.left=Math.max(6, Math.min(e.clientX-r.left+14, r.width-tip.offsetWidth-6))+"px";
@@ -965,29 +1005,42 @@ function kkZoomTo(target){
 }
 
 /* ---- 都道府県ごとの描画 ---- */
-function kkLv(code){ return (KK.rec[code]||{}).lv||0; }
+function kkLevels(){ return KK.mode==="gourmet" ? GM_LEVELS : KK_LEVELS; }
+function kkByLv(lv){ return kkLevels().find(l=>l.lv===lv)||kkLevels()[kkLevels().length-1]; }
+function kkLv(code){
+  if(KK.mode==="gourmet") return gmBucket((GM.byCode[code]||[]).length);
+  return (KK.rec[code]||{}).lv||0;
+}
 
 function kkRenderPref(){
   const real=KK.feats.filter(f=>f.real);
   const total=real.length;
-  const count={}; KK_LEVELS.forEach(l=>count[l.lv]=0);
+  const count={}; kkLevels().forEach(l=>count[l.lv]=0);
   let score=0;
   real.forEach(f=>{ const lv=kkLv(f.code); count[lv]++; score+=lv; });
   const visited=total-count[0];
 
   document.querySelectorAll("#kk-svg .kk-muni[data-code]").forEach(p=>{
-    const c=p.dataset.code, l=KK_BY_LV[kkLv(c)];
+    const c=p.dataset.code, l=kkByLv(kkLv(c));
     p.style.fill=l.color;
-    p.setAttribute("aria-label", `${KK.byCode[c].name}、${l.tag}`);
+    p.setAttribute("aria-label", `${KK.byCode[c].name}、${KK.mode==="gourmet"?(GM.byCode[c]||[]).length+"軒":l.tag}`);
     p.classList.toggle("dim", KK.filter!=null && kkLv(c)!==KK.filter);
   });
 
-  document.getElementById("kk-stats").innerHTML=`
+  if(KK.mode==="gourmet"){
+    const shops=real.reduce((n,f)=>n+(GM.byCode[f.code]||[]).length,0);
+    const rated=[].concat(...real.map(f=>GM.byCode[f.code]||[])).filter(r=>r.my!=null);
+    const avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:0;
+    document.getElementById("kk-stats").innerHTML=`
+    <div class="stat-chip">${escHtml(KK.pref)}で食べたお店 <strong>${shops}</strong> 軒</div>
+    <div class="stat-chip">市区町村 <strong>${visited}</strong> / ${total}</div>
+    ${rated.length?`<div class="stat-chip">評価の平均 <strong>${avg.toFixed(2)}</strong></div>`:""}`;
+  }else document.getElementById("kk-stats").innerHTML=`
     <div class="stat-chip">${escHtml(KK.pref)}の経県値 <strong>${score}</strong> / ${total*KK_MAX}点</div>
     <div class="stat-chip">足を運んだ <strong>${visited}</strong> / ${total} 市区町村</div>
     <div class="stat-chip">制覇率 <strong>${total?Math.round(visited/total*100):0}%</strong></div>`;
 
-  document.getElementById("kk-legend").innerHTML=KK_LEVELS.slice().reverse().map(l=>`
+  document.getElementById("kk-legend").innerHTML=kkLevels().slice().reverse().map(l=>`
     <button type="button" class="kk-leg${KK.filter===l.lv?" active":""}" data-lv="${l.lv}" aria-pressed="${KK.filter===l.lv}" title="${l.note}">
       <span class="kk-sw" style="background:${l.color}"></span>${l.tag}<span class="kk-leg-n">${count[l.lv]}</span>
     </button>`).join("");
@@ -998,9 +1051,10 @@ function kkRenderPref(){
   });
 
   // 一覧（レベルの高い順。未踏は折りたたみ）
-  const chip=f=>`<button type="button" class="kk-chip" data-code="${f.code}">${escHtml(f.name)}</button>`;
-  document.getElementById("kk-list").innerHTML=KK_LEVELS.map(l=>{
-    const fs=real.filter(f=>kkLv(f.code)===l.lv).sort((a,b)=>a.code<b.code?-1:1);
+  const gmN=f=>(GM.byCode[f.code]||[]).length;
+  const chip=f=>`<button type="button" class="kk-chip" data-code="${f.code}">${escHtml(f.name)}${KK.mode==="gourmet"&&gmN(f)?`<span class="kk-chip-n">${gmN(f)}</span>`:""}</button>`;
+  document.getElementById("kk-list").innerHTML=kkLevels().map(l=>{
+    const fs=real.filter(f=>kkLv(f.code)===l.lv).sort((a,b)=>KK.mode==="gourmet"&&gmN(b)!==gmN(a)?gmN(b)-gmN(a):(a.code<b.code?-1:1));
     if(!fs.length) return "";
     const head=`<span class="kk-sw" style="background:${l.color}"></span>${l.tag}<span class="kk-leg-n">${fs.length}</span>`;
     const body=`<div class="kk-chips">${fs.map(chip).join("")}</div>`;
@@ -1026,6 +1080,7 @@ function kkSelect(code){
   g.querySelectorAll(".kk-muni.sel").forEach(p=>p.classList.remove("sel"));
   const p=g.querySelector(`.kk-muni[data-code="${code}"]`);
   if(p){ p.classList.add("sel"); g.appendChild(p); p.focus({preventScroll:true}); }
+  if(KK.mode==="gourmet"){ gmRenderInfo(code, f); return; }
   const r=KK.rec[code]||{}, l=KK_BY_LV[r.lv||0];
   document.getElementById("kk-info").innerHTML=`
     <div class="kk-info-head">
@@ -1036,15 +1091,469 @@ function kkSelect(code){
     ${r.memo?`<div class="kk-info-memo">${escHtml(r.memo)}</div>`:""}`;
 }
 
+/* =====================================================================
+   グルメ（食べログ）
+   列 : No / 日付 / 曜日 / 店名 / 都道府県 / 市区町村 / 評価 / Instagram（投稿対象・投稿済）/ ジャンル
+   ・都道府県＋市区町村を経県値シートの市区町村一覧と照らし合わせて地図に反映します
+     （政令市は「神戸市中央区」のように区まで、郡名は付けない）
+   ・ジャンルは「、」区切りで複数でも、1つでもOK
+   ===================================================================== */
+const URL_GOURMET = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1336707621&single=true&output=csv";
+
+/* 市区町村の色分け（軒数）。経県値と見分けがつくよう、食べ物らしい橙系 */
+const GM_LEVELS=[
+  {lv:4, label:"10軒〜",  tag:"10軒〜",  note:"10軒以上", color:"#b8401c"},
+  {lv:3, label:"5〜9軒",  tag:"5〜9軒",  note:"5〜9軒",   color:"#ea7a3b"},
+  {lv:2, label:"2〜4軒",  tag:"2〜4軒",  note:"2〜4軒",   color:"#f8b765"},
+  {lv:1, label:"1軒",     tag:"1軒",     note:"1軒",      color:"#fde1ad"},
+  {lv:0, label:"0軒",     tag:"0軒",     note:"まだ食べていない", color:"#ffffff"}
+];
+const gmBucket=n=> n>=10?4 : n>=5?3 : n>=2?2 : n>=1?1 : 0;
+const gmPrefBucket=n=> n>=50?4 : n>=20?3 : n>=5?2 : n>=1?1 : 0;
+const GM={ list:[], byCode:{}, byPref:{}, tab:"すべて", note:"" };
+
+function gmParseYM(s){ const m=String(s||"").match(/(\d{4})\D+(\d{1,2})/); return m?new Date(+m[1], +m[2]-1, 1):null; }
+function gmFmtYM(d){ return d?`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}`:""; }
+function gmFmtDate(r){ return r.dt?`${r.dt.getFullYear()}/${fmtMD(r.dt)}`:gmFmtYM(r.ym); }
+
+async function loadGourmet(){
+  let rows=[];
+  try{ rows=cleanRows((await fetchCSV(URL_GOURMET)).data); }
+  catch(e){ document.getElementById("gm-hero").innerHTML=errBox("食べログのデータを読み込めませんでした。"); return; }
+
+  /* 名前 → 団体コード（経県値シートの全市区町村を辞書として使う） */
+  const nameIdx={}; KK.rows.forEach(r=>{ if(r.code && r.pref) nameIdx[r.pref+"\u0001"+r.name]=r.code; });
+
+  GM.list=rows.map(o=>{
+    const name=F(o,"店名"); if(!name) return null;
+    /* 列名は「都道府県／市区町村」「都道府県名／市区町村名」のどちらでも読めるようにする */
+    const pf=F(o,"都道府県")||F(o,"都道府県名"), mu=F(o,"市区町村")||F(o,"市区町村名");
+    const k=kkNormRow({ "団体コード":F(o,"団体コード"), "都道府県名":pf, "市区町村名":mu })||{code:"",pref:"",name:""};
+    let code=k.code;
+    if(!code && k.pref && k.name) code=nameIdx[k.pref+"\u0001"+k.name]||"";
+    const dt=pd(F(o,"日付"));
+    return { code, pref:k.pref, muni:mu, name, genre:F(o,"ジャンル"),
+      genres:F(o,"ジャンル").split(/[、,，]/).map(x=>x.trim()).filter(Boolean),
+      dt, ym:dt||gmParseYM(F(o,"訪問月")), my:num(F(o,"評価")||F(o,"自分の評価")) };
+  }).filter(Boolean);
+
+  GM.byCode={}; GM.byPref={};
+  GM.list.forEach(r=>{
+    if(r.code) (GM.byCode[r.code]=GM.byCode[r.code]||[]).push(r);
+    if(r.pref) (GM.byPref[r.pref]=GM.byPref[r.pref]||[]).push(r);
+  });
+  const noMap=GM.list.filter(r=>!r.code).length;
+  GM.note = noMap ? `地図に載せられなかったお店が ${noMap} 軒あります（都道府県名・市区町村名を確認してください）。` : "";
+
+  if(!GM.list.length){ document.getElementById("gm-hero").innerHTML=errBox("まだ記録がありません。"); return; }
+  gmRenderHero(); gmRenderTabs(); gmRenderRank(); gmRenderGenre();
+  if(KK.mode==="gourmet" && KK.ready){ kkRenderNation(); if(document.getElementById("kk-svg")) kkRenderPref(); }
+}
+
+function gmRenderHero(){
+  const L=GM.list, rated=L.filter(r=>r.my!=null);
+  const avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:0;
+  const prefs=Object.keys(GM.byPref).length, munis=Object.keys(GM.byCode).length;
+  document.getElementById("gm-hero").innerHTML=`
+    <div class="tm-hero-label">これまでに投稿したお店</div>
+    <div class="tm-big">${nf(L.length)}<small>軒</small></div>
+    <div class="gm-hero-sub">${prefs}都道府県・${munis}市区町村${rated.length?`・評価の平均 ${avg.toFixed(2)}`:""}</div>`;
+}
+
+/* ジャンルの集計（1軒に複数ジャンルがあれば、それぞれに数える） */
+function gmGenreStats(){
+  const m={};
+  GM.list.forEach(r=>r.genres.forEach(g=>{ const s=(m[g]=m[g]||{g, n:0, sum:0, rn:0}); s.n++; if(r.my!=null){ s.sum+=r.my; s.rn++; } }));
+  return Object.values(m).sort((a,b)=>b.n-a.n);
+}
+
+/* よく食べるジャンル TOP10。それより下のジャンルは「その他」にまとめる（タブもグラフも同じ分け方） */
+const GM_TOP = 10, GM_OTHER = "その他";
+function gmTopGenres(){
+  /* 軒数の多い順。同じ軒数なら評価の平均が高い順 */
+  return gmGenreStats().sort((a,b)=>b.n-a.n || (b.rn?b.sum/b.rn:0)-(a.rn?a.sum/a.rn:0)).slice(0,GM_TOP).map(s=>s.g);
+}
+/* そのお店がタブ t に入るか */
+function gmInTab(r, t){ return t==="すべて" || r.genres.includes(t); }
+/* タブ：「すべて」とTOP10のジャンルはボタン。11位以下のジャンルも1つずつ、最後の「ほかのジャンル」から選べる（まとめない） */
+function gmRenderTabs(){
+  const top=gmTopGenres(), rated=GM.list.filter(r=>r.my!=null);
+  const rest=gmGenreStats().filter(s=>s.rn>0 && !top.includes(s.g)).sort((a,b)=>b.rn-a.rn || a.g.localeCompare(b.g,"ja"));
+  const all=["すべて", ...top, ...rest.map(s=>s.g)];
+  if(!all.includes(GM.tab)) GM.tab="すべて";
+  const inRest=rest.some(s=>s.g===GM.tab);
+  const cnt=t=>rated.filter(r=>gmInTab(r,t)).length;
+  const box=document.getElementById("gm-tabs");
+  box.classList.add("gm-tabs-scroll");
+  box.innerHTML=["すべて", ...top].map(t=>
+    `<button type="button" class="day-tab${t===GM.tab?" active":""}" data-t="${escHtml(t)}">${escHtml(t)}<small>${cnt(t)}</small></button>`).join("")
+    + (rest.length ? `<label class="day-tab gm-tab-more${inRest?" active":""}"><span>${inRest?escHtml(GM.tab):"ほかのジャンル"}</span>${inRest?`<small>${cnt(GM.tab)}</small>`:`<small>${rest.length}種</small>`}
+        <select aria-label="ほかのジャンルを選ぶ"><option value="">ほかのジャンル（${rest.length}種）</option>${rest.map(s=>`<option value="${escHtml(s.g)}"${s.g===GM.tab?" selected":""}>${escHtml(s.g)}（${s.rn}）</option>`).join("")}</select></label>` : "");
+  box.querySelectorAll("button.day-tab").forEach(b=>b.onclick=()=>gmSelectTab(b.dataset.t));
+  const sel=box.querySelector("select"); if(sel) sel.onchange=e=>{ if(e.target.value) gmSelectTab(e.target.value); };
+}
+function gmSelectTab(t, scroll){
+  GM.tab=t;
+  gmRenderTabs(); gmRenderRank();
+  const box=document.getElementById("gm-tabs"), on=box.querySelector(".day-tab.active");
+  if(on) box.scrollTo({left: on.offsetLeft - box.clientWidth/2 + on.offsetWidth/2, behavior:"smooth"});
+  if(scroll) box.closest(".card-section").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function gmShopHtml(r, rank){
+  const medal=["🥇","🥈","🥉"];
+  const pos = rank<3 ? `<span class="rk-medal" aria-label="${rank+1}位">${medal[rank]}</span>` : `${rank+1}`;
+  return `<div class="gm-row">
+    <div class="gm-pos">${pos}</div>
+    <div class="gm-main">
+      <div class="gm-title">${escHtml(r.name)}</div>
+      <div class="gm-meta">${escHtml([r.muni||r.pref, r.genres[0]].filter(Boolean).join("・"))}</div>
+    </div>
+    <div class="gm-score">${gmScore(r.my)}</div>
+  </div>`;
+}
+const gmScore=v=>v==null?"-":v.toFixed(1);     // 自分の評価（1桁）
+
+function gmRenderRank(){
+  const L=GM.list.filter(r=>r.my!=null && gmInTab(r, GM.tab))
+    .sort((a,b)=>b.my-a.my || (b.ym||0)-(a.ym||0)).slice(0,10);
+  document.getElementById("gm-rank").innerHTML = L.length ? L.map((r,i)=>gmShopHtml(r, i)).join("") : errBox("このジャンルの記録はまだありません。");
+}
+
+function gmRenderGenre(){
+  const top=gmTopGenres(), st=Object.fromEntries(gmGenreStats().map(x=>[x.g,x]));
+  const S=top.map(g=>({g, n:st[g].n}));
+  const others=GM.list.filter(r=>r.genres.length && !r.genres.some(g=>top.includes(g)));
+  if(others.length) S.push({g:GM_OTHER, n:others.length, kinds:new Set(others.flatMap(r=>r.genres)).size});
+  const max=Math.max(1,...S.map(s=>s.n));
+  const el=document.getElementById("gm-genre");
+  /* タップするとそのジャンルの評価ランキングへ */
+  /* その他は11位以下のジャンルを選ぶ欄を開く */
+  el.onclick=e=>{ const r=e.target.closest(".gm-genre[data-g]"); if(!r) return;
+    if(r.dataset.g!==GM_OTHER) return gmSelectTab(r.dataset.g, true);
+    const box=document.getElementById("gm-tabs"), sel=box.querySelector("select"); if(!sel) return;
+    box.closest(".card-section").scrollIntoView({behavior:"smooth", block:"start"});
+    box.scrollTo({left: box.scrollWidth, behavior:"smooth"});
+    setTimeout(()=>{ try{ sel.showPicker(); }catch(_){ sel.focus(); } }, 400); };
+  el.innerHTML=S.map((s,i)=>`
+    <div class="gm-genre${s.g===GM_OTHER?" other":""}" data-g="${escHtml(s.g)}" role="button" tabindex="0">
+      <span class="gm-genre-name">${s.g===GM_OTHER?"":`<b class="gm-genre-rk">${i+1}</b>`}${escHtml(s.g)}${s.kinds?`<small>${s.kinds}ジャンル</small>`:""}</span>
+      <span class="gm-genre-bar"><span style="width:${s.n/max*100}%"></span></span>
+      <span class="gm-genre-n">${s.n}</span>
+    </div>`).join("");
+}
+
+/* 全国タイル（グルメ版）：都道府県ごとの軒数 */
+function gmRenderNation(){
+  const prefs=Object.keys(GM.byPref).length, munis=Object.keys(GM.byCode).length;
+  document.getElementById("kk-nation-stats").innerHTML=`
+    <div class="stat-chip">お店 <strong>${nf(GM.list.length)}</strong> 軒</div>
+    <div class="stat-chip">都道府県 <strong>${prefs}</strong> / ${KK_PREFS.length}</div>
+    <div class="stat-chip">市区町村 <strong>${munis}</strong></div>`;
+  document.getElementById("kk-nation").innerHTML=KK_REGIONS.map(([rg,a,b])=>`
+    <div class="kk-region">
+      <div class="kk-region-name">${rg}</div>
+      <div class="kk-tiles">${KK_PREFS.slice(a,b).map(([p])=>{
+        const n=(GM.byPref[p]||[]).length, l=kkByLv(gmPrefBucket(n));
+        return `<button type="button" class="kk-tile${p===KK.pref?" active":""}" data-pref="${p}" aria-label="${p}：${n}軒">
+          <span class="kk-sw" style="background:${l.color}"></span><span class="kk-tile-name">${p}</span><span class="kk-tile-n">${n?n+"軒":"-"}</span>
+        </button>`; }).join("")}</div>
+    </div>`).join("")
+    + `<div class="kk-legend gm-pref-legend" aria-hidden="true">${[[1,"1〜4軒"],[2,"5〜19軒"],[3,"20〜49軒"],[4,"50軒〜"]].map(([lv,t])=>
+        `<span class="kk-leg static"><span class="kk-sw" style="background:${kkByLv(lv).color}"></span>${t}</span>`).join("")}</div>`;
+  document.querySelectorAll(".kk-tile").forEach(b=>b.onclick=()=>{
+    kkShowPref(b.dataset.pref);
+    const a=document.getElementById("kk-pref-anchor"), nav=document.querySelector("nav");
+    window.scrollTo({ top:Math.max(0, window.scrollY+a.getBoundingClientRect().top-(nav?nav.offsetHeight:0)-8), behavior:prefersReduced()?"auto":"smooth" });
+  });
+  const noteEl=document.getElementById("kk-note");
+  noteEl.hidden=!GM.note; noteEl.textContent=GM.note||"";
+}
+
+/* 市区町村をタップしたとき：その町で食べたお店の一覧 */
+function gmRenderInfo(code, f){
+  const L=(GM.byCode[code]||[]).slice().sort((a,b)=>(b.my||0)-(a.my||0) || (b.ym||0)-(a.ym||0));
+  const l=kkByLv(gmBucket(L.length));
+  document.getElementById("kk-info").innerHTML=`
+    <div class="kk-info-head">
+      <span class="kk-info-name">${escHtml(f.name)}</span>
+      <span class="kk-badge" style="--c:${l.color}">${L.length}軒</span>
+    </div>
+    ${L.length ? gmShopList(L.slice(0,10)) + (L.length>10?`<details class="gm-more"><summary>残り ${L.length-10} 軒を見る</summary>${gmShopList(L.slice(10))}</details>`:"") : `<p class="kk-info-empty">まだこの町のお店の記録はありません。</p>`}`;
+}
+function gmShopList(L){
+  return `<ul class="gm-shops">${L.map(r=>`
+      <li>
+        <div class="gm-shop-top">
+          <span>${escHtml(r.name)}</span>
+          ${r.my!=null?`<span class="gm-my">${gmScore(r.my)}</span>`:""}
+        </div>
+        <div class="gm-shop-sub">${escHtml([r.genres.slice(0,2).join("・"), gmFmtDate(r)].filter(Boolean).join("／"))}</div>
+      </li>`).join("")}</ul>`;
+}
+
+/* =====================================================================
+   自転車
+   列 : No / 日付 / 曜日 / 行き先 / 距離 / 累計（累計はサイト側で計算し直します）
+   ===================================================================== */
+const URL_BIKE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1988798954&single=true&output=csv";
+const BK={ list:[] };
+
+async function loadBike(){
+  let rows=[];
+  try{ rows=cleanRows((await fetchCSV(URL_BIKE)).data); }
+  catch(e){ document.getElementById("bk-hero").innerHTML=errBox("自転車のデータを読み込めませんでした。"); return; }
+  BK.list=rows.map(o=>{
+    const dt=pd(F(o,"日付")), km=num(F(o,"距離"));
+    if(!dt||!km) return null;
+    return { dt, km, dest:F(o,"行き先") };
+  }).filter(Boolean).sort((a,b)=>a.dt-b.dt);
+  BK.list.forEach((r,i)=>r.no=i+1);
+  if(!BK.list.length){ document.getElementById("bk-hero").innerHTML=errBox("まだ記録がありません。"); return; }
+  bkRenderHero(); bkRenderRank(); bkRenderYears();
+}
+const bkDate=d=>`${d.getFullYear()}/${fmtMD(d)}`;
+
+function bkRenderHero(){
+  const L=BK.list, km=L.reduce((a,r)=>a+r.km,0);
+  const latest=L[L.length-1], best=L.reduce((b,r)=>(!b||r.km>b.km)?r:b,null);
+  const rank=L.slice().sort((a,b)=>b.km-a.km).indexOf(latest)+1;
+  const y=new Date().getFullYear(), yKm=L.filter(r=>r.dt.getFullYear()===y).reduce((a,r)=>a+r.km,0);
+  document.getElementById("bk-hero").innerHTML=`
+    <div class="tm-hero-label">これまでの累計距離</div>
+    <div class="tm-big">${nf(km)}<small>km</small></div>
+    <div class="run-headline${rank===1&&L.length>1?" pb":""}">${rank===1&&L.length>1
+      ? `最新ライド（${fmtMD(latest.dt)}・${escHtml(latest.dest)}）で最長記録！`
+      : `最新ライド：${escHtml(latest.dest)} ${latest.km.toFixed(2)}km（${bkDate(latest.dt)}）`}</div>
+    <div class="hero-meta">
+      <span class="hero-chip">${L.length} 回</span>
+      <span class="hero-chip">${y}年 <strong>${yKm.toFixed(1)}</strong> km</span>
+      <span class="hero-chip">1回平均 <strong>${(km/L.length).toFixed(1)}</strong> km</span>
+      <span class="hero-chip accent">最長 <strong>${best.km.toFixed(1)}</strong> km</span>
+    </div>`;
+}
+
+function bkRenderRank(){
+  const L=BK.list.slice().sort((a,b)=>b.km-a.km).slice(0,10), latest=BK.list[BK.list.length-1];
+  const medal=["🥇","🥈","🥉"];
+  document.getElementById("bk-rank").innerHTML=L.map((r,i)=>`
+    <div class="rk rk-c${i<3?" top top"+(i+1):""}">
+      <div class="rk-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:i+1}</div>
+      <div class="rk-body">
+        <div class="rk-date">${escHtml(r.dest||"（行き先なし）")}${r===latest?'<span class="rk-new">NEW</span>':""}</div>
+        <div class="rk-sub">${bkDate(r.dt)}</div>
+      </div>
+      <div class="rk-val">${r.km.toFixed(1)}<small>km</small></div>
+    </div>`).join("");
+}
+
+function bkRenderYears(){
+  const m={};
+  BK.list.forEach(r=>{ const y=r.dt.getFullYear(); const s=(m[y]=m[y]||{y,km:0,n:0}); s.km+=r.km; s.n++; });
+  const Y=Object.values(m).sort((a,b)=>b.y-a.y), max=Math.max(...Y.map(s=>s.km));
+  document.getElementById("bk-years").innerHTML=Y.map(s=>`
+    <div class="mlist-row static">
+      <span class="mlist-name"><span class="mlist-m">${s.y}年</span>${s.km===max&&Y.length>1?'<em>ベスト</em>':""}</span>
+      <span class="mlist-bar bk"><span style="width:${s.km/max*100}%"></span></span>
+      <span class="mlist-val">${s.km.toFixed(1)} km<small>${s.n}回</small></span>
+    </div>`).join("");
+}
+
+/* =====================================================================
+   ホーム（各タブの記録をまとめて表示）
+   各タブの読み込みが終わるたびに描き直すので、遅いタブがあっても先に出せるものから出る
+   ===================================================================== */
+const HM = { done:{} };
+const HM_CAT = {
+  torima:{ t:"トリマ",     c:"#7a5cc8" },
+  run:   { t:"ランニング", c:"#2e8b57" },
+  bike:  { t:"自転車",     c:"#1a4db0" },
+  keiken:{ t:"経県値",     c:"#d9453f" },
+  gourmet:{t:"グルメ",     c:"#ea7a3b" }
+};
+const hmYMD = d => `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+const hmWait = k => `<div class="hm-wait">${HM.done[k]?"記録なし":"読み込み中…"}</div>`;
+/* 今日から見た「○日前」 */
+function hmAgo(d){
+  const n=Math.round((today0()-d)/864e5);
+  return n<=0?"今日" : n===1?"昨日" : n<7?`${n}日前` : n<31?`${Math.floor(n/7)}週間前` : n<365?`${Math.floor(n/30)}か月前` : `${Math.floor(n/365)}年前`;
+}
+
+/* ---- 日付のある記録を1つの一覧にする（最近の記録・○年前の今日・今年のまとめで共通） ---- */
+function hmEvents(){
+  const E=[];
+  RUN.list.forEach(r=>E.push({ k:"run", dt:r.dt, main:`${r.km.toFixed(2)}km 走った`, sub:`${fmtPace(r.pace)}/km・${fmtDur(r.sec)}` }));
+  BK.list.forEach(r=>E.push({ k:"bike", dt:r.dt, main:`${r.dest||"行き先なし"}へ`, sub:`${r.km.toFixed(1)}km` }));
+  GM.list.forEach(r=>{ if(r.dt) E.push({ k:"gourmet", dt:r.dt, main:r.name, sub:[r.pref+(r.muni||""), r.genre, r.my!=null?`評価 ${r.my.toFixed(1)}`:""].filter(Boolean).join("・") }); });
+  return E.sort((a,b)=>b.dt-a.dt);
+}
+function hmEventRow(e, showAgo){
+  const C=HM_CAT[e.k];
+  return `<button type="button" class="hm-ev" data-go="${e.k}">
+    <span class="hm-ev-d">${fmtMD(e.dt)}${showAgo?`<small>${hmAgo(e.dt)}</small>`:`<small>${e.dt.getFullYear()}</small>`}</span>
+    <span class="hm-ev-tag" style="--c:${C.c}">${C.t}</span>
+    <span class="hm-ev-main">${escHtml(e.main)}${e.sub?`<small>${escHtml(e.sub)}</small>`:""}</span>
+  </button>`;
+}
+
+/* ---- カード ---- */
+function hmCard(k, label, value, unit, sub, bar){
+  const C=HM_CAT[k];
+  return `<button type="button" class="hm-card" data-go="${k}" style="--c:${C.c}">
+    <span class="hm-card-k">${C.t}<em>${label}</em></span>
+    <span class="hm-card-v">${value}<small>${unit||""}</small></span>
+    ${bar!=null?`<span class="hm-bar"><span style="width:${Math.min(100,Math.max(0,bar))}%"></span></span>`:""}
+    ${sub?`<span class="hm-card-s">${sub}</span>`:""}
+  </button>`;
+}
+function hmEmptyCard(k, label){
+  const C=HM_CAT[k];
+  return `<div class="hm-card off" style="--c:${C.c}"><span class="hm-card-k">${C.t}<em>${label}</em></span>${hmWait(k)}</div>`;
+}
+
+/* 今月 */
+function hmMonthHtml(){
+  const t=today0(), key=ymKey(t), out=[];
+  /* トリマ */
+  const mo=TM.months.find(m=>m.isCur);
+  if(mo){
+    const rem=tmRemaining(mo), fc=mo.total+mo.avg*rem, T=TM_TARGETS.find(x=>mo.total<x);
+    const sub = T ? `次の目標 ${nf(T)}P まであと ${nf(T-mo.total)}P` + (rem?`<br>月末予測 ${nf(ceil10(fc))}P${fc>=T?"（届く）":""}`:"") : "全部の目標を達成！";
+    out.push(hmCard("torima","今月", nf(mo.total), "P", sub, T?mo.total/T*100:100));
+  } else out.push(hmEmptyCard("torima","今月"));
+  /* ランニング */
+  if(HM.done.run && RUN.list.length){
+    const R=RUN.list.filter(r=>ymKey(r.dt)===key), km=R.reduce((s,r)=>s+r.km,0), G=RUN_MONTH_GOAL;
+    const last=RUN.list[RUN.list.length-1];
+    out.push(hmCard("run","今月", km.toFixed(1), "km",
+      `${R.length}本・目標 ${G}km ${km>=G?"達成！":`まであと ${(G-km).toFixed(1)}km`}<br>最後に走ったのは${hmAgo(last.dt)}`, km/G*100));
+  } else out.push(hmEmptyCard("run","今月"));
+  /* 自転車 */
+  if(HM.done.bike && BK.list.length){
+    const R=BK.list.filter(r=>ymKey(r.dt)===key), km=R.reduce((s,r)=>s+r.km,0), last=BK.list[BK.list.length-1];
+    out.push(hmCard("bike","今月", km.toFixed(1), "km", `${R.length}回<br>最後：${escHtml(last.dest||"行き先なし")}（${hmAgo(last.dt)}）`));
+  } else out.push(hmEmptyCard("bike","今月"));
+  /* グルメ（訪問月しかないお店も今月に数える） */
+  if(HM.done.gourmet && GM.list.length){
+    const R=GM.list.filter(r=>r.ym && ymKey(r.ym)===key), rated=R.filter(r=>r.my!=null);
+    const best=rated.slice().sort((a,b)=>b.my-a.my)[0];
+    out.push(hmCard("gourmet","今月", nf(R.length), "軒",
+      best?`いちばん良かった店<br>${escHtml(best.name)}（${best.my.toFixed(1)}）`:(R.length?"":"今月はまだ投稿なし")));
+  } else out.push(hmEmptyCard("gourmet","今月"));
+  return out.join("");
+}
+
+/* これまで */
+function hmTotalHtml(){
+  const out=[];
+  /* グルメ */
+  if(HM.done.gourmet && GM.list.length){
+    const rated=GM.list.filter(r=>r.my!=null), avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:null;
+    const top=gmGenreStats()[0];
+    out.push(hmCard("gourmet","投稿したお店", nf(GM.list.length), "軒",
+      `${Object.keys(GM.byPref).length}都道府県${avg!=null?`・評価の平均 ${avg.toFixed(2)}`:""}${top?`<br>一番多いジャンル：${escHtml(top.g)}（${top.n}軒）`:""}`));
+  } else out.push(hmEmptyCard("gourmet","投稿したお店"));
+  /* ランニング */
+  if(HM.done.run && RUN.list.length){
+    const km=RUN.list.reduce((s,r)=>s+r.km,0), best=RUN.list.reduce((b,r)=>(!b||r.pace<b.pace)?r:b,null);
+    out.push(hmCard("run","累計", nf(km), "km", `${RUN.list.length}本<br>自己ベスト ${fmtPace(best.pace)}/km（${hmYMD(best.dt)}）`));
+  } else out.push(hmEmptyCard("run","累計"));
+  /* 自転車 */
+  if(HM.done.bike && BK.list.length){
+    const km=BK.list.reduce((s,r)=>s+r.km,0), best=BK.list.reduce((b,r)=>(!b||r.km>b.km)?r:b,null);
+    out.push(hmCard("bike","累計", nf(km), "km", `${BK.list.length}回<br>最長 ${best.km.toFixed(1)}km（${escHtml(best.dest||"")}）`));
+  } else out.push(hmEmptyCard("bike","累計"));
+  /* トリマ */
+  if(TM.months.length){
+    const tot=TM.months.reduce((s,m)=>s+m.total,0), bestM=TM.months.reduce((b,m)=>(!b||m.total>b.total)?m:b,null);
+    out.push(hmCard("torima","累計", nf(tot), "P", `ベストの月：${bestM.label}（${nf(bestM.total)}P）`));
+  } else out.push(hmEmptyCard("torima","累計"));
+  return out.join("");
+}
+
+/* 今年のまとめ：去年の同じ日までと比べる */
+function hmYearHtml(E){
+  const t=today0(), y=t.getFullYear();
+  const upto=(d,yy)=>d.getFullYear()===yy && (d.getMonth()<t.getMonth() || (d.getMonth()===t.getMonth() && d.getDate()<=t.getDate()));
+  const rows=[];
+  const add=(k, label, f, unit, fmt)=>{ const a=f(y), b=f(y-1); rows.push({k,label,a,b,unit,fmt}); };
+  if(RUN.list.length) add("run","ランニング", yy=>RUN.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
+  if(BK.list.length)  add("bike","自転車", yy=>BK.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
+  if(TM.days.length)  add("torima","トリマ", yy=>TM.days.filter(d=>d.p!=null && upto(d.dt,yy)).reduce((s,d)=>s+d.p,0), "P", nf);
+  if(GM.list.length)  add("gourmet","グルメ", yy=>GM.list.filter(r=>r.dt ? upto(r.dt,yy) : (r.ym && r.ym.getFullYear()===yy && r.ym.getMonth()<=t.getMonth())).length, "軒", nf);
+  if(!rows.length) return `<div class="hm-wait">読み込み中…</div>`;
+  return `<div class="hm-yr">${rows.map(r=>{
+    const d=r.a-r.b, cls=r.b===0?"":d>0?"up":d<0?"down":"";
+    return `<button type="button" class="hm-yr-row" data-go="${r.k}" style="--c:${HM_CAT[r.k].c}">
+      <span class="hm-yr-k">${r.label}</span>
+      <span class="hm-yr-v">${r.fmt(r.a)}<small>${r.unit}</small></span>
+      <span class="hm-yr-c ${cls}">${r.b===0?"去年の記録なし":`去年の同じ時期 ${r.fmt(r.b)}${r.unit}<b>${d>0?"+":d<0?"−":"±"}${r.fmt(Math.abs(d))}</b>`}</span>
+    </button>`; }).join("")}</div>
+    <p class="kk-note-s">${y}年1月1日〜今日まで。右は${y-1}年の同じ日までとの比較。</p>`;
+}
+
+/* ○年前の今日（ぴったりの日がなければ前後3日） */
+function hmOtdHtml(E){
+  const t=today0();
+  const md=d=>d.getMonth()*100+d.getDate();
+  let L=E.filter(e=>e.dt.getFullYear()<t.getFullYear() && md(e.dt)===md(t)), wide=false;
+  if(!L.length){
+    wide=true;
+    L=E.filter(e=>{ if(e.dt.getFullYear()>=t.getFullYear()) return false;
+      const same=new Date(t.getFullYear(), e.dt.getMonth(), e.dt.getDate()); return Math.abs(same-t)<=3*864e5; });
+  }
+  if(!L.length) return `<p class="kk-info-empty">去年までの、この時期の記録はまだありません。</p>`;
+  const byY={}; L.forEach(e=>(byY[e.dt.getFullYear()]=byY[e.dt.getFullYear()]||[]).push(e));
+  return (wide?`<p class="kk-note-s hm-otd-note">今日ぴったりの記録はないので、前後3日の記録です。</p>`:"") +
+    Object.keys(byY).sort((a,b)=>b-a).map(yy=>`<div class="hm-otd-y">${t.getFullYear()-yy}年前（${yy}年）</div>
+      <div class="hm-tl">${byY[yy].map(e=>hmEventRow(e,false)).join("")}</div>`).join("");
+}
+
+/* お知らせ：入力忘れなど */
+function hmAlertsHtml(){
+  const t=today0(), A=[];
+  const ent=TM.days.filter(d=>d.p!=null);
+  if(ent.length){
+    let miss=0; const have=new Set(ent.map(d=>d.dt.toDateString()));
+    for(let d=new Date(ent[0].dt); d<t; d.setDate(d.getDate()+1)) if(!have.has(d.toDateString())) miss++;
+    if(miss) A.push({k:"torima", m:`トリマの未入力が <strong>${miss}</strong> 日あります`});
+  }
+  if(RUN.list.length){
+    const n=Math.round((t-RUN.list[RUN.list.length-1].dt)/864e5);
+    if(n>=7) A.push({k:"run", m:`ランニングは <strong>${n}</strong> 日走っていません`});
+  }
+  return A.length ? `<div class="hm-alerts">${A.map(a=>`<button type="button" class="hm-alert" data-go="${a.k}" style="--c:${HM_CAT[a.k].c}"><span>${a.m}</span><span class="hm-alert-go">›</span></button>`).join("")}</div>` : "";
+}
+
+function hmRender(){
+  const t=today0(), E=hmEvents();
+  const todayE=E.filter(e=>sameDay(e.dt,t));
+  document.getElementById("hm-hero").innerHTML=`
+    <div class="tm-hero-label">${t.getFullYear()}年</div>
+    <div class="tm-big hm-date">${t.getMonth()+1}月${t.getDate()}日<small>（${WD[t.getDay()]}）</small></div>
+    <div class="gm-hero-sub">${todayE.length?`今日の記録 ${todayE.length}件`:"今日の記録はまだありません"}${E.length?`・最後の記録は${hmAgo(E[0].dt)}（${HM_CAT[E[0].k].t}）`:""}</div>
+    ${hmAlertsHtml()}`;
+  document.getElementById("hm-month").innerHTML=hmMonthHtml();
+  document.getElementById("hm-year").innerHTML=hmYearHtml(E);
+  document.getElementById("hm-recent").innerHTML=E.length?`<div class="hm-tl">${foldRows(E.slice(0,15).map(e=>hmEventRow(e,true)), 6)}</div>`:`<div class="hm-wait">読み込み中…</div>`;
+  document.getElementById("hm-otd").innerHTML=E.length?hmOtdHtml(E):`<div class="hm-wait">読み込み中…</div>`;
+  document.getElementById("hm-total").innerHTML=hmTotalHtml();
+  document.querySelectorAll("#home [data-go]").forEach(b=>b.onclick=()=>goto(b.dataset.go));
+}
+/* 読み込みが終わったら（失敗しても）ホームを描き直す */
+function hmTrack(k, p){
+  return Promise.resolve(p).catch(e=>console.error(k, e)).finally(()=>{ HM.done[k]=true; try{ hmRender(); }catch(e){ console.error("home", e); } });
+}
+
 /* ---------- 初期化 ---------- */
-loadShiori();
-loadHistory();
-loadCleaning();
-loadKaji();
-loadKeiken();
+hmRender();
+hmTrack("torima", loadTorima());
+hmTrack("run", loadRun());
+hmTrack("bike", loadBike());
+const pKeiken=loadKeiken();
+hmTrack("gourmet", pKeiken.then(loadGourmet));
 (function initRouting(){
-  syncNavHeight();
   const st=parseHash();
-  history.replaceState({page:st.page}, "", location.hash||"#shiori");
+  history.replaceState({page:st.page}, "", location.hash||"#"+PAGES[0]);
   applyPage(st.page);
 })();
