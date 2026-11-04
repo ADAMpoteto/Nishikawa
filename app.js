@@ -86,7 +86,7 @@ function bindBarChart(id, items, defIdx){
 }
 
 /* ---------- ルーティング（戻る/進む・直リンク対応） ---------- */
-const PAGES=["home","torima","run","bike","gourmet","keiken"];
+const PAGES=["home","torima","run","bike","apex","gourmet","keiken"];
 function applyPage(page){
   if(!PAGES.includes(page)) page=PAGES[0];
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
@@ -1360,6 +1360,148 @@ function bkRenderYears(){
 }
 
 /* =====================================================================
+   Apex（ランクポイントの推移）
+   列 : 日付 / RP（「ランクポイント」「ポイント」でも可）。No・曜日・メモなどほかの列はあってもOK
+   ・1行＝1日。その日の終わりのRP（その時点の合計）を入れる
+   ・空欄の日は「やっていない日」として線をつなぎます
+   ===================================================================== */
+const URL_APEX = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1593393569&single=true&output=csv";
+const AP={ list:[], range:"30" };
+const AP_RANGES=[ {key:"30", label:"30日", days:30}, {key:"90", label:"90日", days:90}, {key:"all", label:"全期間", days:0} ];
+const AP_RP_COLS=["RP","ランクポイント","ランクpt","ポイント","LP"];
+const apSigned=n=>`${n>0?"+":n<0?"−":"±"}${nf(Math.abs(n))}`;
+const apCls=n=>n>0?"up":n<0?"down":"";
+
+async function loadApex(){
+  const hero=document.getElementById("ap-hero");
+  let res;
+  try{ res=await fetchCSV(URL_APEX); }
+  catch(e){ hero.innerHTML=errBox("Apexのデータを読み込めませんでした。"); return; }
+  const rows=cleanRows(res.data);
+  /* RPの列を探す：決まった名前 → 名前に「RP」「ポイント」を含む列 */
+  const keys=rows.length?Object.keys(rows[0]):[];
+  const rpKey=AP_RP_COLS.find(k=>keys.includes(k)) || keys.find(k=>/rp|ポイント|ﾎﾟｲﾝﾄ/i.test(k));
+  if(!rpKey){ hero.innerHTML=errBox("RPの列が見つかりません。見出しを「RP」にしてください。"); return; }
+  const byKey={};
+  rows.forEach(o=>{
+    const dt=pd(F(o,"日付")), rp=num(F(o,rpKey));
+    if(dt && rp!=null) byKey[dt.toDateString()]={ dt, rp, memo:F(o,"メモ") };
+  });
+  AP.list=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
+  AP.list.forEach((d,i)=>{ d.diff = i ? d.rp-AP.list[i-1].rp : null; });
+  if(!AP.list.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
+  apRenderHero(); apRenderTabs(); apRenderChart(); apRenderDays(); apRenderMonths();
+}
+
+function apRenderHero(){
+  const L=AP.list, last=L[L.length-1], t=today0();
+  const best=L.reduce((b,d)=>(!b||d.rp>b.rp)?d:b,null);
+  const mon=L.filter(d=>ymKey(d.dt)===ymKey(t));
+  /* 今月の増減：先月最後の記録（なければ今月最初の記録）から */
+  const before=L.filter(d=>d.dt<new Date(t.getFullYear(), t.getMonth(), 1));
+  const base=before.length?before[before.length-1].rp:(mon[0]||{}).rp;
+  const monDiff=mon.length?last.rp-base:null;
+  const isBest=last===best && L.length>1;
+  const head = last.diff==null ? "記念すべき最初の記録！"
+    : `${fmtMD(last.dt)}は <strong class="${apCls(last.diff)}">${apSigned(last.diff)}</strong> RP${isBest?"・最高記録を更新！":""}`;
+  document.getElementById("ap-hero").innerHTML=`
+    <div class="tm-hero-label">いまのランクポイント（${hmYMD(last.dt)}時点）</div>
+    <div class="tm-big">${nf(last.rp)}<small>RP</small></div>
+    <div class="run-headline${isBest?" pb":""}">${head}</div>
+    <div class="hero-meta">
+      ${monDiff!=null?`<span class="hero-chip cmp ${apCls(monDiff)}">今月 <strong>${apSigned(monDiff)}</strong> RP</span>`:""}
+      <span class="hero-chip accent">最高 <strong>${nf(best.rp)}</strong> RP（${fmtMD(best.dt)}）</span>
+      <span class="hero-chip">記録 <strong>${L.length}</strong> 日</span>
+    </div>`;
+}
+
+function apRenderTabs(){
+  const box=document.getElementById("ap-tabs");
+  box.innerHTML=AP_RANGES.map(r=>`<button type="button" class="day-tab${r.key===AP.range?" active":""}" data-r="${r.key}">${r.label}</button>`).join("");
+  box.querySelectorAll(".day-tab").forEach(b=>b.onclick=()=>{ AP.range=b.dataset.r; apRenderTabs(); apRenderChart(); });
+}
+
+/* 折れ線グラフ（SVG）。タップ・なぞるとその日の値 */
+function apRenderChart(){
+  const R=AP_RANGES.find(r=>r.key===AP.range), last=AP.list[AP.list.length-1].dt;
+  const from = R.days ? new Date(last.getFullYear(), last.getMonth(), last.getDate()-R.days+1) : AP.list[0].dt;
+  const idx0=AP.list.findIndex(d=>d.dt>=from);
+  const L=AP.list.slice(Math.max(0, idx0));
+  const x0=from<L[0].dt?from:L[0].dt, x1=last;
+  const W=600, H=220, PL=4, PR=4, PT=14, PB=22;
+  let lo=Math.min(...L.map(d=>d.rp)), hi=Math.max(...L.map(d=>d.rp));
+  const pad=Math.max((hi-lo)*0.12, 50); lo=Math.max(0, lo-pad); hi=hi+pad;
+  const span=Math.max(1, x1-x0);
+  const X=dt=>PL+(dt-x0)/span*(W-PL-PR), Y=v=>PT+(1-(v-lo)/(hi-lo))*(H-PT-PB);
+  const pts=L.map(d=>[X(d.dt), Y(d.rp)]);
+  const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join("");
+  const area=L.length>1?`${line}L${pts[pts.length-1][0].toFixed(1)},${H-PB}L${pts[0][0].toFixed(1)},${H-PB}Z`:"";
+  /* 目盛り：きりのいい値で4本くらい */
+  const step=[50,100,200,250,500,1000,2000,2500,5000,10000].find(s=>(hi-lo)/s<=5)||20000;
+  const grid=[]; for(let v=Math.ceil(lo/step)*step; v<=hi; v+=step) grid.push(v);
+  /* 月の区切り */
+  const mons=[]; for(let d=new Date(x0.getFullYear(), x0.getMonth()+1, 1); d<=x1; d=new Date(d.getFullYear(), d.getMonth()+1, 1)) mons.push(d);
+  const best=AP.list.reduce((b,d)=>(!b||d.rp>b.rp)?d:b,null);
+  document.getElementById("ap-chart").innerHTML=`
+    <div class="bc-readout ap-readout" aria-live="polite"></div>
+    <div class="ap-lc">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="日ごとのランクポイントの推移">
+        ${grid.map(v=>`<line class="ap-grid" x1="0" x2="${W}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/>`).join("")}
+        ${mons.map(d=>`<line class="ap-mon" x1="${X(d).toFixed(1)}" x2="${X(d).toFixed(1)}" y1="${PT}" y2="${H-PB}"/>`).join("")}
+        ${area?`<path class="ap-area" d="${area}"/>`:""}
+        <path class="ap-line" d="${line}"/>
+        <line class="ap-cur" x1="0" x2="0" y1="${PT}" y2="${H-PB}" visibility="hidden"/>
+      </svg>
+      ${grid.map(v=>`<span class="ap-ylbl" style="top:${(Y(v)/H*100).toFixed(2)}%">${nf(v)}</span>`).join("")}
+      ${mons.map(d=>`<span class="ap-xlbl" style="left:${(X(d)/W*100).toFixed(2)}%">${d.getMonth()+1}月</span>`).join("")}
+      ${L.map((d,i)=>`<span class="ap-dot${d===best?" best":""}${i===L.length-1?" last":""}" data-i="${i}" style="left:${(pts[i][0]/W*100).toFixed(2)}%;top:${(pts[i][1]/H*100).toFixed(2)}%"></span>`).join("")}
+    </div>
+    <p class="kk-note-s">なぞる・タップでその日のRP。縦の点線は月の区切り、金色の点が最高記録。</p>`;
+  const box=document.querySelector("#ap-chart .ap-lc"), out=document.querySelector("#ap-chart .ap-readout"), cur=box.querySelector(".ap-cur");
+  const pick=i=>{
+    const d=L[i];
+    box.querySelectorAll(".ap-dot").forEach(e=>e.classList.toggle("on", +e.dataset.i===i));
+    cur.setAttribute("x1", pts[i][0]); cur.setAttribute("x2", pts[i][0]); cur.setAttribute("visibility","visible");
+    out.innerHTML=`${d.dt.getFullYear()}/${fmtMD(d.dt)}　<strong>${nf(d.rp)}</strong> RP${d.diff!=null?`　<span class="${apCls(d.diff)}">${apSigned(d.diff)}</span>`:""}${d.memo?`　${escHtml(d.memo)}`:""}`;
+  };
+  const near=e=>{
+    const r=box.getBoundingClientRect(), x=(e.clientX-r.left)/r.width*W;
+    let bi=0; pts.forEach((p,i)=>{ if(Math.abs(p[0]-x)<Math.abs(pts[bi][0]-x)) bi=i; }); return bi;
+  };
+  box.addEventListener("pointermove", e=>pick(near(e)));
+  box.addEventListener("pointerdown", e=>pick(near(e)));
+  pick(L.length-1);
+}
+
+/* 日ごとの一覧（新しい順） */
+function apRenderDays(){
+  const L=AP.list.slice().reverse();
+  const maxAbs=Math.max(1,...L.map(d=>Math.abs(d.diff||0)));
+  document.getElementById("ap-days").innerHTML=foldRows(L.map(d=>`
+    <div class="ap-day">
+      <span class="ap-day-d">${fmtMD(d.dt)}<small>${d.dt.getFullYear()}</small></span>
+      <span class="ap-day-bar">${d.diff!=null?`<span class="${apCls(d.diff)}" style="width:${Math.abs(d.diff)/maxAbs*50}%"></span>`:""}</span>
+      <span class="ap-day-v">${nf(d.rp)}<small class="${d.diff!=null?apCls(d.diff):""}">${d.diff!=null?apSigned(d.diff):"最初の記録"}</small></span>
+    </div>`), 10, "日");
+}
+
+/* 月ごと：月末のRPとその月の増減 */
+function apRenderMonths(){
+  const m={};
+  AP.list.forEach(d=>{ const k=ymKey(d.dt); (m[k]=m[k]||{key:k, y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, L:[]}).L.push(d); });
+  const M=Object.values(m).sort((a,b)=>a.key<b.key?-1:1);
+  M.forEach((x,i)=>{ const end=x.L[x.L.length-1].rp, start=i?M[i-1].L[M[i-1].L.length-1].rp:x.L[0].rp;
+    x.end=end; x.diff=end-start; x.hi=Math.max(...x.L.map(d=>d.rp)); });
+  const max=Math.max(1,...M.map(x=>Math.abs(x.diff)));
+  document.getElementById("ap-months").innerHTML=foldRows(M.slice().reverse().map(x=>`
+    <div class="mlist-row static">
+      <span class="mlist-name"><span class="mlist-y">${x.y}年</span><span class="mlist-m">${x.mo}月</span></span>
+      <span class="mlist-bar ap ${apCls(x.diff)}"><span style="width:${Math.abs(x.diff)/max*100}%"></span></span>
+      <span class="mlist-val ${apCls(x.diff)}">${apSigned(x.diff)} RP<small>月末 ${nf(x.end)}・最高 ${nf(x.hi)}・${x.L.length}日</small></span>
+    </div>`), 6, "か月");
+}
+
+/* =====================================================================
    ホーム（各タブの記録をまとめて表示）
    各タブの読み込みが終わるたびに描き直すので、遅いタブがあっても先に出せるものから出る
    ===================================================================== */
@@ -1369,7 +1511,8 @@ const HM_CAT = {
   run:   { t:"ランニング", c:"#2e8b57" },
   bike:  { t:"自転車",     c:"#1a4db0" },
   keiken:{ t:"経県値",     c:"#d9453f" },
-  gourmet:{t:"グルメ",     c:"#ea7a3b" }
+  gourmet:{t:"グルメ",     c:"#ea7a3b" },
+  apex:  { t:"Apex",       c:"#c2185b" }
 };
 const hmYMD = d => `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
 const hmWait = k => `<div class="hm-wait">${HM.done[k]?"記録なし":"読み込み中…"}</div>`;
@@ -1384,6 +1527,7 @@ function hmEvents(){
   const E=[];
   RUN.list.forEach(r=>E.push({ k:"run", dt:r.dt, main:`${r.km.toFixed(2)}km 走った`, sub:`${fmtPace(r.pace)}/km・${fmtDur(r.sec)}` }));
   BK.list.forEach(r=>E.push({ k:"bike", dt:r.dt, main:`${r.dest||"行き先なし"}へ`, sub:`${r.km.toFixed(1)}km` }));
+  AP.list.forEach(d=>E.push({ k:"apex", dt:d.dt, main:`${nf(d.rp)} RP`, sub:d.diff!=null?`前回から ${apSigned(d.diff)}`:"最初の記録" }));
   GM.list.forEach(r=>{ if(r.dt) E.push({ k:"gourmet", dt:r.dt, main:r.name, sub:[r.pref+(r.muni||""), r.genre, r.my!=null?`評価 ${r.my.toFixed(1)}`:""].filter(Boolean).join("・") }); });
   return E.sort((a,b)=>b.dt-a.dt);
 }
@@ -1440,6 +1584,13 @@ function hmMonthHtml(){
     out.push(hmCard("gourmet","今月", nf(R.length), "軒",
       best?`いちばん良かった店<br>${escHtml(best.name)}（${best.my.toFixed(1)}）`:(R.length?"":"今月はまだ投稿なし")));
   } else out.push(hmEmptyCard("gourmet","今月"));
+  /* Apex */
+  if(HM.done.apex && AP.list.length){
+    const last=AP.list[AP.list.length-1], before=AP.list.filter(d=>d.dt<new Date(t.getFullYear(), t.getMonth(), 1));
+    const R=AP.list.filter(d=>ymKey(d.dt)===key), base=before.length?before[before.length-1].rp:(R[0]||{}).rp;
+    out.push(hmCard("apex","いまのRP", nf(last.rp), "RP",
+      `${R.length?`今月 ${apSigned(last.rp-base)} RP`:"今月はまだ記録なし"}<br>${last.diff!=null?`${fmtMD(last.dt)}は ${apSigned(last.diff)}`:""}`));
+  } else out.push(hmEmptyCard("apex","今月"));
   return out.join("");
 }
 
@@ -1468,6 +1619,11 @@ function hmTotalHtml(){
     const tot=TM.months.reduce((s,m)=>s+m.total,0), bestM=TM.months.reduce((b,m)=>(!b||m.total>b.total)?m:b,null);
     out.push(hmCard("torima","累計", nf(tot), "P", `ベストの月：${bestM.label}（${nf(bestM.total)}P）`));
   } else out.push(hmEmptyCard("torima","累計"));
+  /* Apex */
+  if(HM.done.apex && AP.list.length){
+    const best=AP.list.reduce((b,d)=>(!b||d.rp>b.rp)?d:b,null);
+    out.push(hmCard("apex","最高RP", nf(best.rp), "RP", `${hmYMD(best.dt)}<br>記録 ${AP.list.length}日`));
+  } else out.push(hmEmptyCard("apex","最高RP"));
   return out.join("");
 }
 
@@ -1550,6 +1706,7 @@ hmRender();
 hmTrack("torima", loadTorima());
 hmTrack("run", loadRun());
 hmTrack("bike", loadBike());
+hmTrack("apex", loadApex());
 const pKeiken=loadKeiken();
 hmTrack("gourmet", pKeiken.then(loadGourmet));
 (function initRouting(){

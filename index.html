@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=20261030f">
+<link rel="stylesheet" href="style.css?v=20261105b">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
@@ -21,6 +21,7 @@
 <button class="nav-btn" data-nav="torima" onclick="goto('torima')">トリマ</button>
     <button class="nav-btn" data-nav="run" onclick="goto('run')">ランニング</button>
     <button class="nav-btn" data-nav="bike" onclick="goto('bike')">自転車</button>
+    <button class="nav-btn" data-nav="apex" onclick="goto('apex')">Apex</button>
     <button class="nav-btn" data-nav="gourmet" onclick="goto('gourmet')">グルメ</button>
     <button class="nav-btn" data-nav="keiken" onclick="goto('keiken')">経県値</button>
   </div>
@@ -132,6 +133,30 @@
 </div>
 </div>
 
+<!-- ========== Apex ========== -->
+<div id="apex" class="page">
+<div class="container">
+  <div class="page-header"><h1>Apex</h1><p>ランクポイントの推移</p></div>
+  <div class="hero" id="ap-hero"><div class="loading">読み込み中…</div></div>
+
+  <div class="card-section">
+    <div class="sec-title">日ごとのRPの推移</div>
+    <div class="day-tabs" id="ap-tabs"></div>
+    <div id="ap-chart"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">日ごとの記録</div>
+    <div id="ap-days"></div>
+  </div>
+
+  <div class="card-section">
+    <div class="sec-title">月ごとの増減</div>
+    <div class="mlist" id="ap-months"></div>
+  </div>
+</div>
+</div>
+
 <!-- ========== 経県値マップ ========== -->
 <div id="keiken" class="page">
 <div class="container">
@@ -195,6 +220,6 @@
   データはGoogleスプレッドシートから取得しています。
 </footer>
 
-<script src="app.js?v=20261030f"></script>
+<script src="app.js?v=20261105b"></script>
 </body>
 </html>
