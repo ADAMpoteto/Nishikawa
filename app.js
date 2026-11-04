@@ -1476,7 +1476,7 @@ function apRenderHero(){
     <div class="tm-big">${nf(last.rp)}<small>RP</small></div>
     ${nx?`<div class="ap-next"><div class="tgt-bar"><span style="width:${nx.pct}%;background:${T.color}"></span></div>
       <div class="ap-next-t">${escHtml(nx.name)}まで あと <strong>${nf(nx.left)}</strong> RP（${nf(last.rp)} / ${nf(nx.need)}）</div></div>`:""}
-    <div class="run-headline${isBest||last.move>0?" pb":""}">${head}</div>
+    <div class="run-headline">${head}</div>
     <div class="hero-meta">
       ${monDiff!=null?`<span class="hero-chip cmp ${apCls(monDiff)}">今月 <strong>${apSigned(monDiff)}</strong> RP</span>`:""}
       <span class="hero-chip accent">最高 <strong>${escHtml(apLabel(best))}</strong>（${fmtMD(best.dt)}）</span>
