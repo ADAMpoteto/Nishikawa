@@ -1361,16 +1361,61 @@ function bkRenderYears(){
 
 /* =====================================================================
    Apex（ランクポイントの推移）
-   列 : 日付 / RP（「ランクポイント」「ポイント」でも可）。No・曜日・メモなどほかの列はあってもOK
-   ・1行＝1日。その日の終わりのRP（その時点の合計）を入れる
-   ・空欄の日は「やっていない日」として線をつなぎます
+   列 : 日付 / ランク / RP。No・曜日・メモなどほかの列はあってもOK
+   ・1行＝1日。その日の終わりの値を入れる
+   ・ランク … 「シルバーIV」「ゴールド2」「プラチナ Ⅰ」など。ランクが変わった日だけ書けばOK
+              （空欄の日は前の日と同じランク。最初の記録より前の空欄は、最初に書いたランク）
+   ・RP     … ゲームに出ている「今のディビジョンの中のRP」（昇格すると0から数え直しになる数字）
+   サイト側で「ルーキーIVの0から数えた通算RP」に直してグラフを描くので、昇格しても線が落ちません。
+   ランクの列が丸ごと空なら、RPをそのまま通算として扱います。
    ===================================================================== */
 const URL_APEX = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1593393569&single=true&output=csv";
-const AP={ list:[], range:"30" };
+const AP={ list:[], range:"30", ranked:false };
 const AP_RANGES=[ {key:"30", label:"30日", days:30}, {key:"90", label:"90日", days:90}, {key:"all", label:"全期間", days:0} ];
 const AP_RP_COLS=["RP","ランクポイント","ランクpt","ポイント","LP"];
+/* ランクと、各ディビジョン（IV→III→II→I の順）で次へ上がるのに必要なRP。
+   シーズンで変わったら、ここの数字を書き換えてください（EA公式ヘルプ「How Apex Legends Ranked works」より） */
+const AP_TIERS=[
+  {name:"ルーキー",   words:["ルーキー","rookie"],           divs:[250,250,250,250],   color:"#8a8f98"},
+  {name:"ブロンズ",   words:["ブロンズ","bronze"],           divs:[500,500,500,500],   color:"#a8683a"},
+  {name:"シルバー",   words:["シルバー","silver"],           divs:[500,500,500,500],   color:"#8f9bab"},
+  {name:"ゴールド",   words:["ゴールド","gold"],             divs:[750,750,750,750],   color:"#d4a017"},
+  {name:"プラチナ",   words:["プラチナ","plat"],             divs:[750,750,1000,1000], color:"#2f9fa8"},
+  {name:"ダイヤ",     words:["ダイヤ","diamond","dia"],      divs:[1000,1000,1000,1000], color:"#4a7bd6"},
+  {name:"マスター",   words:["マスター","master"],           divs:null,                color:"#8e44c9"},
+  {name:"プレデター", words:["プレデター","predator","pred"], divs:null,                color:"#c0392b"}
+];
+const AP_ROMAN=["IV","III","II","I"];
+/* 各ディビジョンの始まりの通算RP */
+(function(){ let s=0; AP_TIERS.forEach(t=>{ t.start=s; t.base=[]; if(t.divs) t.divs.forEach(n=>{ t.base.push(s); s+=n; }); else t.base=[s,s,s,s]; }); AP_TIERS[7].start=AP_TIERS[6].start; })();
 const apSigned=n=>`${n>0?"+":n<0?"−":"±"}${nf(Math.abs(n))}`;
 const apCls=n=>n>0?"up":n<0?"down":"";
+
+/* 「シルバーIV」「ゴールド 2」「Plat Ⅰ」→ {t:段階の番号, d:0〜3（IV〜I）} */
+function apParseRank(s){
+  s=kkZen2Han(String(s||"")).replace(/[\s\u3000]/g,"").toLowerCase();
+  if(!s) return null;
+  const t=AP_TIERS.findIndex(x=>x.words.some(w=>s.includes(w)));
+  if(t<0) return null;
+  if(!AP_TIERS[t].divs) return {t, d:0};
+  /* ランク名を消して、残りから 4/3/2/1 か IV/III/II/I を読む（書いていなければIV） */
+  let r=s; AP_TIERS[t].words.forEach(w=>{ r=r.split(w).join(""); });
+  r=r.replace(/ⅳ|Ⅳ/g,"iv").replace(/ⅲ|Ⅲ/g,"iii").replace(/ⅱ|Ⅱ/g,"ii").replace(/ⅰ|Ⅰ/g,"i");
+  const n=r.match(/[1-4]/), ro=r.match(/iv|iii|ii|i/);
+  const d = n ? 4-Number(n[0]) : ro ? AP_ROMAN.indexOf(ro[0].toUpperCase()) : 0;
+  return {t, d};
+}
+function apRankName(rk){ if(!rk) return ""; const T=AP_TIERS[rk.t]; return T.divs?T.name+AP_ROMAN[rk.d]:T.name; }
+/* 次のディビジョンまで */
+function apNext(rk, rp){
+  const T=AP_TIERS[rk.t]; if(!T.divs) return null;
+  const need=T.divs[rk.d], nx = rk.d<3 ? {t:rk.t, d:rk.d+1} : {t:rk.t+1, d:0};
+  return { need, left:Math.max(0, need-rp), pct:Math.min(100, rp/need*100), name:apRankName(nx) };
+}
+/* 1日の表示名：「シルバーIV 252 RP」 */
+const apLabel=d=>d.rank?`${apRankName(d.rank)} ${nf(d.rp)} RP`:`${nf(d.rp)} RP`;
+/* 通算RP → そのときのランク名（目盛り用） */
+function apTierAt(total){ let i=0; AP_TIERS.slice(0,7).forEach((t,k)=>{ if(total>=t.start) i=k; }); return AP_TIERS[i]; }
 
 async function loadApex(){
   const hero=document.getElementById("ap-hero");
@@ -1378,39 +1423,63 @@ async function loadApex(){
   try{ res=await fetchCSV(URL_APEX); }
   catch(e){ hero.innerHTML=errBox("Apexのデータを読み込めませんでした。"); return; }
   const rows=cleanRows(res.data);
-  /* RPの列を探す：決まった名前 → 名前に「RP」「ポイント」を含む列 */
   const keys=rows.length?Object.keys(rows[0]):[];
-  const rpKey=AP_RP_COLS.find(k=>keys.includes(k)) || keys.find(k=>/rp|ポイント|ﾎﾟｲﾝﾄ/i.test(k));
+  const rpKey=AP_RP_COLS.find(k=>keys.includes(k)) || keys.find(k=>/rp|ポイント|ﾎﾟｲﾝﾄ/i.test(k) && !/ランク$/.test(k));
   if(!rpKey){ hero.innerHTML=errBox("RPの列が見つかりません。見出しを「RP」にしてください。"); return; }
+  const rkKey=["ランク","ティア","Rank","rank"].find(k=>keys.includes(k) && k!==rpKey);
   const byKey={};
   rows.forEach(o=>{
-    const dt=pd(F(o,"日付")), rp=num(F(o,rpKey));
-    if(dt && rp!=null) byKey[dt.toDateString()]={ dt, rp, memo:F(o,"メモ") };
+    const dt=pd(F(o,"日付")); if(!dt) return;
+    const rp=num(F(o,rpKey)), rank=rkKey?apParseRank(F(o,rkKey)):null;
+    const cur=byKey[dt.toDateString()]||{dt};
+    if(rank) cur.rank=rank;
+    if(rp!=null){ cur.rp=rp; cur.memo=F(o,"メモ"); }
+    byKey[dt.toDateString()]=cur;
   });
-  AP.list=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
-  AP.list.forEach((d,i)=>{ d.diff = i ? d.rp-AP.list[i-1].rp : null; });
+  const all=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
+  /* ランクの空欄を埋める：前の日のランクを引き継ぐ。最初のランクより前は最初のランク */
+  const first=all.find(d=>d.rank);
+  AP.ranked=!!first;
+  let cur=first?first.rank:null;
+  all.forEach(d=>{ if(d.rank) cur=d.rank; else d.rank=cur; });
+  AP.list=all.filter(d=>d.rp!=null);
+  AP.list.forEach((d,i)=>{
+    d.total = d.rank ? AP_TIERS[d.rank.t].base[d.rank.d]+d.rp : d.rp;
+    const p=AP.list[i-1];
+    d.diff = p ? d.total-p.total : null;
+    d.move = p && d.rank && p.rank ? Math.sign((d.rank.t*4+d.rank.d)-(p.rank.t*4+p.rank.d)) : 0;   // 1=昇格 -1=降格
+  });
   if(!AP.list.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
   apRenderHero(); apRenderTabs(); apRenderChart(); apRenderDays(); apRenderMonths();
 }
 
-function apRenderHero(){
-  const L=AP.list, last=L[L.length-1], t=today0();
-  const best=L.reduce((b,d)=>(!b||d.rp>b.rp)?d:b,null);
-  const mon=L.filter(d=>ymKey(d.dt)===ymKey(t));
-  /* 今月の増減：先月最後の記録（なければ今月最初の記録）から */
+/* 今月の増減：先月最後の記録（なければ今月最初の記録）から */
+function apMonthDiff(){
+  const t=today0(), L=AP.list, last=L[L.length-1];
+  const mon=L.filter(d=>ymKey(d.dt)===ymKey(t)); if(!mon.length) return null;
   const before=L.filter(d=>d.dt<new Date(t.getFullYear(), t.getMonth(), 1));
-  const base=before.length?before[before.length-1].rp:(mon[0]||{}).rp;
-  const monDiff=mon.length?last.rp-base:null;
-  const isBest=last===best && L.length>1;
+  return last.total-(before.length?before[before.length-1].total:mon[0].total);
+}
+const apBest=()=>AP.list.reduce((b,d)=>(!b||d.total>b.total)?d:b,null);
+const apMoveTag=d=>d.move>0?'<span class="ap-tag up">昇格！</span>':d.move<0?'<span class="ap-tag down">降格</span>':"";
+
+function apRenderHero(){
+  const L=AP.list, last=L[L.length-1], best=apBest(), monDiff=apMonthDiff();
+  const isBest=last===best && L.length>1 && last.diff>0;
   const head = last.diff==null ? "記念すべき最初の記録！"
-    : `${fmtMD(last.dt)}は <strong class="${apCls(last.diff)}">${apSigned(last.diff)}</strong> RP${isBest?"・最高記録を更新！":""}`;
+    : `${fmtMD(last.dt)}は <strong class="${apCls(last.diff)}">${apSigned(last.diff)}</strong> RP${last.move>0?`・<strong>${escHtml(apRankName(last.rank))}</strong>に昇格！`:last.move<0?`・${escHtml(apRankName(last.rank))}に降格`:isBest?"・最高記録を更新！":""}`;
+  const nx = last.rank ? apNext(last.rank, last.rp) : null;
+  const T = last.rank ? AP_TIERS[last.rank.t] : null;
   document.getElementById("ap-hero").innerHTML=`
-    <div class="tm-hero-label">いまのランクポイント（${hmYMD(last.dt)}時点）</div>
+    <div class="tm-hero-label">いまのランク（${hmYMD(last.dt)}時点）</div>
+    ${T?`<div class="ap-rank-big" style="--c:${T.color}"><span class="ap-emblem"></span>${escHtml(apRankName(last.rank))}</div>`:""}
     <div class="tm-big">${nf(last.rp)}<small>RP</small></div>
-    <div class="run-headline${isBest?" pb":""}">${head}</div>
+    ${nx?`<div class="ap-next"><div class="tgt-bar"><span style="width:${nx.pct}%;background:${T.color}"></span></div>
+      <div class="ap-next-t">${escHtml(nx.name)}まで あと <strong>${nf(nx.left)}</strong> RP（${nf(last.rp)} / ${nf(nx.need)}）</div></div>`:""}
+    <div class="run-headline${isBest||last.move>0?" pb":""}">${head}</div>
     <div class="hero-meta">
       ${monDiff!=null?`<span class="hero-chip cmp ${apCls(monDiff)}">今月 <strong>${apSigned(monDiff)}</strong> RP</span>`:""}
-      <span class="hero-chip accent">最高 <strong>${nf(best.rp)}</strong> RP（${fmtMD(best.dt)}）</span>
+      <span class="hero-chip accent">最高 <strong>${escHtml(apLabel(best))}</strong>（${fmtMD(best.dt)}）</span>
       <span class="hero-chip">記録 <strong>${L.length}</strong> 日</span>
     </div>`;
 }
@@ -1421,48 +1490,55 @@ function apRenderTabs(){
   box.querySelectorAll(".day-tab").forEach(b=>b.onclick=()=>{ AP.range=b.dataset.r; apRenderTabs(); apRenderChart(); });
 }
 
-/* 折れ線グラフ（SVG）。タップ・なぞるとその日の値 */
+/* 折れ線グラフ（SVG）。背景はランクごとの色、横線はディビジョンの区切り */
 function apRenderChart(){
   const R=AP_RANGES.find(r=>r.key===AP.range), last=AP.list[AP.list.length-1].dt;
   const from = R.days ? new Date(last.getFullYear(), last.getMonth(), last.getDate()-R.days+1) : AP.list[0].dt;
-  const idx0=AP.list.findIndex(d=>d.dt>=from);
-  const L=AP.list.slice(Math.max(0, idx0));
+  const L=AP.list.slice(Math.max(0, AP.list.findIndex(d=>d.dt>=from)));
   const x0=from<L[0].dt?from:L[0].dt, x1=last;
   const W=600, H=220, PL=4, PR=4, PT=14, PB=22;
-  let lo=Math.min(...L.map(d=>d.rp)), hi=Math.max(...L.map(d=>d.rp));
+  let lo=Math.min(...L.map(d=>d.total)), hi=Math.max(...L.map(d=>d.total));
   const pad=Math.max((hi-lo)*0.12, 50); lo=Math.max(0, lo-pad); hi=hi+pad;
   const span=Math.max(1, x1-x0);
   const X=dt=>PL+(dt-x0)/span*(W-PL-PR), Y=v=>PT+(1-(v-lo)/(hi-lo))*(H-PT-PB);
-  const pts=L.map(d=>[X(d.dt), Y(d.rp)]);
+  const cy=v=>Math.max(PT, Math.min(H-PB, Y(v)));
+  const pts=L.map(d=>[X(d.dt), Y(d.total)]);
   const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join("");
-  const area=L.length>1?`${line}L${pts[pts.length-1][0].toFixed(1)},${H-PB}L${pts[0][0].toFixed(1)},${H-PB}Z`:"";
-  /* 目盛り：きりのいい値で4本くらい */
-  const step=[50,100,200,250,500,1000,2000,2500,5000,10000].find(s=>(hi-lo)/s<=5)||20000;
-  const grid=[]; for(let v=Math.ceil(lo/step)*step; v<=hi; v+=step) grid.push(v);
-  /* 月の区切り */
+  /* 目盛り：ランクがあればディビジョンの境目（多すぎたらランクの境目だけ）、なければきりのいい数 */
+  let grid=[], bands=[];
+  if(AP.ranked){
+    const divs=[]; AP_TIERS.slice(0,7).forEach(t=>{ (t.divs?t.base:[t.start]).forEach((b,i)=>divs.push({v:b, label:t.divs?t.name+AP_ROMAN[i]:t.name, top:i===0})); });
+    grid=divs.filter(g=>g.v>lo && g.v<hi);
+    if(grid.length>6) grid=grid.filter(g=>g.top);
+    AP_TIERS.slice(0,7).forEach((t,i)=>{ const end=i<6?AP_TIERS[i+1].start:Infinity;
+      if(end>lo && t.start<hi) bands.push({y1:cy(Math.min(end,hi)), y2:cy(Math.max(t.start,lo)), c:t.color}); });
+  }else{
+    const step=[50,100,200,250,500,1000,2000,2500,5000,10000].find(s=>(hi-lo)/s<=5)||20000;
+    for(let v=Math.ceil(lo/step)*step; v<=hi; v+=step) grid.push({v, label:nf(v)});
+  }
   const mons=[]; for(let d=new Date(x0.getFullYear(), x0.getMonth()+1, 1); d<=x1; d=new Date(d.getFullYear(), d.getMonth()+1, 1)) mons.push(d);
-  const best=AP.list.reduce((b,d)=>(!b||d.rp>b.rp)?d:b,null);
+  const best=apBest();
   document.getElementById("ap-chart").innerHTML=`
     <div class="bc-readout ap-readout" aria-live="polite"></div>
     <div class="ap-lc">
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="日ごとのランクポイントの推移">
-        ${grid.map(v=>`<line class="ap-grid" x1="0" x2="${W}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/>`).join("")}
+        ${bands.map(b=>`<rect x="0" width="${W}" y="${b.y1.toFixed(1)}" height="${Math.max(0,b.y2-b.y1).toFixed(1)}" fill="${b.c}" opacity=".13"/>`).join("")}
+        ${grid.map(g=>`<line class="ap-grid${g.top?" top":""}" x1="0" x2="${W}" y1="${Y(g.v).toFixed(1)}" y2="${Y(g.v).toFixed(1)}"/>`).join("")}
         ${mons.map(d=>`<line class="ap-mon" x1="${X(d).toFixed(1)}" x2="${X(d).toFixed(1)}" y1="${PT}" y2="${H-PB}"/>`).join("")}
-        ${area?`<path class="ap-area" d="${area}"/>`:""}
         <path class="ap-line" d="${line}"/>
         <line class="ap-cur" x1="0" x2="0" y1="${PT}" y2="${H-PB}" visibility="hidden"/>
       </svg>
-      ${grid.map(v=>`<span class="ap-ylbl" style="top:${(Y(v)/H*100).toFixed(2)}%">${nf(v)}</span>`).join("")}
+      ${grid.filter(g=>Y(g.v)>PT+12).map(g=>`<span class="ap-ylbl" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${escHtml(g.label)}</span>`).join("")}
       ${mons.map(d=>`<span class="ap-xlbl" style="left:${(X(d)/W*100).toFixed(2)}%">${d.getMonth()+1}月</span>`).join("")}
-      ${L.map((d,i)=>`<span class="ap-dot${d===best?" best":""}${i===L.length-1?" last":""}" data-i="${i}" style="left:${(pts[i][0]/W*100).toFixed(2)}%;top:${(pts[i][1]/H*100).toFixed(2)}%"></span>`).join("")}
+      ${L.map((d,i)=>`<span class="ap-dot${d===best?" best":""}${d.move>0?" promo":""}" data-i="${i}" style="left:${(pts[i][0]/W*100).toFixed(2)}%;top:${(pts[i][1]/H*100).toFixed(2)}%"></span>`).join("")}
     </div>
-    <p class="kk-note-s">なぞる・タップでその日のRP。縦の点線は月の区切り、金色の点が最高記録。</p>`;
+    <p class="kk-note-s">なぞる・タップでその日の記録。${AP.ranked?"背景の色はランク、横線はディビジョンの区切り、緑の点は昇格した日、":""}金色の点が最高記録。</p>`;
   const box=document.querySelector("#ap-chart .ap-lc"), out=document.querySelector("#ap-chart .ap-readout"), cur=box.querySelector(".ap-cur");
   const pick=i=>{
     const d=L[i];
     box.querySelectorAll(".ap-dot").forEach(e=>e.classList.toggle("on", +e.dataset.i===i));
     cur.setAttribute("x1", pts[i][0]); cur.setAttribute("x2", pts[i][0]); cur.setAttribute("visibility","visible");
-    out.innerHTML=`${d.dt.getFullYear()}/${fmtMD(d.dt)}　<strong>${nf(d.rp)}</strong> RP${d.diff!=null?`　<span class="${apCls(d.diff)}">${apSigned(d.diff)}</span>`:""}${d.memo?`　${escHtml(d.memo)}`:""}`;
+    out.innerHTML=`${d.dt.getFullYear()}/${fmtMD(d.dt)}　<strong>${escHtml(apLabel(d))}</strong>${d.diff!=null?`　<span class="${apCls(d.diff)}">${apSigned(d.diff)}</span>`:""}${apMoveTag(d)}${d.memo?`　${escHtml(d.memo)}`:""}`;
   };
   const near=e=>{
     const r=box.getBoundingClientRect(), x=(e.clientX-r.left)/r.width*W;
@@ -1481,23 +1557,23 @@ function apRenderDays(){
     <div class="ap-day">
       <span class="ap-day-d">${fmtMD(d.dt)}<small>${d.dt.getFullYear()}</small></span>
       <span class="ap-day-bar">${d.diff!=null?`<span class="${apCls(d.diff)}" style="width:${Math.abs(d.diff)/maxAbs*50}%"></span>`:""}</span>
-      <span class="ap-day-v">${nf(d.rp)}<small class="${d.diff!=null?apCls(d.diff):""}">${d.diff!=null?apSigned(d.diff):"最初の記録"}</small></span>
+      <span class="ap-day-v">${d.rank?`<em style="--c:${AP_TIERS[d.rank.t].color}">${escHtml(apRankName(d.rank))}</em>`:""}${nf(d.rp)}<small class="${d.diff!=null?apCls(d.diff):""}">${apMoveTag(d)}${d.diff!=null?apSigned(d.diff):"最初の記録"}</small></span>
     </div>`), 10, "日");
 }
 
-/* 月ごと：月末のRPとその月の増減 */
+/* 月ごと：月末のランクとその月の増減 */
 function apRenderMonths(){
   const m={};
   AP.list.forEach(d=>{ const k=ymKey(d.dt); (m[k]=m[k]||{key:k, y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, L:[]}).L.push(d); });
   const M=Object.values(m).sort((a,b)=>a.key<b.key?-1:1);
-  M.forEach((x,i)=>{ const end=x.L[x.L.length-1].rp, start=i?M[i-1].L[M[i-1].L.length-1].rp:x.L[0].rp;
-    x.end=end; x.diff=end-start; x.hi=Math.max(...x.L.map(d=>d.rp)); });
+  M.forEach((x,i)=>{ x.end=x.L[x.L.length-1]; const start=i?M[i-1].L[M[i-1].L.length-1].total:x.L[0].total;
+    x.diff=x.end.total-start; x.hi=x.L.reduce((b,d)=>d.total>b.total?d:b); });
   const max=Math.max(1,...M.map(x=>Math.abs(x.diff)));
   document.getElementById("ap-months").innerHTML=foldRows(M.slice().reverse().map(x=>`
     <div class="mlist-row static">
       <span class="mlist-name"><span class="mlist-y">${x.y}年</span><span class="mlist-m">${x.mo}月</span></span>
       <span class="mlist-bar ap ${apCls(x.diff)}"><span style="width:${Math.abs(x.diff)/max*100}%"></span></span>
-      <span class="mlist-val ${apCls(x.diff)}">${apSigned(x.diff)} RP<small>月末 ${nf(x.end)}・最高 ${nf(x.hi)}・${x.L.length}日</small></span>
+      <span class="mlist-val ${apCls(x.diff)}">${apSigned(x.diff)} RP<small>月末 ${escHtml(apLabel(x.end))}${x.hi!==x.end?`・最高 ${escHtml(apLabel(x.hi))}`:""}・${x.L.length}日</small></span>
     </div>`), 6, "か月");
 }
 
@@ -1527,7 +1603,7 @@ function hmEvents(){
   const E=[];
   RUN.list.forEach(r=>E.push({ k:"run", dt:r.dt, main:`${r.km.toFixed(2)}km 走った`, sub:`${fmtPace(r.pace)}/km・${fmtDur(r.sec)}` }));
   BK.list.forEach(r=>E.push({ k:"bike", dt:r.dt, main:`${r.dest||"行き先なし"}へ`, sub:`${r.km.toFixed(1)}km` }));
-  AP.list.forEach(d=>E.push({ k:"apex", dt:d.dt, main:`${nf(d.rp)} RP`, sub:d.diff!=null?`前回から ${apSigned(d.diff)}`:"最初の記録" }));
+  AP.list.forEach(d=>E.push({ k:"apex", dt:d.dt, main:apLabel(d)+(d.move>0?"（昇格！）":d.move<0?"（降格）":""), sub:d.diff!=null?`前回から ${apSigned(d.diff)} RP`:"最初の記録" }));
   GM.list.forEach(r=>{ if(r.dt) E.push({ k:"gourmet", dt:r.dt, main:r.name, sub:[r.pref+(r.muni||""), r.genre, r.my!=null?`評価 ${r.my.toFixed(1)}`:""].filter(Boolean).join("・") }); });
   return E.sort((a,b)=>b.dt-a.dt);
 }
@@ -1586,10 +1662,9 @@ function hmMonthHtml(){
   } else out.push(hmEmptyCard("gourmet","今月"));
   /* Apex */
   if(HM.done.apex && AP.list.length){
-    const last=AP.list[AP.list.length-1], before=AP.list.filter(d=>d.dt<new Date(t.getFullYear(), t.getMonth(), 1));
-    const R=AP.list.filter(d=>ymKey(d.dt)===key), base=before.length?before[before.length-1].rp:(R[0]||{}).rp;
-    out.push(hmCard("apex","いまのRP", nf(last.rp), "RP",
-      `${R.length?`今月 ${apSigned(last.rp-base)} RP`:"今月はまだ記録なし"}<br>${last.diff!=null?`${fmtMD(last.dt)}は ${apSigned(last.diff)}`:""}`));
+    const last=AP.list[AP.list.length-1], md=apMonthDiff(), nx=last.rank?apNext(last.rank,last.rp):null;
+    out.push(hmCard("apex", last.rank?apRankName(last.rank):"いまのRP", nf(last.rp), "RP",
+      `${md!=null?`今月 ${apSigned(md)} RP`:"今月はまだ記録なし"}${nx?`<br>${escHtml(nx.name)}まで あと ${nf(nx.left)}`:""}`, nx?nx.pct:null));
   } else out.push(hmEmptyCard("apex","今月"));
   return out.join("");
 }
@@ -1621,9 +1696,9 @@ function hmTotalHtml(){
   } else out.push(hmEmptyCard("torima","累計"));
   /* Apex */
   if(HM.done.apex && AP.list.length){
-    const best=AP.list.reduce((b,d)=>(!b||d.rp>b.rp)?d:b,null);
-    out.push(hmCard("apex","最高RP", nf(best.rp), "RP", `${hmYMD(best.dt)}<br>記録 ${AP.list.length}日`));
-  } else out.push(hmEmptyCard("apex","最高RP"));
+    const best=apBest();
+    out.push(hmCard("apex","最高記録", best.rank?apRankName(best.rank):nf(best.rp), best.rank?`${nf(best.rp)}RP`:"RP", `${hmYMD(best.dt)}<br>記録 ${AP.list.length}日`));
+  } else out.push(hmEmptyCard("apex","最高記録"));
   return out.join("");
 }
 
