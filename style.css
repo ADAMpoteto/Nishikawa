@@ -1002,8 +1002,16 @@ details.kk-group[open] summary::after{content:"－";}
 /* ===== ホーム ===== */
 .hm-date small{font-size:18px;}
 .hm-wait{font-size:12px;color:var(--text3);padding:6px 0;}
-.hm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
-@media(min-width:640px){ .hm-grid{grid-template-columns:repeat(3,minmax(0,1fr));} }
+/* 6分割のグリッド。端数のカードは横に広げて、どの行も端まで埋める
+   スマホ：2枚ずつ（奇数なら最後の1枚は全幅）／PC：3枚ずつ（余りが2枚なら半分ずつ、1枚なら全幅） */
+.hm-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;}
+.hm-grid>*{grid-column:span 3;}
+.hm-grid>*:last-child:nth-child(odd){grid-column:span 6;}
+@media(min-width:640px){
+  .hm-grid>*, .hm-grid>*:last-child:nth-child(odd){grid-column:span 2;}
+  .hm-grid>*:nth-last-child(2):nth-child(3n+1), .hm-grid>*:last-child:nth-child(3n+2){grid-column:span 3;}
+  .hm-grid>*:last-child:nth-child(3n+1){grid-column:span 6;}
+}
 .hm-card{display:flex;flex-direction:column;gap:6px;text-align:left;padding:12px 13px 13px;border:1px solid var(--border);border-top:3px solid var(--c);border-radius:var(--rl);background:#fff;color:var(--text);cursor:pointer;min-width:0;transition:background .15s, transform .15s;font:inherit;}
 .hm-card:hover{background:var(--bg2);}
 .hm-card:active{transform:scale(.98);}
@@ -1048,7 +1056,6 @@ details.kk-group[open] summary::after{content:"－";}
   .hm-yr-row{grid-template-columns:minmax(0,1fr) auto;}
   .hm-yr-c{grid-column:1 / -1;text-align:left;}
 }
-@media(min-width:640px){ #hm-month{grid-template-columns:repeat(4,minmax(0,1fr));} }
 
 /* =====================================================================
    UI改善（2026-10）：ここから下が上の指定を上書きします
