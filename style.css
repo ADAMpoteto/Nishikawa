@@ -1228,3 +1228,13 @@ details.kk-group[open] summary::after{content:"－";}
 .mlist-bar.mh i{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--text);border-radius:2px;}
 .mh-mrow.future .mlist-val{color:var(--text3);}
 #game .ap-readout .up{color:#1f8a4c;} #game .ap-readout .down{color:#d0343a;}
+.mh-days{margin-top:14px;border-top:1px solid var(--border);}
+.mh-month{border-bottom:1px solid var(--border);}
+.mh-month summary{display:flex;justify-content:space-between;align-items:baseline;padding:11px 2px;font-size:13px;font-weight:800;color:var(--text);list-style:none;}
+.mh-month summary::-webkit-details-marker{display:none;}
+.mh-month summary::before{content:"▸";color:var(--text3);margin-right:8px;font-size:11px;}
+.mh-month[open] summary::before{content:"▾";}
+.mh-month summary > span:first-child{flex:1;}
+.mh-month-v{font-variant-numeric:tabular-nums;}
+.mh-month-v small{font-size:11px;font-weight:600;color:var(--text3);margin-left:8px;}
+.mh-month table{margin:0 0 10px;}

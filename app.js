@@ -1447,7 +1447,8 @@ async function loadApex(){
     else{ if(prevS!=null && d.season!==prevS && cp!=null) cp=1; d.split=cp; }   // 新しいシーズンはスプリット1から
     d.pk=`${d.season??""}-${d.split??""}`;   // 期間（シーズン＋スプリット）
   });
-  AP.all=all.filter(d=>d.rp!=null);
+  const t0=today0();
+  AP.all=all.filter(d=>d.rp!=null && d.dt<=t0);   // 先の日付は出さない
   AP.all.forEach((d,i)=>{
     d.total = d.rank ? AP_TIERS[d.rank.t].base[d.rank.d]+d.rp : d.rp;
     const p=AP.all[i-1];
@@ -1642,15 +1643,18 @@ async function loadMH(){
     const dt=pd(F(o,"日付")), g=num(F(o,"HR上昇")||F(o,"上昇")), mg=num(F(o,"MR上昇"));
     if(dt && (g!=null || mg!=null)) byKey[dt.toDateString()]={dt, gain:g||0, mgain:mg};
   });
-  MH.list=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
-  let c=0; MH.list.forEach(d=>{ c+=d.gain; d.hr=c; });
+  MH.all=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
+  let c=0; MH.all.forEach(d=>{ c+=d.gain; d.hr=c; });
   /* MR：最初に数字が入った日から */
   let mc=0; MH.mr=[];
-  const mi=MH.list.findIndex(d=>d.mgain!=null);
-  if(mi>=0) MH.list.slice(mi).forEach(d=>{ mc+=d.mgain||0; d.mr=mc; MH.mr.push(d); });
+  const mi=MH.all.findIndex(d=>d.mgain!=null);
+  if(mi>=0) MH.all.slice(mi).forEach(d=>{ mc+=d.mgain||0; d.mr=mc; MH.mr.push(d); });
+  /* 表示は今日の時点まで（先の日付が入っていても出さない） */
+  const t0=today0();
+  MH.list=MH.all.filter(d=>d.dt<=t0); MH.mr=MH.mr.filter(d=>d.dt<=t0);
   if(!MH.list.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
   /* スケジュール：出発点のHR → 期限に目標。月末ごとの目標HRを日数で割り振る */
-  const before=MH.list.filter(d=>d.dt<=MH_PLAN_FROM);
+  const before=MH.all.filter(d=>d.dt<=MH_PLAN_FROM);   // 計画の出発点は、入っている記録から
   MH.planStart={dt:MH_PLAN_FROM, hr:before.length?before[before.length-1].hr:0};
   MH.plan=[]; const total=MH_DEADLINE-MH_PLAN_FROM; let prev=MH.planStart.hr;
   for(let d=new Date(MH_PLAN_FROM.getFullYear(), MH_PLAN_FROM.getMonth()+2, 0); d<=MH_DEADLINE; d=new Date(d.getFullYear(), d.getMonth()+2, 0)){
@@ -1665,6 +1669,7 @@ async function loadMH(){
 function mhPlanAt(dt){
   const P=[MH.planStart, ...MH.plan];
   if(dt<P[0].dt) return null;
+  if(+dt===+P[0].dt) return P[0].hr;
   for(let i=1;i<P.length;i++){ if(dt<=P[i].dt){ const a=P[i-1], b=P[i]; return a.hr+(b.hr-a.hr)*(dt-a.dt)/(b.dt-a.dt); } }
   return P[P.length-1].hr;
 }
@@ -1674,22 +1679,20 @@ function mhRankHero(el, o){
   const L=o.list, last=L[L.length-1], v=last[o.key], g=last[o.gainKey]||0;
   const ymd=d=>`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
   const plan=o.planAt?o.planAt(last.dt):null, vs=plan!=null?Math.round(v-plan):null;
-  const left=o.goal?Math.max(0,o.goal-v):null, days=o.deadline?Math.max(1, Math.round((o.deadline-last.dt)/864e5)):null;
+  const left=o.goal?Math.max(0,o.goal-v):null, days=o.deadline?Math.max(1, Math.round((o.deadline-today0())/864e5)):null;
   el.innerHTML=`
     <div class="tm-hero-label">${o.title}</div>
     <div class="tm-big">${nf(v)}<small>${o.unit}</small></div>
     <div class="ap-next"><div class="tgt-bar"><span style="width:${o.goal?Math.min(100,v/o.goal*100):0}%;background:${o.color}"></span></div>
       <div class="ap-next-t"><span>${o.goal?`${nf(v)} / ${o.goal}`:nf(v)}</span><span>${o.goal&&o.deadline?`${ymd(o.deadline)}までに ${o.goal}`:"目標は未設定"}</span></div></div>
-    ${lead(`${fmtMD(last.dt)}　${g?tone(1,`<b>+${g}</b> ${o.unit}`):`<b>±0</b> ${o.unit}`}${vs!=null?`　${vs>0?tone(1,`計画より ${vs} ${o.unit} 先`):vs<0?tone(-1,`計画より ${-vs} ${o.unit} 遅れ`):"計画どおり"}`:""}`)}
+    ${lead(`${fmtMD(last.dt)}　${g?tone(1,`<b>+${g}</b> ${o.unit}`):`<b>±0</b> ${o.unit}`}${vs!=null?`　${vs>0?tone(1,`計画より ${vs} ${o.unit} 先`):vs<0?tone(-1,`計画より ${-vs} ${o.unit} 遅れ`):"計画どおり"}`:o.planFrom&&last.dt<=o.planFrom?`　計画は ${ymd(new Date(o.planFrom.getFullYear(),o.planFrom.getMonth(),o.planFrom.getDate()+1))} から`:""}`)}
     ${facts([
       o.goal ? fact(`${o.goal}まで あと`, nf(left), o.unit) : fact("目標", "未設定", ""),
       o.goal && days ? fact("1日の目安", (left/days).toFixed(1), `${o.unit}（残り${days}日）`) : "",
-      fact(`${o.unit}が上がった日`, L.filter(d=>d[o.gainKey]>0).length, `日 / ${L.length}日`),
-      fact("開始", `${L[0].dt.getFullYear()}/${fmtMD(L[0].dt)}`, "")
     ])}`;
 }
 function mhRenderHero(){
-  mhRankHero(document.getElementById("mh-hero"), { title:"ハンターランク", unit:"HR", color:"#8a5a2b", list:MH.list, key:"hr", gainKey:"gain", goal:MH_GOAL, deadline:MH_DEADLINE, planAt:mhPlanAt });
+  mhRankHero(document.getElementById("mh-hero"), { title:"ハンターランク", unit:"HR", color:"#8a5a2b", list:MH.list, key:"hr", gainKey:"gain", goal:MH_GOAL, deadline:MH_DEADLINE, planAt:mhPlanAt, planFrom:MH_PLAN_FROM });
 }
 
 /* 累計の折れ線（実線）＋計画線（点線）。HR と MR で共通 */
@@ -1763,12 +1766,16 @@ function mhRenderMR(){
     table:mhDaysTable("mr") });
 }
 
+/* 日別の記録を月ごとにまとめる（新しい月から。いちばん新しい月だけ開いておく） */
 function mhDaysTable(kind){
-  const mr=kind==="mr", L=(mr?MH.mr:MH.list).slice().reverse(), u=mr?"MR":"HR", gk=mr?"mgain":"gain", vk=mr?"mr":"hr";
-  return `<details class="tm-table"><summary>日別の一覧を開く</summary>
-    <table><thead><tr><th>日付</th><th>${u}上昇</th><th>累計${u}</th></tr></thead><tbody>${
-      L.map(d=>`<tr><td>${d.dt.getFullYear()}/${fmtMD(d.dt)}</td><td class="${d[gk]?"up":""}">${d[gk]?"+"+d[gk]:"0"}</td><td>${nf(d[vk])}</td></tr>`).join("")
-    }</tbody></table></details>`;
+  const mr=kind==="mr", u=mr?"MR":"HR", gk=mr?"mgain":"gain", vk=mr?"mr":"hr";
+  const m={}; (mr?MH.mr:MH.list).forEach(d=>{ const k=ymKey(d.dt); (m[k]=m[k]||{y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, L:[]}).L.push(d); });
+  const M=Object.keys(m).sort().reverse().map(k=>m[k]);
+  return `<div class="mh-days">${M.map((x,i)=>{ const g=x.L.reduce((s,d)=>s+(d[gk]||0),0);
+    return `<details class="tm-table mh-month"${i===0?" open":""}><summary><span>${x.y}年${x.mo}月</span><span class="mh-month-v">+${g} ${u}<small>月末 ${nf(x.L[x.L.length-1][vk])}</small></span></summary>
+      <table><thead><tr><th>日付</th><th>${u}上昇</th><th>累計${u}</th></tr></thead><tbody>${
+        x.L.slice().reverse().map(d=>`<tr><td>${fmtMD(d.dt)}</td><td class="${d[gk]?"up":""}">${d[gk]?"+"+d[gk]:"0"}</td><td>${nf(d[vk])}</td></tr>`).join("")
+      }</tbody></table></details>`; }).join("")}</div>`;
 }
 
 /* 月ごと：実績の月と、計画の月を時系列で1本に並べる */
