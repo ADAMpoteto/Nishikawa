@@ -1213,3 +1213,18 @@ details.kk-group[open] summary::after{content:"－";}
 .ap-xlbl.first{transform:none;}
 .ap-xlbl.last{transform:translateX(-100%);}
 .ap-xlbl{font-variant-numeric:tabular-nums;}
+
+/* ===== ゲーム：Apex Legends / モンハン の切り替え（下線のタブ） ===== */
+.game-tabs{display:flex;gap:24px;border-bottom:1px solid var(--border);margin:0 0 22px;}
+.game-tabs button{appearance:none;background:none;border:none;padding:10px 0 9px;font:inherit;font-size:15px;font-weight:800;color:var(--text3);cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1px;}
+.game-tabs button:hover{color:var(--text2);}
+.game-tabs button.active{color:var(--text);border-bottom-color:var(--text);}
+/* モンハン */
+.mh-line{stroke:#8a5a2b;}
+.mh-plan{fill:none;stroke:var(--text3);stroke-width:1.5;stroke-dasharray:5 4;vector-effect:non-scaling-stroke;}
+.ap-dot.mh-dot{background:#fff;border:3px solid #8a5a2b;width:12px;height:12px;margin:-6px 0 0 -6px;}
+.mlist-bar.mh{position:relative;overflow:visible;}
+.mlist-bar.mh > span{background:#8a5a2b;}
+.mlist-bar.mh i{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--text);border-radius:2px;}
+.mh-mrow.future .mlist-val{color:var(--text3);}
+#game .ap-readout .up{color:#1f8a4c;} #game .ap-readout .down{color:#d0343a;}

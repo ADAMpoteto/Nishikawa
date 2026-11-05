@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=20261105o">
+<link rel="stylesheet" href="style.css?v=20261105s">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
@@ -23,7 +23,7 @@
     <button class="nav-btn" data-nav="bike" onclick="goto('bike')">自転車</button>
     <button class="nav-btn" data-nav="gourmet" onclick="goto('gourmet')">グルメ</button>
     <button class="nav-btn" data-nav="keiken" onclick="goto('keiken')">経県値</button>
-    <button class="nav-btn" data-nav="apex" onclick="goto('apex')">Apex</button>
+    <button class="nav-btn" data-nav="game" onclick="goto('game')">ゲーム</button>
   </div>
 </nav>
 
@@ -133,21 +133,45 @@
 </div>
 </div>
 
-<!-- ========== Apex ========== -->
-<div id="apex" class="page">
+<!-- ========== ゲーム（Apex Legends / モンハン） ========== -->
+<div id="game" class="page">
 <div class="container">
-  <div class="page-header"><h1>Apex Legends</h1><p>ランクポイントの推移</p></div>
-  <div class="trip-selbox" id="ap-season-box" hidden><select id="ap-season-sel" aria-label="シーズン・スプリットを選ぶ"></select></div>
-  <div class="hero" id="ap-hero"><div class="loading">読み込み中…</div></div>
-
-  <div class="card-section">
-    <div class="sec-title">日ごとのRPの推移</div>
-    <div id="ap-chart"></div>
+  <div class="page-header"><h1>ゲーム</h1><p>Apex Legends のランクと、モンハンのハンターランク</p></div>
+  <div class="game-tabs" role="tablist" aria-label="ゲームを選ぶ">
+    <button type="button" role="tab" data-g="apex">Apex Legends</button>
+    <button type="button" role="tab" data-g="mh">モンハン</button>
   </div>
 
-  <div class="card-section">
-    <div class="sec-title">シーズンごとの成績</div>
-    <div class="mlist" id="ap-periods"></div>
+  <div id="game-apex" class="game-pane">
+    <div class="trip-selbox" id="ap-season-box" hidden><select id="ap-season-sel" aria-label="シーズン・スプリットを選ぶ"></select></div>
+    <div class="hero" id="ap-hero"><div class="loading">読み込み中…</div></div>
+    <div class="card-section">
+      <div class="sec-title">日ごとのRPの推移</div>
+      <div id="ap-chart"></div>
+    </div>
+    <div class="card-section">
+      <div class="sec-title">シーズンごとの成績</div>
+      <div class="mlist" id="ap-periods"></div>
+    </div>
+  </div>
+
+  <div id="game-mh" class="game-pane" hidden>
+    <div class="hero" id="mh-hero"><div class="loading">読み込み中…</div></div>
+    <div class="card-section">
+      <div class="sec-title">HRの推移</div>
+      <div id="mh-chart"></div>
+    </div>
+    <div id="mh-mr" hidden>
+      <div class="hero" id="mr-hero"></div>
+      <div class="card-section">
+        <div class="sec-title">MRの推移</div>
+        <div id="mr-chart"></div>
+      </div>
+    </div>
+    <div class="card-section">
+      <div class="sec-title">月ごとの記録と目標</div>
+      <div class="mlist" id="mh-months"></div>
+    </div>
   </div>
 </div>
 </div>
@@ -215,6 +239,6 @@
   データはGoogleスプレッドシートから取得しています。
 </footer>
 
-<script src="app.js?v=20261105o"></script>
+<script src="app.js?v=20261105s"></script>
 </body>
 </html>
