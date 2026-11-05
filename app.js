@@ -92,6 +92,32 @@ function bindBarChart(id, items, defIdx){
   if(defIdx!=null && defIdx>=0) pick(defIdx);
 }
 
+/* ---------- グラフの目盛りの文字が重ならないようにする ----------
+   ・はみ出す文字は内側に寄せる
+   ・重なるときは、年の入った文字・端の文字を優先して残し、もう片方を隠す（最低 8px あける） */
+function declutterLabels(box, sel){
+  if(!box || !box.offsetWidth) return;
+  const els=[...box.querySelectorAll(sel)].filter(e=>e.textContent.trim());   // 空の目盛りは数えない
+  els.forEach(e=>{ e.classList.remove("lbl-hide"); e.style.marginLeft=""; });
+  const br=box.getBoundingClientRect();
+  els.forEach(e=>{ const r=e.getBoundingClientRect();
+    if(r.left<br.left) e.style.marginLeft=(br.left-r.left)+"px";
+    else if(r.right>br.right) e.style.marginLeft=(br.right-r.right)+"px"; });
+  const pri=e=>(/\//.test(e.textContent)?4:0)+(e===els[els.length-1]?2:0)+(e===els[0]?1:0);
+  const kept=[];
+  els.map(e=>({e, p:pri(e)})).sort((a,b)=>b.p-a.p).forEach(x=>{
+    const r=x.e.getBoundingClientRect();
+    const hit=kept.some(k=>r.left<k.right+8 && k.left<r.right+8);
+    if(hit) x.e.classList.add("lbl-hide"); else kept.push(r);
+  });
+}
+function declutterAll(){
+  document.querySelectorAll(".ap-lc").forEach(b=>declutterLabels(b, ".ap-xlbl"));
+  document.querySelectorAll(".bc-plot").forEach(b=>declutterLabels(b, ".bc-lbl"));
+}
+let _dcT=0; window.addEventListener("resize", ()=>{ clearTimeout(_dcT); _dcT=setTimeout(declutterAll, 120); });
+new MutationObserver(()=>{ clearTimeout(_dcT); _dcT=setTimeout(declutterAll, 30); }).observe(document.body, {childList:true, subtree:true});
+
 /* ---------- ルーティング（戻る/進む・直リンク対応） ---------- */
 const PAGES=["home","torima","run","bike","gourmet","keiken","game"];
 function applyPage(page){
@@ -106,6 +132,7 @@ function applyPage(page){
   document.title = nb ? `西川記録 | ${nb.textContent.trim()}` : "西川記録";
   if(page==="keiken"||page==="gourmet") kkSetMode(page);
   if(page==="game") gameShow(sub||GAME.tab);
+  setTimeout(declutterAll, 0);   // 隠れていたページは幅0で計れないので、表示してから整える
   window.scrollTo(0,0);
 }
 function goto(page, push){
@@ -1728,7 +1755,7 @@ function mhChart(el, o){
       ${ticks.map((d,k)=>`<span class="ap-xlbl${(short&&ticks.length>1&&k===0)||X(d)/W<0.08?" first":(short&&ticks.length>1&&k===ticks.length-1)||X(d)/W>0.92?" last":""}" style="left:${(X(d)/W*100).toFixed(2)}%">${short?`${d.getMonth()+1}/${d.getDate()}`:`${d.getMonth()===0||(d===ticks[0]&&!ticks.some(t=>t.getMonth()===0))?`${d.getFullYear()}/`:""}${d.getMonth()+1}月`}</span>`).join("")}
       <span class="ap-dot mh-dot" style="border-color:${o.color}"></span>
     </div>
-    <p class="kk-note-s">${planD?`実線が実績、点線が ${o.deadline.getFullYear()}/${o.deadline.getMonth()+1}/${o.deadline.getDate()} に ${o.goal} へ届く計画。`:""}なぞる・タップでその日の記録。</p>
+    <p class="kk-note-s">${o.note||(planD?`実線が実績、点線が ${o.deadline.getFullYear()}/${o.deadline.getMonth()+1}/${o.deadline.getDate()} に ${o.goal} へ届く計画。`:"")}なぞる・タップでその日の記録。</p>
     ${o.table||""}`;
   const box=el.querySelector(".ap-lc"), out=el.querySelector(".ap-readout"), cur=box.querySelector(".ap-cur"), dot=box.querySelector(".mh-dot");
   const pick=i=>{
@@ -1743,9 +1770,16 @@ function mhChart(el, o){
   box.addEventListener("pointerdown", e=>pick(near(e)));
   pick(L.length-1);
 }
+/* 点線：今日の実績 → シートに入っている先の日付の予定 → 計画（出発点の日から期限まで） */
+function mhPlanPath(){
+  const last=MH.list[MH.list.length-1], t0=today0();
+  const sched=MH.all.filter(d=>d.dt>t0 && d.dt<=MH_PLAN_FROM).map(d=>({dt:d.dt, v:d.hr}));
+  return [last?{dt:last.dt, v:last.hr}:null, ...sched, ...[MH.planStart, ...MH.plan].map(p=>({dt:p.dt, v:p.hr}))].filter(Boolean);
+}
 function mhRenderChart(){
   mhChart(document.getElementById("mh-chart"), { list:MH.list, key:"hr", gainKey:"gain", unit:"HR", color:"#8a5a2b",
-    goal:MH_GOAL, deadline:MH_DEADLINE, plan:[MH.planStart, ...MH.plan].map(p=>({dt:p.dt, v:p.hr})), planAt:mhPlanAt, table:mhDaysTable() });
+    goal:MH_GOAL, deadline:MH_DEADLINE, plan:mhPlanPath(), planAt:mhPlanAt, table:mhDaysTable(),
+    note:`実線が実績、点線が予定（シートに入っている先の日付の数字）と、${MH_DEADLINE.getFullYear()}/${MH_DEADLINE.getMonth()+1}/${MH_DEADLINE.getDate()} に ${MH_GOAL} へ届く計画。` });
 }
 
 /* マスターランク：MR上昇に数字が入ったら表示 */
@@ -1783,17 +1817,21 @@ function mhRenderMonths(){
   const m={};
   MH.list.forEach(d=>{ const k=ymKey(d.dt); (m[k]=m[k]||{key:k, y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, gain:0, end:0}); m[k].gain+=d.gain; m[k].end=d.hr;
     if(d.mr!=null){ m[k].mgain=(m[k].mgain||0)+(d.mgain||0); m[k].mend=d.mr; } });
+  /* 先の日付の予定（今日より後でシートに入っている分） */
+  const t0=today0();
+  MH.all.filter(d=>d.dt>t0).forEach(d=>{ const k=ymKey(d.dt); const r=(m[k]=m[k]||{key:k, y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, gain:null, end:null});
+    r.sgain=(r.sgain||0)+d.gain; r.send=d.hr; });
   MH.plan.forEach(p=>{ const k=ymKey(p.dt); const r=(m[k]=m[k]||{key:k, y:p.dt.getFullYear(), mo:p.dt.getMonth()+1, gain:null, end:null}); r.target=p.hr; r.tgain=p.gain; });
   const M=Object.values(m).sort((a,b)=>a.key<b.key?-1:1);
   /* 計画の月の「その月に上げるHR」がなければ、前の月との差 */
   M.forEach((r,i)=>{ if(r.target!=null && r.tgain==null){ const pv=M[i-1]; r.tgain=r.target-(pv?(pv.target??pv.end??0):0); } });
-  const max=Math.max(1,...M.map(r=>Math.max(r.gain||0, r.tgain||0)));
+  const max=Math.max(1,...M.map(r=>Math.max(r.gain||0, r.tgain||0, (r.gain||0)+(r.sgain||0))));
   document.getElementById("mh-months").innerHTML=M.map(r=>{
     const has=r.gain!=null, plan=r.target!=null, done=has&&plan&&r.end>=r.target;
     return `<div class="mlist-row static mh-mrow${has?"":" future"}">
       <span class="mlist-name"><span class="mlist-y">${r.y}年</span><span class="mlist-m">${r.mo}月</span></span>
-      <span class="mlist-bar mh">${plan?`<i style="left:${(r.tgain||0)/max*100}%"></i>`:""}<span style="width:${(r.gain||0)/max*100}%"></span></span>
-      <span class="mlist-val">${has?`+${r.gain} HR`:`目標 +${r.tgain} HR`}<small>${has?`月末 HR ${r.end}`:""}${has&&plan?"・":""}${plan?`目標 HR ${r.target}${done?" 達成":""}`:""}${r.mend!=null?`・MR +${r.mgain}（${r.mend}）`:""}</small></span>
+      <span class="mlist-bar mh">${plan?`<i style="left:${(r.tgain||0)/max*100}%"></i>`:""}${r.sgain?`<b class="mh-sched" style="left:${(r.gain||0)/max*100}%;width:${r.sgain/max*100}%"></b>`:""}<span style="width:${(r.gain||0)/max*100}%"></span></span>
+      <span class="mlist-val">${has?`+${r.gain} HR`:r.send!=null?`予定 +${r.sgain} HR`:`目標 +${r.tgain} HR`}<small>${[has?`${r.send!=null?"今日":"月末"} ${r.end}`:"", r.send!=null?`予定 ${r.send}`:"", plan?`目標 ${r.target}${done?" 達成":""}`:"", r.mend!=null?`MR ${r.mend}`:""].filter(Boolean).join("・")}</small></span>
     </div>`; }).join("");
 }
 
