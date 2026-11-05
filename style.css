@@ -1198,3 +1198,15 @@ details.kk-group[open] summary::after{content:"－";}
 .stat-chip strong{font-size:16px;}
 .ap-next-t b{color:var(--text);}
 .hero-lead > span{display:inline-block;white-space:nowrap;}
+.tm-table td.up{color:#1f8a4c;} .tm-table td.down{color:#d0343a;}
+.ap-prow .mlist-val small .up{color:#1f8a4c;} .ap-prow .mlist-val small .down{color:#d0343a;}
+.ap-prow.on{background:var(--bg2);}
+#ap-chart .tm-table{margin-top:10px;}
+.mlist-row.ap-prow{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"n v" "b b";row-gap:8px;padding:12px 4px;}
+.ap-prow .mlist-name{grid-area:n;flex-direction:row;align-items:center;gap:8px;white-space:nowrap;}
+.ap-prow .mlist-name .mlist-m{font-size:14px;}
+.ap-prow .mlist-name em{font-style:normal;font-size:10px;font-weight:800;color:#fff;background:var(--text);padding:1px 7px;border-radius:3px;}
+.ap-prow .mlist-val{grid-area:v;text-align:right;}
+.ap-prow .mlist-bar{grid-area:b;}
+.ap-prow.on{background:none;box-shadow:inset 3px 0 0 var(--text);padding-left:12px;}
+.ap-prow .mlist-name em{display:inline-block !important;width:auto !important;flex:none !important;align-self:center;margin:0 !important;line-height:1.6;}

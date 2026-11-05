@@ -151,7 +151,7 @@ async function loadTorima(){
 
   tmRenderMissing(byKey);
   const sel=document.getElementById("tm-month-sel");
-  sel.innerHTML=TM.months.slice().reverse().map(m=>`<option value="${m.key}">${m.label}${m.isCur?"（今月）":""}</option>`).join("");
+  sel.innerHTML=TM.months.slice().reverse().map(m=>`<option value="${m.key}">${m.label}</option>`).join("");
   sel.onchange=()=>tmShow(sel.value);
   tmShow(curKey);
   tmRenderOverall();
@@ -1360,7 +1360,6 @@ function bkRenderYears(){
    ===================================================================== */
 const URL_APEX = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1593393569&single=true&output=csv";
 const AP={ all:[], list:[], cur:[], season:null, seasons:[], range:"30", ranked:false };
-const AP_RANGES=[ {key:"30", label:"30日", days:30}, {key:"90", label:"90日", days:90}, {key:"all", label:"全期間", days:0} ];
 const AP_RP_COLS=["RP","ランクポイント","ランクpt","ポイント","LP"];
 /* ランクと、各ディビジョン（IV→III→II→I の順）で次へ上がるのに必要なRP。
    シーズンで変わったら、ここの数字を書き換えてください（EA公式ヘルプ「How Apex Legends Ranked works」より） */
@@ -1479,59 +1478,50 @@ function apShowSeason(pk){
       + (AP.seasons.length>1?`<option value="all"${pk==="all"?" selected":""}>全期間</option>`:"");
     sel.onchange=()=>apShowSeason(sel.value);
   }else box.hidden=true;
-  apRenderHero(); apRenderTabs(); apRenderChart(); apRenderDays(); apRenderMonths();
-}
-/* 今月の増減：先月最後の記録（なければ今月最初の記録）から */
-function apMonthDiff(L){
-  L=L||AP.list; const t=today0(), last=L[L.length-1];
-  const mon=L.filter(d=>ymKey(d.dt)===ymKey(t)); if(!mon.length) return null;
-  const before=L.filter(d=>d.dt<new Date(t.getFullYear(), t.getMonth(), 1));
-  return last.total-(before.length?before[before.length-1].total:mon[0].total);
+  apRenderHero(); apRenderChart(); apRenderPeriods();
 }
 const apBest=L=>(L||AP.list).reduce((b,d)=>(!b||d.total>b.total)?d:b,null);
 const apMoveTag=d=>d.newSeason?`<span class="ap-tag ss">${escHtml(apPeriodName(d))}開始</span>`:d.move>0?'<span class="ap-tag up">昇格！</span>':d.move<0?'<span class="ap-tag down">降格</span>':"";
 
+/* 期間（シーズン・スプリット）ごとのまとめ */
+function apPeriodStats(L){
+  const first=L[0], last=L[L.length-1], best=apBest(L);
+  return { first, last, best, gain:last.total-first.total, days:L.length };
+}
+
 function apRenderHero(){
-  const L=AP.list, last=L[L.length-1], best=apBest(), monDiff=AP.season==="all"?null:apMonthDiff();
+  const L=AP.list, last=L[L.length-1], P=apPeriodStats(L), best=P.best, all=AP.season==="all";
   const isBest=last===best && L.length>1 && last.diff>0;
   const nx = last.rank ? apNext(last.rank, last.rp) : null;
   const T = last.rank ? AP_TIERS[last.rank.t] : null;
+  const live = all || AP.season===AP.cur[0].pk;
   document.getElementById("ap-hero").innerHTML=`
-    <div class="tm-hero-label">${AP.season==="all"?"":escHtml(apPeriodName(last))+"・"}${AP.season===AP.cur[0].pk||AP.season==="all"?"いまのランク":"最終ランク"}（${hmYMD(last.dt)}時点）</div>
+    <div class="tm-hero-label">${all?"":escHtml(apPeriodName(last))+"・"}${live?"いまのランク":"最終ランク"}</div>
     ${T?`<div class="ap-rank-big" style="--c:${T.color}"><span class="ap-emblem"></span>${escHtml(apRankName(last.rank))}</div>`:""}
     <div class="tm-big">${nf(last.rp)}<small>RP</small></div>
-    ${nx?`<div class="ap-next"><div class="tgt-bar"><span style="width:${nx.pct}%;background:${T.color}"></span></div>
+    ${nx&&live?`<div class="ap-next"><div class="tgt-bar"><span style="width:${nx.pct}%;background:${T.color}"></span></div>
       <div class="ap-next-t"><span>${nf(last.rp)} / ${nf(nx.need)}</span><span>${escHtml(nx.name)}まで あと <b>${nf(nx.left)}</b> RP</span></div></div>`:""}
-    ${lead(last.diff==null ? `${fmtMD(last.dt)} 最初の記録`
-      : `${fmtMD(last.dt)}　${tone(last.diff,`<b>${apSigned(last.diff)}</b> RP`)}${last.newSeason?`　${escHtml(apPeriodName(last))}開始`:last.move>0?`　${tone(1,`${escHtml(apRankName(last.rank))}に昇格！`)}`:last.move<0?`　${tone(-1,`${escHtml(apRankName(last.rank))}に降格`)}`:isBest?"　最高記録！":""}`)}
+    ${lead(last.diff==null ? `${fmtMD(last.dt)}　${last.newSeason?`${escHtml(apPeriodName(last))}開始`:"最初の記録"}`
+      : `${fmtMD(last.dt)}　${tone(last.diff,`<b>${apSigned(last.diff)}</b> RP`)}${last.move>0?`　${tone(1,`${escHtml(apRankName(last.rank))}に昇格！`)}`:last.move<0?`　${tone(-1,`${escHtml(apRankName(last.rank))}に降格`)}`:isBest?"　最高記録！":""}`)}
     ${facts([
-      monDiff!=null ? `<li>今月<b class="${apCls(monDiff)}">${apSigned(monDiff)}</b>RP</li>` : "",
-      fact("最高", nf(best.rp), `RP（${best.rank?escHtml(apRankName(best.rank)):fmtMD(best.dt)}）`),
-      fact("記録", L.length, "日")
+      all ? "" : `<li>${live?"シーズン開始から":"シーズン通算"}<b class="${apCls(P.gain)}">${apSigned(P.gain)}</b>RP（${escHtml(apLabel(P.first))}から）</li>`,
+      fact("最高", best.rank?escHtml(apRankName(best.rank)):nf(best.rp), best.rank?` ${nf(best.rp)}RP`:"RP"),
+      fact("遊んだ日", L.length, "日")
     ])}`;
 }
 
-function apRenderTabs(){
-  const box=document.getElementById("ap-tabs");
-  box.innerHTML=AP_RANGES.map(r=>`<button type="button" class="day-tab${r.key===AP.range?" active":""}" data-r="${r.key}">${r.label}</button>`).join("");
-  box.querySelectorAll(".day-tab").forEach(b=>b.onclick=()=>{ AP.range=b.dataset.r; apRenderTabs(); apRenderChart(); });
-}
-
-/* 折れ線グラフ（SVG）。背景はランクごとの色、横線はディビジョンの区切り */
+/* 折れ線グラフ（SVG）：選んだシーズン（スプリット）の全期間。背景はランクの色、横線はディビジョンの区切り */
 function apRenderChart(){
-  const R=AP_RANGES.find(r=>r.key===AP.range), last=AP.list[AP.list.length-1].dt;
-  const from = R.days ? new Date(last.getFullYear(), last.getMonth(), last.getDate()-R.days+1) : AP.list[0].dt;
-  const L=AP.list.slice(Math.max(0, AP.list.findIndex(d=>d.dt>=from)));
-  const x0=from<L[0].dt?from:L[0].dt, x1=last;
+  const L=AP.list, x0=L[0].dt, x1=L[L.length-1].dt;
   const W=600, H=220, PL=4, PR=4, PT=14, PB=22;
   let lo=Math.min(...L.map(d=>d.total)), hi=Math.max(...L.map(d=>d.total));
   const pad=Math.max((hi-lo)*0.12, 50); lo=Math.max(0, lo-pad); hi=hi+pad;
   const span=Math.max(1, x1-x0);
-  const X=dt=>PL+(dt-x0)/span*(W-PL-PR), Y=v=>PT+(1-(v-lo)/(hi-lo))*(H-PT-PB);
+  const X=dt=>L.length>1 ? PL+(dt-x0)/span*(W-PL-PR) : W/2, Y=v=>PT+(1-(v-lo)/(hi-lo))*(H-PT-PB);
   const cy=v=>Math.max(PT, Math.min(H-PB, Y(v)));
   const pts=L.map(d=>[X(d.dt), Y(d.total)]);
-  const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join("");
-  /* 目盛り：ランクがあればディビジョンの境目（多すぎたらランクの境目だけ）、なければきりのいい数 */
+  /* 期間が変わったところ（ランクのリセット）は線をつなげない */
+  const line=pts.map((p,i)=>(i&&!L[i].newSeason?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join("");
   let grid=[], bands=[];
   if(AP.ranked){
     const divs=[]; AP_TIERS.slice(0,7).forEach(t=>{ (t.divs?t.base:[t.start]).forEach((b,i)=>divs.push({v:b, label:t.divs?t.name+AP_ROMAN[i]:t.name, top:i===0})); });
@@ -1559,13 +1549,14 @@ function apRenderChart(){
       ${mons.map(d=>`<span class="ap-xlbl" style="left:${(X(d)/W*100).toFixed(2)}%">${d.getMonth()+1}月</span>`).join("")}
       ${L.map((d,i)=>`<span class="ap-dot${d===best?" best":""}${d.move>0?" promo":""}" data-i="${i}" style="left:${(pts[i][0]/W*100).toFixed(2)}%;top:${(pts[i][1]/H*100).toFixed(2)}%"></span>`).join("")}
     </div>
-    <p class="kk-note-s">なぞる・タップでその日の記録。${AP.ranked?"背景の色はランク、横線はディビジョンの区切り、緑の点は昇格した日、":""}金色の点が最高記録。</p>`;
+    <p class="kk-note-s">なぞる・タップでその日の記録。${AP.ranked?"背景の色はランク、緑の点は昇格した日、":""}金色の点が最高記録。</p>
+    ${apDaysTable()}`;
   const box=document.querySelector("#ap-chart .ap-lc"), out=document.querySelector("#ap-chart .ap-readout"), cur=box.querySelector(".ap-cur");
   const pick=i=>{
     const d=L[i];
     box.querySelectorAll(".ap-dot").forEach(e=>e.classList.toggle("on", +e.dataset.i===i));
     cur.setAttribute("x1", pts[i][0]); cur.setAttribute("x2", pts[i][0]); cur.setAttribute("visibility","visible");
-    out.innerHTML=`${d.dt.getFullYear()}/${fmtMD(d.dt)}　<strong>${escHtml(apLabel(d))}</strong>${d.diff!=null?`　<span class="${apCls(d.diff)}">${apSigned(d.diff)}</span>`:""}${apMoveTag(d)}${d.memo?`　${escHtml(d.memo)}`:""}`;
+    out.innerHTML=`${fmtMD(d.dt)}　<strong>${escHtml(apLabel(d))}</strong>${d.diff!=null?`　<span class="${apCls(d.diff)}">${apSigned(d.diff)}</span>`:""}${apMoveTag(d)}${d.memo?`　${escHtml(d.memo)}`:""}`;
   };
   const near=e=>{
     const r=box.getBoundingClientRect(), x=(e.clientX-r.left)/r.width*W;
@@ -1576,32 +1567,30 @@ function apRenderChart(){
   pick(L.length-1);
 }
 
-/* 日ごとの一覧（新しい順） */
-function apRenderDays(){
+/* 日別の一覧（トリマと同じく、開いたときだけ見える表。新しい順） */
+function apDaysTable(){
   const L=AP.list.slice().reverse();
-  const maxAbs=Math.max(1,...L.map(d=>Math.abs(d.diff||0)));
-  document.getElementById("ap-days").innerHTML=foldRows(L.map(d=>`
-    <div class="ap-day">
-      <span class="ap-day-d">${fmtMD(d.dt)}<small>${d.dt.getFullYear()}</small></span>
-      <span class="ap-day-bar">${d.diff!=null?`<span class="${apCls(d.diff)}" style="width:${Math.abs(d.diff)/maxAbs*50}%"></span>`:""}</span>
-      <span class="ap-day-v">${d.rank?`<em style="--c:${AP_TIERS[d.rank.t].color}">${escHtml(apRankName(d.rank))}</em>`:""}${nf(d.rp)}<small class="${d.diff!=null?apCls(d.diff):""}">${apMoveTag(d)}${d.diff!=null?apSigned(d.diff):d.newSeason?"":"最初の記録"}</small></span>
-    </div>`), 10, "日");
+  return `<details class="tm-table"><summary>日別の一覧を開く</summary>
+    <table><thead><tr><th>日付</th><th>ランク</th><th>RP</th><th>前回から</th></tr></thead><tbody>${
+      L.map(d=>`<tr><td>${fmtMD(d.dt)}</td><td>${d.rank?escHtml(apRankName(d.rank)):""}</td><td>${nf(d.rp)}</td><td class="${d.diff!=null?apCls(d.diff):""}">${d.diff!=null?apSigned(d.diff):""}${d.move>0?" 昇格":d.move<0?" 降格":""}${d.newSeason?"開始":""}</td></tr>`).join("")
+    }</tbody></table></details>`;
 }
 
-/* 月ごと：月末のランクとその月の増減 */
-function apRenderMonths(){
-  const m={};
-  AP.list.forEach(d=>{ const k=ymKey(d.dt); (m[k]=m[k]||{key:k, y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, L:[]}).L.push(d); });
-  const M=Object.values(m).sort((a,b)=>a.key<b.key?-1:1);
-  M.forEach((x,i)=>{ x.end=x.L[x.L.length-1]; const start=i?M[i-1].L[M[i-1].L.length-1].total:x.L[0].total;
-    x.diff=x.end.total-start; x.hi=x.L.reduce((b,d)=>d.total>b.total?d:b); });
-  const max=Math.max(1,...M.map(x=>Math.abs(x.diff)));
-  document.getElementById("ap-months").innerHTML=foldRows(M.slice().reverse().map(x=>`
-    <div class="mlist-row static">
-      <span class="mlist-name"><span class="mlist-y">${x.y}年</span><span class="mlist-m">${x.mo}月</span></span>
-      <span class="mlist-bar ap ${apCls(x.diff)}"><span style="width:${Math.abs(x.diff)/max*100}%"></span></span>
-      <span class="mlist-val ${apCls(x.diff)}">${apSigned(x.diff)} RP<small>月末 ${escHtml(apLabel(x.end))}${x.hi!==x.end?`・最高 ${escHtml(apLabel(x.hi))}`:""}・${x.L.length}日</small></span>
-    </div>`), 6, "か月");
+/* シーズン（スプリット）ごとの成績。タップでその期間を表示 */
+function apRenderPeriods(){
+  const rows=AP.seasons.slice().reverse().map(pk=>{ const L=AP.all.filter(d=>d.pk===pk); return {pk, ...apPeriodStats(L)}; });
+  const max=Math.max(1,...rows.map(r=>r.best.total));
+  const el=document.getElementById("ap-periods");
+  el.innerHTML=rows.map(r=>{ const T=r.best.rank?AP_TIERS[r.best.rank.t]:null;
+    return `<button type="button" class="mlist-row ap-prow${r.pk===AP.season?" on":""}" data-pk="${escHtml(r.pk)}">
+      <span class="mlist-name"><span class="mlist-m">${escHtml(apPkName(r.pk)||"記録")}</span>${r.pk===AP.cur[0].pk?"<em>いま</em>":""}</span>
+      <span class="mlist-bar"><span style="width:${r.best.total/max*100}%;background:${T?T.color:"#c2185b"}"></span></span>
+      <span class="mlist-val">${escHtml(r.best.rank?apRankName(r.best.rank):nf(r.best.rp))}<small>最高 ${nf(r.best.rp)}RP・${r.days}日・<span class="${apCls(r.gain)}">${apSigned(r.gain)}</span></small></span>
+    </button>`; }).join("");
+  el.querySelectorAll(".ap-prow").forEach(b=>b.onclick=()=>{
+    apShowSeason(b.dataset.pk);
+    const a=document.getElementById("apex"); window.scrollTo({top:a.offsetTop, behavior:prefersReduced()?"auto":"smooth"});
+  });
 }
 
 /* =====================================================================
@@ -1689,9 +1678,9 @@ function hmMonthHtml(){
   } else out.push(hmEmptyCard("gourmet","今月"));
   /* Apex */
   if(HM.done.apex && AP.cur.length){
-    const last=AP.cur[AP.cur.length-1], md=apMonthDiff(AP.cur), nx=last.rank?apNext(last.rank,last.rp):null;
+    const last=AP.cur[AP.cur.length-1], P=apPeriodStats(AP.cur), nx=last.rank?apNext(last.rank,last.rp):null;
     out.push(hmCard("apex", last.rank?apRankName(last.rank):"いまのRP", nf(last.rp), "RP",
-      `${md!=null?`今月 ${apSigned(md)} RP`:"今月はまだ記録なし"}${nx?`<br>${escHtml(nx.name)}まで あと ${nf(nx.left)}`:""}`, nx?nx.pct:null));
+      `${escHtml(apPeriodName(last)||"シーズン")} ${apSigned(P.gain)} RP${nx?`<br>${escHtml(nx.name)}まで あと ${nf(nx.left)}`:""}`, nx?nx.pct:null));
   } else out.push(hmEmptyCard("apex","今月"));
   return out.join("");
 }
