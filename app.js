@@ -46,6 +46,13 @@ function ymKey(dt){ return `${dt.getFullYear()}-${String(dt.getMonth()+1).padSta
 function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
 function errBox(msg){ return `<div class="loading">${escHtml(msg)}</div>`; }
 
+/* ページ上部：大きな数字の下に「いちばん伝えたい1行」（lead）と「補足を横に並べた行」（facts） */
+const lead=html=>html?`<p class="hero-lead">${html}</p>`:"";
+const fact=(label,val,unit)=>`<li>${label}<b>${val}</b>${unit||""}</li>`;
+const facts=items=>`<ul class="facts">${items.filter(Boolean).join("")}</ul>`;
+const signed=n=>`${n>0?"+":n<0?"−":"±"}${nf(Math.abs(n))}`;
+const tone=(n,html)=>`<span class="${n>0?"up":n<0?"down":""}">${html}</span>`;
+
 /* 長い一覧は最初の n 件だけ見せ、残りは「それ以前」を開くと出る */
 function foldRows(rows, n, unit){
   if(rows.length<=n+2) return rows.join("");
@@ -178,12 +185,12 @@ function tmCompareHtml(mo){
     const upto=Math.min(lastDay, prev.days.length);
     const prevCum=prev.days.slice(0,upto).reduce((s,d)=>s+(d.p||0),0);
     diff=mo.total-prevCum;
-    label=`先月の同じ日（${prev.m}/${upto}）時点より`;
+    label=`先月の同じ時点（${prev.m}/${upto}）より`;
   }else{
     diff=mo.total-prev.total; label="先月より";
   }
   const cls=diff>0?"up":diff<0?"down":"";
-  return `<span class="hero-chip cmp ${cls}">${label} <strong>${diff>0?"+":diff<0?"−":"±"}${nf(Math.abs(diff))}</strong> P</span>`;
+  return `${label} ${tone(diff,`<b>${signed(diff)}</b> P`)}`;
 }
 
 /* 今月の残り日数：今日の分がまだ未入力なら今日も数える */
@@ -205,18 +212,14 @@ function tmShow(key){
   const t=today0();
 
   /* HERO */
-  const progressTxt = mo.isCur
-    ? `${t.getMonth()+1}月${t.getDate()}日時点・残り <strong>${rem}</strong> 日`
-    : (mo.isPast ? "確定" : "");
   document.getElementById("tm-hero").innerHTML=`
     <div class="tm-hero-label">${escHtml(mo.label)}の獲得ポイント</div>
     <div class="tm-big">${nf(mo.total)}<small>P</small></div>
-    <div class="hero-meta">
-      ${progressTxt?`<span class="hero-chip accent">${progressTxt}</span>`:""}
-      ${tmCompareHtml(mo)}
-      <span class="hero-chip">1日平均 <strong>${nf(ceil10(mo.avg))}</strong> P</span>
-      ${mo.isCur && mo.entered?`<span class="hero-chip">このペースの月末予測 <strong>${nf(ceil10(forecast))}</strong> P</span>`:""}
-    </div>`;
+    ${lead([mo.isCur?`残り <b>${rem}</b> 日`:(mo.isPast?"確定":""), tmCompareHtml(mo)].filter(Boolean).join("　"))}
+    ${facts([
+      fact("1日平均", nf(ceil10(mo.avg)), "P"),
+      mo.isCur && mo.entered ? fact("このペースの月末予測", nf(ceil10(forecast)), "P") : ""
+    ])}`;
 
   /* 目標カード */
   const nextIdx=TM_TARGETS.findIndex(T=>mo.total<T);
@@ -370,26 +373,23 @@ function runRenderHero(){
   const latest=L[n-1];
   const byPace=L.slice().sort((a,b)=>a.pace-b.pace);
   const rank=byPace.indexOf(latest)+1, pb=rank===1&&n>1;
-  /* 最新ランの順位・前回との差・ベストまでを、数字の並びにまとめる */
-  const cells=[];
-  cells.push(`<span class="hero-chip${pb?" accent":""}">最新ラン ${fmtMD(latest.dt)}${pb?"・自己ベスト！":""} <strong>${rank}</strong>位 / ${n}本</span>`);
-  if(n>1){
-    const prev=L[n-2], d=Math.round(latest.pace-prev.pace);
-    cells.push(`<span class="hero-chip cmp ${d<0?"up":d>0?"down":""}">前回（${fmtMD(prev.dt)}）より <strong>${Math.abs(d)}</strong>秒/km ${d<0?"速い":d>0?"遅い":"（同じ）"}</span>`);
-    if(pb){
-      const oldBest=Math.min(...L.slice(0,n-1).map(r=>r.pace));
-      cells.push(`<span class="hero-chip cmp up">ベストを更新 <strong>${Math.round(oldBest-latest.pace)}</strong>秒/km 速い</span>`);
-    }else{
-      const gap=Math.max(0, Math.round(latest.pace-byPace[0].pace));
-      cells.push(`<span class="hero-chip">ベストまで <strong>${gap}</strong>秒/km</span>`);
-    }
-  }
-  cells.push(`<span class="hero-chip accent">ベスト ${fmtMD(byPace[0].dt)} <strong>${fmtPace(byPace[0].pace)}</strong>/km</span>`);
-  cells.push(`<span class="hero-chip">走った回数 <strong>${n}</strong>本</span>`);
+  const prev=L[n-2], d=prev?Math.round(latest.pace-prev.pace):0;
+  const gap=Math.max(0, Math.round(latest.pace-byPace[0].pace));
+  const oldBest=n>1?Math.min(...L.slice(0,n-1).map(r=>r.pace)):latest.pace;
+  /* 1行目：最新ランがどうだったか */
+  const leadHtml = n===1 ? "記念すべき1本目！"
+    : `最新ラン（${fmtMD(latest.dt)}）<b>${fmtPace(latest.pace)}</b>/km　`
+      + (pb ? tone(1,`自己ベスト更新！ ${Math.round(oldBest-latest.pace)}秒/km 速い`)
+            : d ? tone(-d,`前回より ${Math.abs(d)}秒/km ${d<0?"速い":"遅い"}`) : "前回と同じペース");
   document.getElementById("run-hero").innerHTML=`
     <div class="tm-hero-label">これまでの累計距離</div>
     <div class="tm-big">${km.toFixed(2)}<small>km</small></div>
-    <div class="hero-meta">${cells.join("")}</div>`;
+    ${lead(leadHtml)}
+    ${facts([
+      fact("ベスト", fmtPace(byPace[0].pace), `/km（${fmtMD(byPace[0].dt)}）`),
+      !pb && n>1 ? fact("ベストまで", gap, "秒/km") : "",
+      fact("今回の順位", rank, `位 / ${n}本`)
+    ])}`;
 }
 
 function runRenderTabs(){
@@ -1309,13 +1309,13 @@ function bkRenderHero(){
   document.getElementById("bk-hero").innerHTML=`
     <div class="tm-hero-label">これまでの累計距離</div>
     <div class="tm-big">${nf(km)}<small>km</small></div>
-    <div class="hero-meta">
-      <span class="hero-chip${rank===1&&L.length>1?" accent":""}">最新 ${fmtMD(latest.dt)} ${escHtml(latest.dest||"")}${rank===1&&L.length>1?"・最長記録！":""} <strong>${latest.km.toFixed(1)}</strong>km</span>
-      <span class="hero-chip">走った回数 <strong>${L.length}</strong>回</span>
-      <span class="hero-chip">${y}年 <strong>${yKm.toFixed(1)}</strong> km</span>
-      <span class="hero-chip">1回平均 <strong>${(km/L.length).toFixed(1)}</strong> km</span>
-      <span class="hero-chip accent">最長 <strong>${best.km.toFixed(1)}</strong> km</span>
-    </div>`;
+    ${lead(`最新ライド（${fmtMD(latest.dt)}）${escHtml(latest.dest||"")} <b>${latest.km.toFixed(1)}</b>km${rank===1&&L.length>1?`　${tone(1,"最長記録！")}`:""}`)}
+    ${facts([
+      fact("最長", best.km.toFixed(1), `km（${escHtml(best.dest||fmtMD(best.dt))}）`),
+      fact(`${y}年`, yKm.toFixed(1), "km"),
+      fact("回数", L.length, "回"),
+      fact("1回平均", (km/L.length).toFixed(1), "km")
+    ])}`;
 }
 
 function bkRenderRank(){
@@ -1494,10 +1494,6 @@ const apMoveTag=d=>d.newSeason?`<span class="ap-tag ss">${escHtml(apPeriodName(d
 function apRenderHero(){
   const L=AP.list, last=L[L.length-1], best=apBest(), monDiff=AP.season==="all"?null:apMonthDiff();
   const isBest=last===best && L.length>1 && last.diff>0;
-  const dayLbl=`${fmtMD(last.dt)}${last.newSeason?`・${escHtml(apPeriodName(last))}開始`:last.move>0?"・昇格！":last.move<0?"・降格":isBest?"・最高記録":""}`;
-  const dayCell = last.diff==null
-    ? `<span class="hero-chip accent">${dayLbl||fmtMD(last.dt)} <strong>${nf(last.rp)}</strong>RP</span>`
-    : `<span class="hero-chip cmp ${apCls(last.diff)}${last.move>0||isBest?" accent":""}">${dayLbl} <strong>${apSigned(last.diff)}</strong>RP</span>`;
   const nx = last.rank ? apNext(last.rank, last.rp) : null;
   const T = last.rank ? AP_TIERS[last.rank.t] : null;
   document.getElementById("ap-hero").innerHTML=`
@@ -1505,14 +1501,14 @@ function apRenderHero(){
     ${T?`<div class="ap-rank-big" style="--c:${T.color}"><span class="ap-emblem"></span>${escHtml(apRankName(last.rank))}</div>`:""}
     <div class="tm-big">${nf(last.rp)}<small>RP</small></div>
     ${nx?`<div class="ap-next"><div class="tgt-bar"><span style="width:${nx.pct}%;background:${T.color}"></span></div>
-      <div class="ap-next-t"><span>${nf(last.rp)} / ${nf(nx.need)}</span><span>${escHtml(nx.name)}</span></div></div>`:""}
-    <div class="hero-meta">
-      ${dayCell}
-      ${nx?`<span class="hero-chip">${escHtml(nx.name)}まで <strong>${nf(nx.left)}</strong>RP</span>`:""}
-      ${monDiff!=null?`<span class="hero-chip cmp ${apCls(monDiff)}">今月 <strong>${apSigned(monDiff)}</strong> RP</span>`:""}
-      <span class="hero-chip">最高${best.rank?` ${escHtml(apRankName(best.rank))}`:""} <strong>${nf(best.rp)}</strong>RP</span>
-      <span class="hero-chip">記録 <strong>${L.length}</strong> 日</span>
-    </div>`;
+      <div class="ap-next-t"><span>${nf(last.rp)} / ${nf(nx.need)}</span><span>${escHtml(nx.name)}まで あと <b>${nf(nx.left)}</b> RP</span></div></div>`:""}
+    ${lead(last.diff==null ? `${fmtMD(last.dt)} 最初の記録`
+      : `${fmtMD(last.dt)}　${tone(last.diff,`<b>${apSigned(last.diff)}</b> RP`)}${last.newSeason?`　${escHtml(apPeriodName(last))}開始`:last.move>0?`　${tone(1,`${escHtml(apRankName(last.rank))}に昇格！`)}`:last.move<0?`　${tone(-1,`${escHtml(apRankName(last.rank))}に降格`)}`:isBest?"　最高記録！":""}`)}
+    ${facts([
+      monDiff!=null ? `<li>今月<b class="${apCls(monDiff)}">${apSigned(monDiff)}</b>RP</li>` : "",
+      fact("最高", nf(best.rp), `RP（${best.rank?escHtml(apRankName(best.rank)):fmtMD(best.dt)}）`),
+      fact("記録", L.length, "日")
+    ])}`;
 }
 
 function apRenderTabs(){
@@ -1807,24 +1803,6 @@ function hmTrack(k, p){
   return Promise.resolve(p).catch(e=>console.error(k, e)).finally(()=>{ HM.done[k]=true; try{ hmRender(); }catch(e){ console.error("home", e); } });
 }
 
-/* ---------- 記録の数字（ヒーロー下の .hero-chip と .stats-row の .stat-chip） ----------
-   「今月 <strong>+409</strong> RP」を「見出し」と「数字＋単位」に分け、計器のような並びで見せる */
-function chipify(){
-  document.querySelectorAll(".hero-chip:not([data-c]), .stat-chip:not([data-c])").forEach(el=>{
-    el.dataset.c="1";
-    let st=el.querySelector("strong");
-    /* 「17 本」のように強調がなければ、先頭の数字を強調にする */
-    if(!st){ const m=el.innerHTML.match(/^\s*([−\-+]?[\d,.]+)\s*(.*)$/s); if(m){ el.innerHTML=`<strong>${m[1]}</strong>${m[2]}`; st=el.querySelector("strong"); } }
-    if(st && (st.textContent.trim().length>7 || /[^\x00-\x7F]/.test(st.textContent))) st.classList.add("long");
-    const lab=document.createElement("span"), val=document.createElement("span");
-    lab.className="hc-l"; val.className="hc-v";
-    if(st){ let n=el.firstChild; while(n && n!==st){ const nx=n.nextSibling; lab.appendChild(n); n=nx; } }
-    while(el.firstChild) val.appendChild(el.firstChild);
-    if(lab.textContent.trim()) el.appendChild(lab);
-    el.appendChild(val);
-  });
-}
-new MutationObserver(chipify).observe(document.body, {childList:true, subtree:true});
 
 /* ---------- 初期化 ---------- */
 hmRender();

@@ -1176,26 +1176,25 @@ details.kk-group[open] summary::after{content:"－";}
 .run-headline.pb .up,.run-headline.pb .down{color:inherit;}
 .ap-tag.ss{background:#555;}
 
-/* =====================================================================
-   記録の数字（2026-11 作り直し）：丸い枠をやめ、細い罫線で区切った計器風の並び
-   ===================================================================== */
-.hero-meta, .stats-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:0;margin-top:18px;border-top:1px solid var(--border);clip-path:inset(0 0 0 1px);margin-left:-1px;}
-.stats-row{margin-top:0;margin-bottom:22px;}
-.hero-chip, .stat-chip, .hero-chip.accent, .hero-chip.cmp.up, .hero-chip.cmp.down, .hero-chip.es-gold{
-  display:flex;flex-direction:column;gap:3px;min-width:0;
-  background:none;border:none;border-left:1px solid var(--border);border-radius:0;
-  padding:11px 12px 2px 14px;color:var(--text2);font-size:11px;font-weight:600;}
-.hc-l{font-size:10.5px;font-weight:700;color:var(--text3);letter-spacing:.06em;line-height:1.3;}
-.hc-v{font-size:11px;font-weight:700;color:var(--text2);line-height:1.25;font-variant-numeric:tabular-nums;}
-.hero-chip strong, .stat-chip strong, .hero-chip.accent strong{font-size:20px;font-weight:800;color:var(--text);letter-spacing:-.02em;margin-right:2px;}
-.hero-chip.accent .hc-l{color:var(--text);}
-.hero-chip.accent .hc-l::before{content:"";display:inline-block;width:6px;height:6px;border-radius:1px;background:var(--text);margin-right:5px;vertical-align:1px;transform:rotate(45deg);}
-.hero-chip.cmp.up strong{color:#1f8a4c;}
-.hero-chip.cmp.down strong{color:#d0343a;}
-.hero-chip.es-gold strong{color:var(--es-gold);}
-.hero-chip, .stat-chip{justify-content:flex-end;}
-.hero-chip strong.long, .stat-chip strong.long{font-size:15px;letter-spacing:-.01em;}
-.hero-chip strong, .stat-chip strong{white-space:nowrap;}
 .ap-next{margin:12px 0 0;max-width:none;}
 .ap-next-t{display:flex;justify-content:space-between;font-size:10.5px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-top:5px;font-variant-numeric:tabular-nums;}
 .hero-chip.cmp.accent .hc-l::before{background:currentColor;}
+
+
+/* =====================================================================
+   ページ上部（2026-11 作り直し）
+   大きな数字 → いちばん伝えたい1行（.hero-lead）→ 補足を横に並べた行（.facts）
+   集計の並び（.stats-row / .stat-chip）も同じ、枠なしの書き方にそろえる
+   ===================================================================== */
+.hero-lead{margin:14px 0 0;font-size:15px;font-weight:700;color:var(--text);line-height:1.55;}
+.hero-lead b{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+.hero-lead .up, .facts .up{color:#1f8a4c;}
+.hero-lead .down, .facts .down{color:#d0343a;}
+.facts, .stats-row{display:flex;flex-wrap:wrap;gap:6px 22px;list-style:none;margin:10px 0 0;padding:0;font-size:12.5px;font-weight:600;color:var(--text3);}
+.facts li{white-space:nowrap;}
+.facts b, .stat-chip strong{margin:0 1px 0 6px;font-size:14px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;}
+.stats-row{margin:0 0 20px;}
+.stat-chip, .stat-chip:first-child{padding:0;border:none;background:none;border-radius:0;font-size:12.5px;font-weight:600;color:var(--text3);}
+.stat-chip strong{font-size:16px;}
+.ap-next-t b{color:var(--text);}
+.hero-lead > span{display:inline-block;white-space:nowrap;}
