@@ -1174,3 +1174,4 @@ details.kk-group[open] summary::after{content:"－";}
 .ap-grid.top{stroke:var(--text3);}
 .ap-dot.promo{width:10px;height:10px;margin:-5px 0 0 -5px;background:#1f8a4c;border:2px solid #fff;box-shadow:0 0 0 1px #1f8a4c;}
 .run-headline.pb .up,.run-headline.pb .down{color:inherit;}
+.ap-tag.ss{background:#555;}

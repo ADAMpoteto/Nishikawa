@@ -1361,7 +1361,9 @@ function bkRenderYears(){
 
 /* =====================================================================
    Apex（ランクポイントの推移）
-   列 : 日付 / ランク / RP。No・曜日・メモなどほかの列はあってもOK
+   列 : 日付 / シーズン / ランク / RP。No・曜日・メモなどほかの列はあってもOK
+   ・シーズン … 31 など。ランクと同じく、変わった日だけ書けばOK。ページ上部のタブでシーズンを切り替えられます
+              （シーズンが変わった日はランクがリセットされるので、前の日との増減は計算しません）
    ・1行＝1日。その日の終わりの値を入れる
    ・ランク … 「シルバーIV」「ゴールド2」「プラチナ Ⅰ」など。ランクが変わった日だけ書けばOK
               （空欄の日は前の日と同じランク。最初の記録より前の空欄は、最初に書いたランク）
@@ -1370,7 +1372,7 @@ function bkRenderYears(){
    ランクの列が丸ごと空なら、RPをそのまま通算として扱います。
    ===================================================================== */
 const URL_APEX = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1593393569&single=true&output=csv";
-const AP={ list:[], range:"30", ranked:false };
+const AP={ all:[], list:[], cur:[], season:null, seasons:[], range:"30", ranked:false };
 const AP_RANGES=[ {key:"30", label:"30日", days:30}, {key:"90", label:"90日", days:90}, {key:"all", label:"全期間", days:0} ];
 const AP_RP_COLS=["RP","ランクポイント","ランクpt","ポイント","LP"];
 /* ランクと、各ディビジョン（IV→III→II→I の順）で次へ上がるのに必要なRP。
@@ -1430,9 +1432,10 @@ async function loadApex(){
   const byKey={};
   rows.forEach(o=>{
     const dt=pd(F(o,"日付")); if(!dt) return;
-    const rp=num(F(o,rpKey)), rank=rkKey?apParseRank(F(o,rkKey)):null;
+    const rp=num(F(o,rpKey)), rank=rkKey?apParseRank(F(o,rkKey)):null, ss=num(F(o,"シーズン")||F(o,"Season"));
     const cur=byKey[dt.toDateString()]||{dt};
     if(rank) cur.rank=rank;
+    if(ss!=null) cur.season=ss;
     if(rp!=null){ cur.rp=rp; cur.memo=F(o,"メモ"); }
     byKey[dt.toDateString()]=cur;
   });
@@ -1442,36 +1445,59 @@ async function loadApex(){
   AP.ranked=!!first;
   let cur=first?first.rank:null;
   all.forEach(d=>{ if(d.rank) cur=d.rank; else d.rank=cur; });
-  AP.list=all.filter(d=>d.rp!=null);
-  AP.list.forEach((d,i)=>{
+  /* シーズンも同じように埋める */
+  const fs=all.find(d=>d.season!=null);
+  let cs=fs?fs.season:null;
+  all.forEach(d=>{ if(d.season!=null) cs=d.season; else d.season=cs; });
+  AP.all=all.filter(d=>d.rp!=null);
+  AP.all.forEach((d,i)=>{
     d.total = d.rank ? AP_TIERS[d.rank.t].base[d.rank.d]+d.rp : d.rp;
-    const p=AP.list[i-1];
-    d.diff = p ? d.total-p.total : null;
-    d.move = p && d.rank && p.rank ? Math.sign((d.rank.t*4+d.rank.d)-(p.rank.t*4+p.rank.d)) : 0;   // 1=昇格 -1=降格
+    const p=AP.all[i-1];
+    d.newSeason = !!(p && d.season!==p.season);
+    const q = d.newSeason ? null : p;   // シーズンをまたいだら比べない
+    d.diff = q ? d.total-q.total : null;
+    d.move = q && d.rank && q.rank ? Math.sign((d.rank.t*4+d.rank.d)-(q.rank.t*4+q.rank.d)) : 0;   // 1=昇格 -1=降格
   });
-  if(!AP.list.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
+  if(!AP.all.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
+  AP.seasons=[...new Set(AP.all.map(d=>d.season))];
+  AP.season=AP.all[AP.all.length-1].season;
+  AP.cur=AP.all.filter(d=>d.season===AP.season);
+  apShowSeason(AP.season);
+}
+const apSeasonName=s=>s==null?"":`シーズン${s}`;
+function apShowSeason(s){
+  AP.season=s;
+  AP.list = s==="all" ? AP.all.slice() : AP.all.filter(d=>d.season===s);
+  const box=document.getElementById("ap-season-tabs");
+  if(AP.seasons.length>1 || AP.seasons[0]!=null){
+    box.hidden=false;
+    box.innerHTML=(AP.seasons.length>1?AP.seasons.slice().reverse():AP.seasons).map(x=>
+      `<button type="button" class="day-tab${x===s?" active":""}" data-s="${x}">${escHtml(apSeasonName(x)||"シーズン未記入")}<small class="tab-sub">${AP.all.filter(d=>d.season===x).length}日</small></button>`).join("")
+      + (AP.seasons.length>1?`<button type="button" class="day-tab${s==="all"?" active":""}" data-s="all">全シーズン</button>`:"");
+    box.querySelectorAll(".day-tab").forEach(b=>b.onclick=()=>apShowSeason(b.dataset.s==="all"?"all":AP.seasons.find(x=>String(x)===b.dataset.s)));
+  }else box.hidden=true;
   apRenderHero(); apRenderTabs(); apRenderChart(); apRenderDays(); apRenderMonths();
 }
 
 /* 今月の増減：先月最後の記録（なければ今月最初の記録）から */
-function apMonthDiff(){
-  const t=today0(), L=AP.list, last=L[L.length-1];
+function apMonthDiff(L){
+  L=L||AP.list; const t=today0(), last=L[L.length-1];
   const mon=L.filter(d=>ymKey(d.dt)===ymKey(t)); if(!mon.length) return null;
   const before=L.filter(d=>d.dt<new Date(t.getFullYear(), t.getMonth(), 1));
   return last.total-(before.length?before[before.length-1].total:mon[0].total);
 }
-const apBest=()=>AP.list.reduce((b,d)=>(!b||d.total>b.total)?d:b,null);
-const apMoveTag=d=>d.move>0?'<span class="ap-tag up">昇格！</span>':d.move<0?'<span class="ap-tag down">降格</span>':"";
+const apBest=L=>(L||AP.list).reduce((b,d)=>(!b||d.total>b.total)?d:b,null);
+const apMoveTag=d=>d.newSeason?`<span class="ap-tag ss">${escHtml(apSeasonName(d.season))}開始</span>`:d.move>0?'<span class="ap-tag up">昇格！</span>':d.move<0?'<span class="ap-tag down">降格</span>':"";
 
 function apRenderHero(){
-  const L=AP.list, last=L[L.length-1], best=apBest(), monDiff=apMonthDiff();
+  const L=AP.list, last=L[L.length-1], best=apBest(), monDiff=AP.season==="all"?null:apMonthDiff();
   const isBest=last===best && L.length>1 && last.diff>0;
-  const head = last.diff==null ? "記念すべき最初の記録！"
+  const head = last.newSeason ? `${escHtml(apSeasonName(last.season))}スタート！` : last.diff==null ? "記念すべき最初の記録！"
     : `${fmtMD(last.dt)}は <strong class="${apCls(last.diff)}">${apSigned(last.diff)}</strong> RP${last.move>0?`・<strong>${escHtml(apRankName(last.rank))}</strong>に昇格！`:last.move<0?`・${escHtml(apRankName(last.rank))}に降格`:isBest?"・最高記録を更新！":""}`;
   const nx = last.rank ? apNext(last.rank, last.rp) : null;
   const T = last.rank ? AP_TIERS[last.rank.t] : null;
   document.getElementById("ap-hero").innerHTML=`
-    <div class="tm-hero-label">いまのランク（${hmYMD(last.dt)}時点）</div>
+    <div class="tm-hero-label">${AP.season==="all"?"":escHtml(apSeasonName(last.season))+"・"}${AP.season===AP.cur[0].season?"いまのランク":"最終ランク"}（${hmYMD(last.dt)}時点）</div>
     ${T?`<div class="ap-rank-big" style="--c:${T.color}"><span class="ap-emblem"></span>${escHtml(apRankName(last.rank))}</div>`:""}
     <div class="tm-big">${nf(last.rp)}<small>RP</small></div>
     ${nx?`<div class="ap-next"><div class="tgt-bar"><span style="width:${nx.pct}%;background:${T.color}"></span></div>
@@ -1557,7 +1583,7 @@ function apRenderDays(){
     <div class="ap-day">
       <span class="ap-day-d">${fmtMD(d.dt)}<small>${d.dt.getFullYear()}</small></span>
       <span class="ap-day-bar">${d.diff!=null?`<span class="${apCls(d.diff)}" style="width:${Math.abs(d.diff)/maxAbs*50}%"></span>`:""}</span>
-      <span class="ap-day-v">${d.rank?`<em style="--c:${AP_TIERS[d.rank.t].color}">${escHtml(apRankName(d.rank))}</em>`:""}${nf(d.rp)}<small class="${d.diff!=null?apCls(d.diff):""}">${apMoveTag(d)}${d.diff!=null?apSigned(d.diff):"最初の記録"}</small></span>
+      <span class="ap-day-v">${d.rank?`<em style="--c:${AP_TIERS[d.rank.t].color}">${escHtml(apRankName(d.rank))}</em>`:""}${nf(d.rp)}<small class="${d.diff!=null?apCls(d.diff):""}">${apMoveTag(d)}${d.diff!=null?apSigned(d.diff):d.newSeason?"":"最初の記録"}</small></span>
     </div>`), 10, "日");
 }
 
@@ -1603,7 +1629,7 @@ function hmEvents(){
   const E=[];
   RUN.list.forEach(r=>E.push({ k:"run", dt:r.dt, main:`${r.km.toFixed(2)}km 走った`, sub:`${fmtPace(r.pace)}/km・${fmtDur(r.sec)}` }));
   BK.list.forEach(r=>E.push({ k:"bike", dt:r.dt, main:`${r.dest||"行き先なし"}へ`, sub:`${r.km.toFixed(1)}km` }));
-  AP.list.forEach(d=>E.push({ k:"apex", dt:d.dt, main:apLabel(d)+(d.move>0?"（昇格！）":d.move<0?"（降格）":""), sub:d.diff!=null?`前回から ${apSigned(d.diff)} RP`:"最初の記録" }));
+  AP.all.forEach(d=>E.push({ k:"apex", dt:d.dt, main:apLabel(d)+(d.move>0?"（昇格！）":d.move<0?"（降格）":""), sub:d.diff!=null?`前回から ${apSigned(d.diff)} RP`:d.newSeason?`${apSeasonName(d.season)}開始`:"最初の記録" }));
   GM.list.forEach(r=>{ if(r.dt) E.push({ k:"gourmet", dt:r.dt, main:r.name, sub:[r.pref+(r.muni||""), r.genre, r.my!=null?`評価 ${r.my.toFixed(1)}`:""].filter(Boolean).join("・") }); });
   return E.sort((a,b)=>b.dt-a.dt);
 }
@@ -1661,8 +1687,8 @@ function hmMonthHtml(){
       best?`いちばん良かった店<br>${escHtml(best.name)}（${best.my.toFixed(1)}）`:(R.length?"":"今月はまだ投稿なし")));
   } else out.push(hmEmptyCard("gourmet","今月"));
   /* Apex */
-  if(HM.done.apex && AP.list.length){
-    const last=AP.list[AP.list.length-1], md=apMonthDiff(), nx=last.rank?apNext(last.rank,last.rp):null;
+  if(HM.done.apex && AP.cur.length){
+    const last=AP.cur[AP.cur.length-1], md=apMonthDiff(AP.cur), nx=last.rank?apNext(last.rank,last.rp):null;
     out.push(hmCard("apex", last.rank?apRankName(last.rank):"いまのRP", nf(last.rp), "RP",
       `${md!=null?`今月 ${apSigned(md)} RP`:"今月はまだ記録なし"}${nx?`<br>${escHtml(nx.name)}まで あと ${nf(nx.left)}`:""}`, nx?nx.pct:null));
   } else out.push(hmEmptyCard("apex","今月"));
@@ -1695,9 +1721,9 @@ function hmTotalHtml(){
     out.push(hmCard("torima","累計", nf(tot), "P", `ベストの月：${bestM.label}（${nf(bestM.total)}P）`));
   } else out.push(hmEmptyCard("torima","累計"));
   /* Apex */
-  if(HM.done.apex && AP.list.length){
-    const best=apBest();
-    out.push(hmCard("apex","最高記録", best.rank?apRankName(best.rank):nf(best.rp), best.rank?`${nf(best.rp)}RP`:"RP", `${hmYMD(best.dt)}<br>記録 ${AP.list.length}日`));
+  if(HM.done.apex && AP.cur.length){
+    const best=apBest(AP.cur);
+    out.push(hmCard("apex", best.season!=null?`${apSeasonName(best.season)}の最高`:"最高記録", best.rank?apRankName(best.rank):nf(best.rp), best.rank?`${nf(best.rp)}RP`:"RP", `${hmYMD(best.dt)}<br>記録 ${AP.cur.length}日`));
   } else out.push(hmEmptyCard("apex","最高記録"));
   return out.join("");
 }
