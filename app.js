@@ -1649,13 +1649,14 @@ document.querySelectorAll(".game-tabs [data-g]").forEach(b=>b.addEventListener("
    モンハン（ハンターランク）
    列 : No / 日付 / 曜日 / HR上昇 / 累計HR / MR上昇 / 累計MR（累計はサイト側で計算し直します）
    ・MR上昇に数字が入ると、マスターランクの記録も自動で表示されます（空欄のあいだは出ません）
+   今日より先の日付の行は、数字が入っていても使いません（まだ遊んでいない日として扱う）
    999 までのスケジュールはサイト側で計算します：MH_PLAN_FROM の時点のHRから、MH_DEADLINE に MH_GOAL へ
    日数に比例してまっすぐ上げる計画。月末ごとの目標もここから出します
    ===================================================================== */
 const URL_MH = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1977306445&single=true&output=csv";
 const MH_GOAL = 999;                       // 目標のHR
 const MH_DEADLINE = new Date(2027, 11, 31); // いつまでに
-const MH_PLAN_FROM = new Date(2026, 11, 31); // 計画の出発点（この日の終わりのHRから数える）
+const MH_PLAN_FROM = new Date(2026, 10, 5);  // 計画の出発点（この日の終わりのHRから数える。計画を立てた日）
 const MH_MR_GOAL = null;                   // MRの目標（例 999）。決まったら数字を入れる
 const MH_MR_DEADLINE = null;               // MRの期限（例 new Date(2028, 11, 31)）
 const MH={ list:[], plan:[], mr:[] };
@@ -1670,25 +1671,24 @@ async function loadMH(){
     const dt=pd(F(o,"日付")), g=num(F(o,"HR上昇")||F(o,"上昇")), mg=num(F(o,"MR上昇"));
     if(dt && (g!=null || mg!=null)) byKey[dt.toDateString()]={dt, gain:g||0, mgain:mg};
   });
-  MH.all=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
+  const t0=today0();
+  MH.all=Object.values(byKey).filter(d=>d.dt<=t0).sort((a,b)=>a.dt-b.dt);   // 先の日付は使わない
   let c=0; MH.all.forEach(d=>{ c+=d.gain; d.hr=c; });
   /* MR：最初に数字が入った日から */
   let mc=0; MH.mr=[];
   const mi=MH.all.findIndex(d=>d.mgain!=null);
   if(mi>=0) MH.all.slice(mi).forEach(d=>{ mc+=d.mgain||0; d.mr=mc; MH.mr.push(d); });
-  /* 表示は今日の時点まで（先の日付が入っていても出さない） */
-  const t0=today0();
-  MH.list=MH.all.filter(d=>d.dt<=t0); MH.mr=MH.mr.filter(d=>d.dt<=t0);
+  MH.list=MH.all;
   if(!MH.list.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
   /* スケジュール：出発点のHR → 期限に目標。月末ごとの目標HRを日数で割り振る */
-  const before=MH.all.filter(d=>d.dt<=MH_PLAN_FROM);   // 計画の出発点は、入っている記録から
+  const before=MH.all.filter(d=>d.dt<=MH_PLAN_FROM);
   MH.planStart={dt:MH_PLAN_FROM, hr:before.length?before[before.length-1].hr:0};
   MH.plan=[]; const total=MH_DEADLINE-MH_PLAN_FROM; let prev=MH.planStart.hr;
-  for(let d=new Date(MH_PLAN_FROM.getFullYear(), MH_PLAN_FROM.getMonth()+2, 0); d<=MH_DEADLINE; d=new Date(d.getFullYear(), d.getMonth()+2, 0)){
+  for(let d=new Date(MH_PLAN_FROM.getFullYear(), MH_PLAN_FROM.getMonth()+1, 0); d<=MH_DEADLINE; d=new Date(d.getFullYear(), d.getMonth()+2, 0)){
     const hr=Math.round(MH.planStart.hr+(MH_GOAL-MH.planStart.hr)*(d-MH_PLAN_FROM)/total);
-    MH.plan.push({dt:d, hr, gain:hr-prev}); prev=hr;
+    MH.plan.push({dt:d, hr}); prev=hr;   // その月に上げる数は、前の月末（実績か目標）との差で出す
   }
-  if(!MH.plan.length || MH.plan[MH.plan.length-1].dt<MH_DEADLINE) MH.plan.push({dt:MH_DEADLINE, hr:MH_GOAL, gain:MH_GOAL-prev});
+  if(!MH.plan.length || MH.plan[MH.plan.length-1].dt<MH_DEADLINE) MH.plan.push({dt:MH_DEADLINE, hr:MH_GOAL});
   mhRenderHero(); mhRenderChart(); mhRenderMR(); mhRenderMonths();
 }
 
@@ -1770,16 +1770,9 @@ function mhChart(el, o){
   box.addEventListener("pointerdown", e=>pick(near(e)));
   pick(L.length-1);
 }
-/* 点線：今日の実績 → シートに入っている先の日付の予定 → 計画（出発点の日から期限まで） */
-function mhPlanPath(){
-  const last=MH.list[MH.list.length-1], t0=today0();
-  const sched=MH.all.filter(d=>d.dt>t0 && d.dt<=MH_PLAN_FROM).map(d=>({dt:d.dt, v:d.hr}));
-  return [last?{dt:last.dt, v:last.hr}:null, ...sched, ...[MH.planStart, ...MH.plan].map(p=>({dt:p.dt, v:p.hr}))].filter(Boolean);
-}
 function mhRenderChart(){
   mhChart(document.getElementById("mh-chart"), { list:MH.list, key:"hr", gainKey:"gain", unit:"HR", color:"#8a5a2b",
-    goal:MH_GOAL, deadline:MH_DEADLINE, plan:mhPlanPath(), planAt:mhPlanAt, table:mhDaysTable(),
-    note:`実線が実績、点線が予定（シートに入っている先の日付の数字）と、${MH_DEADLINE.getFullYear()}/${MH_DEADLINE.getMonth()+1}/${MH_DEADLINE.getDate()} に ${MH_GOAL} へ届く計画。` });
+    goal:MH_GOAL, deadline:MH_DEADLINE, plan:[MH.planStart, ...MH.plan].map(p=>({dt:p.dt, v:p.hr})), planAt:mhPlanAt, table:mhDaysTable() });
 }
 
 /* マスターランク：MR上昇に数字が入ったら表示 */
@@ -1817,21 +1810,17 @@ function mhRenderMonths(){
   const m={};
   MH.list.forEach(d=>{ const k=ymKey(d.dt); (m[k]=m[k]||{key:k, y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, gain:0, end:0}); m[k].gain+=d.gain; m[k].end=d.hr;
     if(d.mr!=null){ m[k].mgain=(m[k].mgain||0)+(d.mgain||0); m[k].mend=d.mr; } });
-  /* 先の日付の予定（今日より後でシートに入っている分） */
-  const t0=today0();
-  MH.all.filter(d=>d.dt>t0).forEach(d=>{ const k=ymKey(d.dt); const r=(m[k]=m[k]||{key:k, y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, gain:null, end:null});
-    r.sgain=(r.sgain||0)+d.gain; r.send=d.hr; });
   MH.plan.forEach(p=>{ const k=ymKey(p.dt); const r=(m[k]=m[k]||{key:k, y:p.dt.getFullYear(), mo:p.dt.getMonth()+1, gain:null, end:null}); r.target=p.hr; r.tgain=p.gain; });
   const M=Object.values(m).sort((a,b)=>a.key<b.key?-1:1);
   /* 計画の月の「その月に上げるHR」がなければ、前の月との差 */
   M.forEach((r,i)=>{ if(r.target!=null && r.tgain==null){ const pv=M[i-1]; r.tgain=r.target-(pv?(pv.target??pv.end??0):0); } });
-  const max=Math.max(1,...M.map(r=>Math.max(r.gain||0, r.tgain||0, (r.gain||0)+(r.sgain||0))));
+  const max=Math.max(1,...M.map(r=>Math.max(r.gain||0, r.tgain||0)));
   document.getElementById("mh-months").innerHTML=M.map(r=>{
     const has=r.gain!=null, plan=r.target!=null, done=has&&plan&&r.end>=r.target;
     return `<div class="mlist-row static mh-mrow${has?"":" future"}">
       <span class="mlist-name"><span class="mlist-y">${r.y}年</span><span class="mlist-m">${r.mo}月</span></span>
-      <span class="mlist-bar mh">${plan?`<i style="left:${(r.tgain||0)/max*100}%"></i>`:""}${r.sgain?`<b class="mh-sched" style="left:${(r.gain||0)/max*100}%;width:${r.sgain/max*100}%"></b>`:""}<span style="width:${(r.gain||0)/max*100}%"></span></span>
-      <span class="mlist-val">${has?`+${r.gain} HR`:r.send!=null?`予定 +${r.sgain} HR`:`目標 +${r.tgain} HR`}<small>${[has?`${r.send!=null?"今日":"月末"} ${r.end}`:"", r.send!=null?`予定 ${r.send}`:"", plan?`目標 ${r.target}${done?" 達成":""}`:"", r.mend!=null?`MR ${r.mend}`:""].filter(Boolean).join("・")}</small></span>
+      <span class="mlist-bar mh">${plan?`<i style="left:${(r.tgain||0)/max*100}%"></i>`:""}<span style="width:${(r.gain||0)/max*100}%"></span></span>
+      <span class="mlist-val">${has?`+${r.gain} HR`:`目標 +${r.tgain} HR`}<small>${[has?`${r.key===ymKey(today0())?"今日":"月末"} ${r.end}`:"", plan?`目標 ${r.target}${done?" 達成":""}`:"", r.mend!=null?`MR ${r.mend}`:""].filter(Boolean).join("・")}</small></span>
     </div>`; }).join("");
 }
 
