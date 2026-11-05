@@ -1392,11 +1392,13 @@ const URL_APEX = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1
 const AP={ all:[], list:[], cur:[], season:null, seasons:[], range:"30", ranked:false };
 const AP_RP_COLS=["RP","ランクポイント","ランクpt","ポイント","LP"];
 /* ランクと、各ディビジョン（IV→III→II→I の順）で次へ上がるのに必要なRP。
-   シーズンで変わったら、ここの数字を書き換えてください（EA公式ヘルプ「How Apex Legends Ranked works」より） */
+   通算の境目：ブロンズ1,000／シルバー3,000／ゴールド5,500／プラチナ8,500／ダイヤ12,000／マスター16,000
+   （EA公式ヘルプのスプリットのリセット値から逆算。シルバーの中の区切りは資料で違うので、シーズン31の資料に合わせた）
+   RP の列に「174/500」のようにゲームの表示どおり書くと、その「/500」でディビジョンの大きさを上書きします */
 const AP_TIERS=[
   {name:"ルーキー",   words:["ルーキー","rookie"],           divs:[250,250,250,250],   color:"#8a8f98"},
   {name:"ブロンズ",   words:["ブロンズ","bronze"],           divs:[500,500,500,500],   color:"#a8683a"},
-  {name:"シルバー",   words:["シルバー","silver"],           divs:[500,500,500,500],   color:"#8f9bab"},
+  {name:"シルバー",   words:["シルバー","silver"],           divs:[500,500,750,750],   color:"#8f9bab"},
   {name:"ゴールド",   words:["ゴールド","gold"],             divs:[750,750,750,750],   color:"#d4a017"},
   {name:"プラチナ",   words:["プラチナ","plat"],             divs:[750,750,1000,1000], color:"#2f9fa8"},
   {name:"ダイヤ",     words:["ダイヤ","diamond","dia"],      divs:[1000,1000,1000,1000], color:"#4a7bd6"},
@@ -1405,7 +1407,8 @@ const AP_TIERS=[
 ];
 const AP_ROMAN=["IV","III","II","I"];
 /* 各ディビジョンの始まりの通算RP */
-(function(){ let s=0; AP_TIERS.forEach(t=>{ t.start=s; t.base=[]; if(t.divs) t.divs.forEach(n=>{ t.base.push(s); s+=n; }); else t.base=[s,s,s,s]; }); AP_TIERS[7].start=AP_TIERS[6].start; })();
+function apBuildBase(){ let s=0; AP_TIERS.forEach(t=>{ t.start=s; t.base=[]; if(t.divs) t.divs.forEach(n=>{ t.base.push(s); s+=n; }); else t.base=[s,s,s,s]; }); AP_TIERS[7].start=AP_TIERS[6].start; }
+apBuildBase();
 const apSigned=n=>`${n>0?"+":n<0?"−":"±"}${nf(Math.abs(n))}`;
 const apCls=n=>n>0?"up":n<0?"down":"";
 
@@ -1448,12 +1451,13 @@ async function loadApex(){
   const byKey={};
   rows.forEach(o=>{
     const dt=pd(F(o,"日付")); if(!dt) return;
-    const rp=num(F(o,rpKey)), rank=rkKey?apParseRank(F(o,rkKey)):null, ss=num(F(o,"シーズン")||F(o,"Season")), sp=num(F(o,"スプリット")||F(o,"Split"));
+    const rpRaw=kkZen2Han(F(o,rpKey)).replace(/[／]/g,"/"), frac=rpRaw.match(/^\s*([\d,]+)\s*\/\s*([\d,]+)/);
+    const rp=frac?num(frac[1]):num(rpRaw), need=frac?num(frac[2]):null, rank=rkKey?apParseRank(F(o,rkKey)):null, ss=num(F(o,"シーズン")||F(o,"Season")), sp=num(F(o,"スプリット")||F(o,"Split"));
     const cur=byKey[dt.toDateString()]||{dt};
     if(rank) cur.rank=rank;
     if(ss!=null) cur.season=ss;
     if(sp!=null) cur.split=sp;
-    if(rp!=null){ cur.rp=rp; cur.memo=F(o,"メモ"); }
+    if(rp!=null){ cur.rp=rp; cur.memo=F(o,"メモ"); if(need) cur.need=need; }
     byKey[dt.toDateString()]=cur;
   });
   const all=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
@@ -1476,6 +1480,9 @@ async function loadApex(){
   });
   const t0=today0();
   AP.all=all.filter(d=>d.rp!=null && d.dt<=t0);   // 先の日付は出さない
+  /* 「174/500」の「/500」があれば、そのディビジョンの大きさとして使う */
+  AP.all.forEach(d=>{ if(d.need && d.rank && AP_TIERS[d.rank.t].divs) AP_TIERS[d.rank.t].divs[d.rank.d]=d.need; });
+  apBuildBase();
   AP.all.forEach((d,i)=>{
     d.total = d.rank ? AP_TIERS[d.rank.t].base[d.rank.d]+d.rp : d.rp;
     const p=AP.all[i-1];
