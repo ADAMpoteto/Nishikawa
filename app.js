@@ -369,40 +369,27 @@ function runRenderHero(){
   const km=L.reduce((s,r)=>s+r.km,0);
   const latest=L[n-1];
   const byPace=L.slice().sort((a,b)=>a.pace-b.pace);
-  const rank=byPace.indexOf(latest)+1;
-  /* 最新ランが自己ベストか、何位か */
-  let headline;
-  if(n===1) headline="記念すべき1本目！";
-  else if(rank===1) headline=`最新ラン（${fmtMD(latest.dt)}）で自己ベスト更新！`;
-  else headline=`最新ラン（${fmtMD(latest.dt)}）はペース <strong>${rank}位</strong> / ${n}本`;
-
-  /* 前回との比較・自己ベストまで（秒/km） */
-  let cmpHtml="";
+  const rank=byPace.indexOf(latest)+1, pb=rank===1&&n>1;
+  /* 最新ランの順位・前回との差・ベストまでを、数字の並びにまとめる */
+  const cells=[];
+  cells.push(`<span class="hero-chip${pb?" accent":""}">最新ラン ${fmtMD(latest.dt)}${pb?"・自己ベスト！":""} <strong>${rank}</strong>位 / ${n}本</span>`);
   if(n>1){
     const prev=L[n-2], d=Math.round(latest.pace-prev.pace);
-    const prevTxt = d<0 ? `前回（${fmtMD(prev.dt)}）より <strong>${-d}秒/km</strong> 速い`
-                  : d>0 ? `前回（${fmtMD(prev.dt)}）より <strong>${d}秒/km</strong> 遅い`
-                  : `前回（${fmtMD(prev.dt)}）と同じペース`;
-    let bestTxt;
-    if(rank===1){
+    cells.push(`<span class="hero-chip cmp ${d<0?"up":d>0?"down":""}">前回（${fmtMD(prev.dt)}）より <strong>${Math.abs(d)}</strong>秒/km ${d<0?"速い":d>0?"遅い":"（同じ）"}</span>`);
+    if(pb){
       const oldBest=Math.min(...L.slice(0,n-1).map(r=>r.pace));
-      bestTxt=`これまでのベストを <strong>${Math.round(oldBest-latest.pace)}秒/km</strong> 更新`;
+      cells.push(`<span class="hero-chip cmp up">ベストを更新 <strong>${Math.round(oldBest-latest.pace)}</strong>秒/km 速い</span>`);
     }else{
-      const gap=Math.round(latest.pace-byPace[0].pace);
-      bestTxt= gap<=0 ? `ベスト（${fmtPace(byPace[0].pace)}）と同タイム` : `ベスト（${fmtPace(byPace[0].pace)}）まで あと <strong>${gap}秒/km</strong>`;
+      const gap=Math.max(0, Math.round(latest.pace-byPace[0].pace));
+      cells.push(`<span class="hero-chip">ベストまで <strong>${gap}</strong>秒/km</span>`);
     }
-    cmpHtml=`<div class="run-cmp"><span class="${d<0?"up":d>0?"down":""}">${prevTxt}</span><span>${bestTxt}</span></div>`;
   }
-
+  cells.push(`<span class="hero-chip accent">ベスト ${fmtMD(byPace[0].dt)} <strong>${fmtPace(byPace[0].pace)}</strong>/km</span>`);
+  cells.push(`<span class="hero-chip">走った回数 <strong>${n}</strong>本</span>`);
   document.getElementById("run-hero").innerHTML=`
     <div class="tm-hero-label">これまでの累計距離</div>
     <div class="tm-big">${km.toFixed(2)}<small>km</small></div>
-    <div class="run-headline${rank===1&&n>1?" pb":""}">${headline}</div>
-    ${cmpHtml}
-    <div class="hero-meta">
-      <span class="hero-chip">${n} 本</span>
-      <span class="hero-chip accent">ベスト <strong>${fmtPace(byPace[0].pace)}</strong>/km</span>
-    </div>`;
+    <div class="hero-meta">${cells.join("")}</div>`;
 }
 
 function runRenderTabs(){
@@ -1322,11 +1309,9 @@ function bkRenderHero(){
   document.getElementById("bk-hero").innerHTML=`
     <div class="tm-hero-label">これまでの累計距離</div>
     <div class="tm-big">${nf(km)}<small>km</small></div>
-    <div class="run-headline${rank===1&&L.length>1?" pb":""}">${rank===1&&L.length>1
-      ? `最新ライド（${fmtMD(latest.dt)}・${escHtml(latest.dest)}）で最長記録！`
-      : `最新ライド：${escHtml(latest.dest)} ${latest.km.toFixed(2)}km（${bkDate(latest.dt)}）`}</div>
     <div class="hero-meta">
-      <span class="hero-chip">${L.length} 回</span>
+      <span class="hero-chip${rank===1&&L.length>1?" accent":""}">最新 ${fmtMD(latest.dt)} ${escHtml(latest.dest||"")}${rank===1&&L.length>1?"・最長記録！":""} <strong>${latest.km.toFixed(1)}</strong>km</span>
+      <span class="hero-chip">走った回数 <strong>${L.length}</strong>回</span>
       <span class="hero-chip">${y}年 <strong>${yKm.toFixed(1)}</strong> km</span>
       <span class="hero-chip">1回平均 <strong>${(km/L.length).toFixed(1)}</strong> km</span>
       <span class="hero-chip accent">最長 <strong>${best.km.toFixed(1)}</strong> km</span>
@@ -1362,8 +1347,10 @@ function bkRenderYears(){
 /* =====================================================================
    Apex（ランクポイントの推移）
    列 : 日付 / シーズン / ランク / RP。No・曜日・メモなどほかの列はあってもOK
-   ・シーズン … 31 など。ランクと同じく、変わった日だけ書けばOK。ページ上部のタブでシーズンを切り替えられます
-              （シーズンが変わった日はランクがリセットされるので、前の日との増減は計算しません）
+   ・シーズン   … 31 など。ランクと同じく、変わった日だけ書けばOK
+   ・スプリット … 1 か 2。変わった日だけ書けばOK（シーズンが変わって空欄なら 1）
+   ページ上部のセレクトボックスで、シーズン・スプリットごとに切り替えて見られます。
+   シーズンやスプリットが変わった日はランクがリセットされるので、前の日との増減は計算しません。
    ・1行＝1日。その日の終わりの値を入れる
    ・ランク … 「シルバーIV」「ゴールド2」「プラチナ Ⅰ」など。ランクが変わった日だけ書けばOK
               （空欄の日は前の日と同じランク。最初の記録より前の空欄は、最初に書いたランク）
@@ -1432,10 +1419,11 @@ async function loadApex(){
   const byKey={};
   rows.forEach(o=>{
     const dt=pd(F(o,"日付")); if(!dt) return;
-    const rp=num(F(o,rpKey)), rank=rkKey?apParseRank(F(o,rkKey)):null, ss=num(F(o,"シーズン")||F(o,"Season"));
+    const rp=num(F(o,rpKey)), rank=rkKey?apParseRank(F(o,rkKey)):null, ss=num(F(o,"シーズン")||F(o,"Season")), sp=num(F(o,"スプリット")||F(o,"Split"));
     const cur=byKey[dt.toDateString()]||{dt};
     if(rank) cur.rank=rank;
     if(ss!=null) cur.season=ss;
+    if(sp!=null) cur.split=sp;
     if(rp!=null){ cur.rp=rp; cur.memo=F(o,"メモ"); }
     byKey[dt.toDateString()]=cur;
   });
@@ -1448,37 +1436,51 @@ async function loadApex(){
   /* シーズンも同じように埋める */
   const fs=all.find(d=>d.season!=null);
   let cs=fs?fs.season:null;
-  all.forEach(d=>{ if(d.season!=null) cs=d.season; else d.season=cs; });
+  const fp=all.find(d=>d.split!=null);
+  let cp=fp?fp.split:null;
+  all.forEach(d=>{
+    const prevS=cs;
+    if(d.season!=null) cs=d.season; else d.season=cs;
+    if(d.split!=null) cp=d.split;
+    else{ if(prevS!=null && d.season!==prevS && cp!=null) cp=1; d.split=cp; }   // 新しいシーズンはスプリット1から
+    d.pk=`${d.season??""}-${d.split??""}`;   // 期間（シーズン＋スプリット）
+  });
   AP.all=all.filter(d=>d.rp!=null);
   AP.all.forEach((d,i)=>{
     d.total = d.rank ? AP_TIERS[d.rank.t].base[d.rank.d]+d.rp : d.rp;
     const p=AP.all[i-1];
-    d.newSeason = !!(p && d.season!==p.season);
-    const q = d.newSeason ? null : p;   // シーズンをまたいだら比べない
+    d.newSeason = !!(p && d.pk!==p.pk);   // シーズンかスプリットが変わった日
+    const q = d.newSeason ? null : p;   // ランクがリセットされるので比べない
     d.diff = q ? d.total-q.total : null;
     d.move = q && d.rank && q.rank ? Math.sign((d.rank.t*4+d.rank.d)-(q.rank.t*4+q.rank.d)) : 0;   // 1=昇格 -1=降格
   });
   if(!AP.all.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
-  AP.seasons=[...new Set(AP.all.map(d=>d.season))];
-  AP.season=AP.all[AP.all.length-1].season;
-  AP.cur=AP.all.filter(d=>d.season===AP.season);
+  AP.seasons=[...new Set(AP.all.map(d=>d.pk))];
+  AP.season=AP.all[AP.all.length-1].pk;
+  AP.cur=AP.all.filter(d=>d.pk===AP.season);
   apShowSeason(AP.season);
 }
-const apSeasonName=s=>s==null?"":`シーズン${s}`;
-function apShowSeason(s){
-  AP.season=s;
-  AP.list = s==="all" ? AP.all.slice() : AP.all.filter(d=>d.season===s);
-  const box=document.getElementById("ap-season-tabs");
-  if(AP.seasons.length>1 || AP.seasons[0]!=null){
+/* 期間の名前：「シーズン31 スプリット1」 */
+/* スプリットは、そのシーズンにスプリット2以降の記録があるときだけ名前に出す */
+const apShowSplit=d=>d.split!=null && (d.split!==1 || AP.all.some(x=>x.season===d.season && x.split!=null && x.split!==1));
+function apPeriodName(d){ if(!d) return ""; return [d.season!=null?`シーズン${d.season}`:"", apShowSplit(d)?`スプリット${d.split}`:""].filter(Boolean).join(" "); }
+const apPkName=pk=>apPeriodName(AP.all.find(d=>d.pk===pk));
+function apShowSeason(pk){
+  AP.season=pk;
+  AP.list = pk==="all" ? AP.all.slice() : AP.all.filter(d=>d.pk===pk);
+  const box=document.getElementById("ap-season-box"), sel=document.getElementById("ap-season-sel");
+  if(AP.seasons.length>1 || AP.seasons[0]!=="-"){
     box.hidden=false;
-    box.innerHTML=(AP.seasons.length>1?AP.seasons.slice().reverse():AP.seasons).map(x=>
-      `<button type="button" class="day-tab${x===s?" active":""}" data-s="${x}">${escHtml(apSeasonName(x)||"シーズン未記入")}<small class="tab-sub">${AP.all.filter(d=>d.season===x).length}日</small></button>`).join("")
-      + (AP.seasons.length>1?`<button type="button" class="day-tab${s==="all"?" active":""}" data-s="all">全シーズン</button>`:"");
-    box.querySelectorAll(".day-tab").forEach(b=>b.onclick=()=>apShowSeason(b.dataset.s==="all"?"all":AP.seasons.find(x=>String(x)===b.dataset.s)));
+    /* シーズンごとにまとめ、新しい順 */
+    const bySeason={}; AP.seasons.forEach(k=>{ const d=AP.all.find(x=>x.pk===k); const sk=d.season??""; (bySeason[sk]=bySeason[sk]||[]).push(k); });
+    const order=[...new Set(AP.seasons.map(k=>AP.all.find(x=>x.pk===k).season??""))].reverse();
+    const opt=k=>`<option value="${escHtml(k)}"${k===pk?" selected":""}>${escHtml(apPkName(k)||"未記入")}</option>`;
+    sel.innerHTML=order.map(sk=>`<optgroup label="${sk===""?"シーズン未記入":`シーズン${sk}`}">${bySeason[sk].slice().reverse().map(opt).join("")}</optgroup>`).join("")
+      + (AP.seasons.length>1?`<option value="all"${pk==="all"?" selected":""}>全期間</option>`:"");
+    sel.onchange=()=>apShowSeason(sel.value);
   }else box.hidden=true;
   apRenderHero(); apRenderTabs(); apRenderChart(); apRenderDays(); apRenderMonths();
 }
-
 /* 今月の増減：先月最後の記録（なければ今月最初の記録）から */
 function apMonthDiff(L){
   L=L||AP.list; const t=today0(), last=L[L.length-1];
@@ -1487,25 +1489,28 @@ function apMonthDiff(L){
   return last.total-(before.length?before[before.length-1].total:mon[0].total);
 }
 const apBest=L=>(L||AP.list).reduce((b,d)=>(!b||d.total>b.total)?d:b,null);
-const apMoveTag=d=>d.newSeason?`<span class="ap-tag ss">${escHtml(apSeasonName(d.season))}開始</span>`:d.move>0?'<span class="ap-tag up">昇格！</span>':d.move<0?'<span class="ap-tag down">降格</span>':"";
+const apMoveTag=d=>d.newSeason?`<span class="ap-tag ss">${escHtml(apPeriodName(d))}開始</span>`:d.move>0?'<span class="ap-tag up">昇格！</span>':d.move<0?'<span class="ap-tag down">降格</span>':"";
 
 function apRenderHero(){
   const L=AP.list, last=L[L.length-1], best=apBest(), monDiff=AP.season==="all"?null:apMonthDiff();
   const isBest=last===best && L.length>1 && last.diff>0;
-  const head = last.newSeason ? `${escHtml(apSeasonName(last.season))}スタート！` : last.diff==null ? "記念すべき最初の記録！"
-    : `${fmtMD(last.dt)}は <strong class="${apCls(last.diff)}">${apSigned(last.diff)}</strong> RP${last.move>0?`・<strong>${escHtml(apRankName(last.rank))}</strong>に昇格！`:last.move<0?`・${escHtml(apRankName(last.rank))}に降格`:isBest?"・最高記録を更新！":""}`;
+  const dayLbl=`${fmtMD(last.dt)}${last.newSeason?`・${escHtml(apPeriodName(last))}開始`:last.move>0?"・昇格！":last.move<0?"・降格":isBest?"・最高記録":""}`;
+  const dayCell = last.diff==null
+    ? `<span class="hero-chip accent">${dayLbl||fmtMD(last.dt)} <strong>${nf(last.rp)}</strong>RP</span>`
+    : `<span class="hero-chip cmp ${apCls(last.diff)}${last.move>0||isBest?" accent":""}">${dayLbl} <strong>${apSigned(last.diff)}</strong>RP</span>`;
   const nx = last.rank ? apNext(last.rank, last.rp) : null;
   const T = last.rank ? AP_TIERS[last.rank.t] : null;
   document.getElementById("ap-hero").innerHTML=`
-    <div class="tm-hero-label">${AP.season==="all"?"":escHtml(apSeasonName(last.season))+"・"}${AP.season===AP.cur[0].season?"いまのランク":"最終ランク"}（${hmYMD(last.dt)}時点）</div>
+    <div class="tm-hero-label">${AP.season==="all"?"":escHtml(apPeriodName(last))+"・"}${AP.season===AP.cur[0].pk||AP.season==="all"?"いまのランク":"最終ランク"}（${hmYMD(last.dt)}時点）</div>
     ${T?`<div class="ap-rank-big" style="--c:${T.color}"><span class="ap-emblem"></span>${escHtml(apRankName(last.rank))}</div>`:""}
     <div class="tm-big">${nf(last.rp)}<small>RP</small></div>
     ${nx?`<div class="ap-next"><div class="tgt-bar"><span style="width:${nx.pct}%;background:${T.color}"></span></div>
-      <div class="ap-next-t">${escHtml(nx.name)}まで あと <strong>${nf(nx.left)}</strong> RP（${nf(last.rp)} / ${nf(nx.need)}）</div></div>`:""}
-    <div class="run-headline">${head}</div>
+      <div class="ap-next-t"><span>${nf(last.rp)} / ${nf(nx.need)}</span><span>${escHtml(nx.name)}</span></div></div>`:""}
     <div class="hero-meta">
+      ${dayCell}
+      ${nx?`<span class="hero-chip">${escHtml(nx.name)}まで <strong>${nf(nx.left)}</strong>RP</span>`:""}
       ${monDiff!=null?`<span class="hero-chip cmp ${apCls(monDiff)}">今月 <strong>${apSigned(monDiff)}</strong> RP</span>`:""}
-      <span class="hero-chip accent">最高 <strong>${escHtml(apLabel(best))}</strong>（${fmtMD(best.dt)}）</span>
+      <span class="hero-chip">最高${best.rank?` ${escHtml(apRankName(best.rank))}`:""} <strong>${nf(best.rp)}</strong>RP</span>
       <span class="hero-chip">記録 <strong>${L.length}</strong> 日</span>
     </div>`;
 }
@@ -1629,7 +1634,7 @@ function hmEvents(){
   const E=[];
   RUN.list.forEach(r=>E.push({ k:"run", dt:r.dt, main:`${r.km.toFixed(2)}km 走った`, sub:`${fmtPace(r.pace)}/km・${fmtDur(r.sec)}` }));
   BK.list.forEach(r=>E.push({ k:"bike", dt:r.dt, main:`${r.dest||"行き先なし"}へ`, sub:`${r.km.toFixed(1)}km` }));
-  AP.all.forEach(d=>E.push({ k:"apex", dt:d.dt, main:apLabel(d)+(d.move>0?"（昇格！）":d.move<0?"（降格）":""), sub:d.diff!=null?`前回から ${apSigned(d.diff)} RP`:d.newSeason?`${apSeasonName(d.season)}開始`:"最初の記録" }));
+  AP.all.forEach(d=>E.push({ k:"apex", dt:d.dt, main:apLabel(d)+(d.move>0?"（昇格！）":d.move<0?"（降格）":""), sub:d.diff!=null?`前回から ${apSigned(d.diff)} RP`:d.newSeason?`${apPeriodName(d)}開始`:"最初の記録" }));
   GM.list.forEach(r=>{ if(r.dt) E.push({ k:"gourmet", dt:r.dt, main:r.name, sub:[r.pref+(r.muni||""), r.genre, r.my!=null?`評価 ${r.my.toFixed(1)}`:""].filter(Boolean).join("・") }); });
   return E.sort((a,b)=>b.dt-a.dt);
 }
@@ -1723,7 +1728,7 @@ function hmTotalHtml(){
   /* Apex */
   if(HM.done.apex && AP.cur.length){
     const best=apBest(AP.cur);
-    out.push(hmCard("apex", best.season!=null?`${apSeasonName(best.season)}の最高`:"最高記録", best.rank?apRankName(best.rank):nf(best.rp), best.rank?`${nf(best.rp)}RP`:"RP", `${hmYMD(best.dt)}<br>記録 ${AP.cur.length}日`));
+    out.push(hmCard("apex", best.season!=null?`S${best.season}${apShowSplit(best)?`-${best.split}`:""}の最高`:"最高記録", best.rank?apRankName(best.rank):nf(best.rp), best.rank?`${nf(best.rp)}RP`:"RP", `${hmYMD(best.dt)}<br>記録 ${AP.cur.length}日`));
   } else out.push(hmEmptyCard("apex","最高記録"));
   return out.join("");
 }
@@ -1801,6 +1806,25 @@ function hmRender(){
 function hmTrack(k, p){
   return Promise.resolve(p).catch(e=>console.error(k, e)).finally(()=>{ HM.done[k]=true; try{ hmRender(); }catch(e){ console.error("home", e); } });
 }
+
+/* ---------- 記録の数字（ヒーロー下の .hero-chip と .stats-row の .stat-chip） ----------
+   「今月 <strong>+409</strong> RP」を「見出し」と「数字＋単位」に分け、計器のような並びで見せる */
+function chipify(){
+  document.querySelectorAll(".hero-chip:not([data-c]), .stat-chip:not([data-c])").forEach(el=>{
+    el.dataset.c="1";
+    let st=el.querySelector("strong");
+    /* 「17 本」のように強調がなければ、先頭の数字を強調にする */
+    if(!st){ const m=el.innerHTML.match(/^\s*([−\-+]?[\d,.]+)\s*(.*)$/s); if(m){ el.innerHTML=`<strong>${m[1]}</strong>${m[2]}`; st=el.querySelector("strong"); } }
+    if(st && (st.textContent.trim().length>7 || /[^\x00-\x7F]/.test(st.textContent))) st.classList.add("long");
+    const lab=document.createElement("span"), val=document.createElement("span");
+    lab.className="hc-l"; val.className="hc-v";
+    if(st){ let n=el.firstChild; while(n && n!==st){ const nx=n.nextSibling; lab.appendChild(n); n=nx; } }
+    while(el.firstChild) val.appendChild(el.firstChild);
+    if(lab.textContent.trim()) el.appendChild(lab);
+    el.appendChild(val);
+  });
+}
+new MutationObserver(chipify).observe(document.body, {childList:true, subtree:true});
 
 /* ---------- 初期化 ---------- */
 hmRender();
