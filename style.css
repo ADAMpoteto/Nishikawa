@@ -1210,3 +1210,6 @@ details.kk-group[open] summary::after{content:"－";}
 .ap-prow .mlist-bar{grid-area:b;}
 .ap-prow.on{background:none;box-shadow:inset 3px 0 0 var(--text);padding-left:12px;}
 .ap-prow .mlist-name em{display:inline-block !important;width:auto !important;flex:none !important;align-self:center;margin:0 !important;line-height:1.6;}
+.ap-xlbl.first{transform:none;}
+.ap-xlbl.last{transform:translateX(-100%);}
+.ap-xlbl{font-variant-numeric:tabular-nums;}
