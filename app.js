@@ -1623,7 +1623,7 @@ function apRenderPeriods(){
     </button>`; }).join("");
   el.querySelectorAll(".ap-prow").forEach(b=>b.onclick=()=>{
     apShowSeason(b.dataset.pk);
-    const a=document.getElementById("apex"); window.scrollTo({top:a.offsetTop, behavior:prefersReduced()?"auto":"smooth"});
+    const a=document.getElementById("game"); window.scrollTo({top:a.offsetTop, behavior:prefersReduced()?"auto":"smooth"});
   });
 }
 
