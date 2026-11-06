@@ -53,6 +53,14 @@ const facts=items=>`<ul class="facts">${items.filter(Boolean).join("")}</ul>`;
 const signed=n=>`${n>0?"+":n<0?"−":"±"}${nf(Math.abs(n))}`;
 const tone=(n,html)=>`<span class="${n>0?"up":n<0?"down":""}">${html}</span>`;
 
+/* グラフの凡例：線や点の見本＋短い言葉。type: line / dash / dot */
+function legend(items){
+  const sw=it=>it.type==="line"?`<svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="${it.color}" stroke-width="2.5" stroke-linecap="round"/></svg>`
+    : it.type==="dash"?`<svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="#999" stroke-width="1.5" stroke-dasharray="4 3"/></svg>`
+    : `<span class="lg-dot" style="background:${it.color}"></span>`;
+  return `<ul class="lg">${items.filter(Boolean).map(it=>`<li>${sw(it)}<span>${it.text}</span></li>`).join("")}</ul>`;
+}
+
 /* 長い一覧は最初の n 件だけ見せ、残りは「それ以前」を開くと出る */
 function foldRows(rows, n, unit){
   if(rows.length<=n+2) return rows.join("");
@@ -111,8 +119,18 @@ function declutterLabels(box, sel){
     if(hit) x.e.classList.add("lbl-hide"); else kept.push(r);
   });
 }
+/* 縦の目盛り：文字どうしが重ならないように。ランクの境目（.top）と今いるディビジョン（.cur）を優先 */
+function declutterY(box, sel){
+  if(!box || !box.offsetWidth) return;
+  const els=[...box.querySelectorAll(sel)]; els.forEach(e=>e.classList.remove("lbl-hide"));
+  const pri=e=>(e.classList.contains("cur")?4:0)+(e.classList.contains("top")?2:0);
+  const kept=[];
+  els.map(e=>({e, p:pri(e), r:e.getBoundingClientRect()})).sort((a,b)=>b.p-a.p).forEach(x=>{
+    if(kept.some(k=>x.r.top<k.bottom && k.top<x.r.bottom)) x.e.classList.add("lbl-hide"); else kept.push(x.r);
+  });
+}
 function declutterAll(){
-  document.querySelectorAll(".ap-lc").forEach(b=>declutterLabels(b, ".ap-xlbl"));
+  document.querySelectorAll(".ap-lc").forEach(b=>{ declutterLabels(b, ".ap-xlbl"); declutterY(b, ".ap-ylbl:not(.r)"); declutterY(b, ".ap-ylbl.r"); });
   document.querySelectorAll(".bc-plot").forEach(b=>declutterLabels(b, ".bc-lbl"));
 }
 let _dcT=0; window.addEventListener("resize", ()=>{ clearTimeout(_dcT); _dcT=setTimeout(declutterAll, 120); });
@@ -1597,9 +1615,12 @@ function apRenderHero(){
 /* 折れ線グラフ（SVG）：選んだシーズン（スプリット）の全期間。背景はランクの色、横線はディビジョンの区切り */
 function apRenderChart(){
   const L=AP.list, G=apGoalCtx(), x0=L[0].dt, x1=G?AP_GOAL_DEADLINE:L[L.length-1].dt;
-  const W=600, H=220, PL=4, PR=4, PT=14, PB=22;
+  const W=600, PL=4, PR=4, PT=14, PB=22; let H=220;
   let lo=Math.min(...L.map(d=>d.total)), hi=Math.max(...L.map(d=>d.total), G?G.goal:0);
   const pad=Math.max((hi-lo)*0.12, 50); lo=Math.max(0, lo-pad); hi=hi+pad;
+  /* ディビジョンの線が多いときは、1本あたり16pxくらいになるようにグラフを縦に伸ばす */
+  const nDiv=AP.ranked?AP_TIERS.slice(0,6).reduce((s,t)=>s+t.base.filter(b=>b>lo&&b<hi).length,0):0;
+  if(nDiv>6) H=Math.min(440, 60+nDiv*22);
   const span=Math.max(1, x1-x0);
   const X=dt=>L.length>1||G ? PL+(dt-x0)/span*(W-PL-PR) : W/2, Y=v=>PT+(1-(v-lo)/(hi-lo))*(H-PT-PB);
   const planD=G?G.fixed.pts.map((p,i)=>(i?"L":"M")+X(p.dt).toFixed(1)+","+Y(p.v).toFixed(1)).join(""):"";
@@ -1611,7 +1632,7 @@ function apRenderChart(){
   if(AP.ranked){
     const divs=[]; AP_TIERS.slice(0,7).forEach(t=>{ (t.divs?t.base:[t.start]).forEach((b,i)=>divs.push({v:b, label:t.divs?t.name+AP_ROMAN[i]:t.name, top:i===0})); });
     grid=divs.filter(g=>g.v>lo && g.v<hi);
-    if(grid.length>6) grid=grid.filter(g=>g.top);
+    /* ディビジョンごとに線を引く（文字がぶつかるところは、あとで間引く） */
     AP_TIERS.slice(0,7).forEach((t,i)=>{ const end=i<6?AP_TIERS[i+1].start:Infinity;
       if(end>lo && t.start<hi) bands.push({y1:cy(Math.min(end,hi)), y2:cy(Math.max(t.start,lo)), c:t.color}); });
   }else{
@@ -1626,7 +1647,8 @@ function apRenderChart(){
     return [...new Set(Array.from({length:k},(_,i)=>Math.round(i*(n-1)/(k-1))))].map(i=>L[i].dt); })();
   document.getElementById("ap-chart").innerHTML=`
     <div class="bc-readout ap-readout" aria-live="polite"></div>
-    <div class="ap-lc">
+    ${AP.ranked?`<div class="ap-axis-t"><span>ランク</span><span>通算RP</span></div>`:""}
+    <div class="ap-lc"${H!==220?` style="height:${H}px"`:""}>
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="日ごとのランクポイントの推移">
         ${bands.map(b=>`<rect x="0" width="${W}" y="${b.y1.toFixed(1)}" height="${Math.max(0,b.y2-b.y1).toFixed(1)}" fill="${b.c}" opacity=".13"/>`).join("")}
         ${grid.map(g=>`<line class="ap-grid${g.top?" top":""}" x1="0" x2="${W}" y1="${Y(g.v).toFixed(1)}" y2="${Y(g.v).toFixed(1)}"/>`).join("")}
@@ -1635,11 +1657,17 @@ function apRenderChart(){
         <path class="ap-line" d="${line}"/>
         <line class="ap-cur" x1="0" x2="0" y1="${PT}" y2="${H-PB}" visibility="hidden"/>
       </svg>
-      ${grid.filter(g=>Y(g.v)>PT+12).map(g=>`<span class="ap-ylbl" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${escHtml(g.label)}</span><span class="ap-ylbl r" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${nf(g.v)}</span>`).join("")}
+      ${grid.filter(g=>Y(g.v)>PT+6).map(g=>{ const k=g.top?" top":"", cur=L[L.length-1].rank&&g.label===apRankName(L[L.length-1].rank)?" cur":"";
+        return `<span class="ap-ylbl${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${escHtml(g.label)}</span><span class="ap-ylbl r${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${nf(g.v)}</span>`; }).join("")}
       ${ticks.map((d,k)=>`<span class="ap-xlbl${k===0&&ticks.length>1?" first":k===ticks.length-1&&ticks.length>1?" last":""}" style="left:${(X(d)/W*100).toFixed(2)}%">${d.getMonth()+1}/${d.getDate()}</span>`).join("")}
       ${L.map((d,i)=>`<span class="ap-dot${d===best?" best":""}${d.move>0?" promo":""}" data-i="${i}" style="left:${(pts[i][0]/W*100).toFixed(2)}%;top:${(pts[i][1]/H*100).toFixed(2)}%"></span>`).join("")}
     </div>
-    <p class="kk-note-s">${G?`点線は ${AP_GOAL_FROM.getMonth()+1}/${AP_GOAL_FROM.getDate()+1} の${escHtml(apRankName(apParseRank(AP_GOAL_START.rank)))} ${AP_GOAL_START.rp} RPから、${AP_GOAL_DEADLINE.getMonth()+1}/${AP_GOAL_DEADLINE.getDate()} に${AP_GOAL.name}へ届く計画（上のランクほど1試合で残るRPが少ないので、ゆるやかになる）。`:""}右の数字は通算RP。なぞる・タップでその日の記録。${AP.ranked?"背景の色はランク、緑の点は昇格した日、":""}金色の点が最高記録。</p>
+    ${legend([
+      {type:"line", color:"#c2185b", text:"実績"},
+      G?{type:"dash", text:`計画：${AP_GOAL_FROM.getMonth()+1}/${AP_GOAL_FROM.getDate()+1} ${escHtml(apRankName(apParseRank(AP_GOAL_START.rank)))} ${AP_GOAL_START.rp} → ${AP_GOAL_DEADLINE.getMonth()+1}/${AP_GOAL_DEADLINE.getDate()} ${AP_GOAL.name}`}:null,
+      L.some(d=>d.move>0)?{type:"dot", color:"#1f8a4c", text:"昇格"}:null,
+      {type:"dot", color:"#e0a800", text:"最高"}
+    ])}
     ${apDaysTable()}`;
   const box=document.querySelector("#ap-chart .ap-lc"), out=document.querySelector("#ap-chart .ap-readout"), cur=box.querySelector(".ap-cur");
   const pick=i=>{
@@ -1811,7 +1839,10 @@ function mhChart(el, o){
       ${ticks.map((d,k)=>`<span class="ap-xlbl${(short&&ticks.length>1&&k===0)||X(d)/W<0.08?" first":(short&&ticks.length>1&&k===ticks.length-1)||X(d)/W>0.92?" last":""}" style="left:${(X(d)/W*100).toFixed(2)}%">${short?`${d.getMonth()+1}/${d.getDate()}`:`${d.getMonth()===0||(d===ticks[0]&&!ticks.some(t=>t.getMonth()===0))?`${d.getFullYear()}/`:""}${d.getMonth()+1}月`}</span>`).join("")}
       <span class="ap-dot mh-dot" style="border-color:${o.color}"></span>
     </div>
-    <p class="kk-note-s">${o.note||(planD?`実線が実績、点線が ${o.deadline.getFullYear()}/${o.deadline.getMonth()+1}/${o.deadline.getDate()} に ${o.goal} へ届く計画。`:"")}なぞる・タップでその日の記録。</p>
+    ${legend([
+      {type:"line", color:o.color, text:"実績"},
+      planD?{type:"dash", text:`計画：${o.deadline.getFullYear()}/${o.deadline.getMonth()+1}/${o.deadline.getDate()} に ${o.unit} ${o.goal}`}:null
+    ])}
     ${o.table||""}`;
   const box=el.querySelector(".ap-lc"), out=el.querySelector(".ap-readout"), cur=box.querySelector(".ap-cur"), dot=box.querySelector(".mh-dot");
   const pick=i=>{
