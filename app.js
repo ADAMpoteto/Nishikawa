@@ -1521,6 +1521,43 @@ function apShowSeason(pk){
 const apBest=L=>(L||AP.list).reduce((b,d)=>(!b||d.total>b.total)?d:b,null);
 const apMoveTag=d=>d.newSeason?`<span class="ap-tag ss">${escHtml(apPeriodName(d))}開始</span>`:d.move>0?'<span class="ap-tag up">昇格！</span>':d.move<0?'<span class="ap-tag down">降格</span>':"";
 
+/* ---------- ダイヤまでの計画 ----------
+   ・期限はスプリット1の終わりの見込み（シーズン31は12/13まで週ごとのラダーがあるので 12/15 と仮置き。発表されたら直す）
+   ・上のランクほど参加コストが高く、1試合で残るRPが減る。1試合で稼ぐRP（AP_GROSS）からコストを引いた分で、
+     ランクごとにかかる試合数を出し、「毎日同じくらいの試合数」で期限に届くように日数を割り振る */
+const AP_GOAL = { t:5, d:0, name:"ダイヤ" };      // ダイヤIV
+const AP_GOAL_DEADLINE = new Date(2026, 11, 15);  // 期限（スプリット1の終わりの見込み）
+const AP_GOAL_FROM = new Date(2026, 10, 4);       // 計画の出発点：11/4の終わり（＝11/5の始まり）
+const AP_GOAL_START = { rank:"ブロンズⅠ", rp:380 }; // そのときのランクとRP
+const AP_GROSS = 75;                              // 1試合で稼ぐRPの目安（参加コストを引く前）
+const AP_COST = [0,10,20,38,48,65,90,90];         // ランクごとの参加コスト（EA公式ヘルプ）
+const apGoalTotal=()=>AP_TIERS[AP_GOAL.t].base[AP_GOAL.d];
+const apNet=total=>Math.max(5, AP_GROSS-AP_COST[AP_TIERS.indexOf(apTierAt(total))]);
+/* fromDt の終わりに fromTotal → 期限にダイヤ、の計画。点（日付と通算RP）と、1日あたりの試合数 */
+function apPlan(fromDt, fromTotal){
+  const goal=apGoalTotal(), segs=[]; let cur=fromTotal;
+  while(cur<goal){ const i=AP_TIERS.indexOf(apTierAt(cur)), next=Math.min(goal, AP_TIERS[i+1].start); segs.push({to:next, m:(next-cur)/apNet(cur)}); cur=next; }
+  const days=Math.max(1,(AP_GOAL_DEADLINE-fromDt)/864e5), M=segs.reduce((s,x)=>s+x.m,0), mpd=M/days;
+  const pts=[{dt:fromDt, v:fromTotal}]; let t=+fromDt;
+  segs.forEach(x=>{ t+=x.m/mpd*864e5; pts.push({dt:new Date(t), v:x.to}); });
+  const at=dt=>{ if(dt<=pts[0].dt) return pts[0].v; for(let i=1;i<pts.length;i++) if(dt<=pts[i].dt){ const a=pts[i-1], b=pts[i]; return a.v+(b.v-a.v)*(dt-a.dt)/(b.dt-a.dt); } return goal; };
+  return { pts, mpd, at };
+}
+/* 今のシーズン（スプリット）を見ているときだけ、計画を出す */
+function apGoalCtx(){
+  if(!AP.ranked || AP.season==="all" || AP.season!==AP.cur[0].pk) return null;
+  const t0=today0(); if(t0>AP_GOAL_DEADLINE) return null;
+  const L=AP.cur, last=L[L.length-1];
+  const sr=apParseRank(AP_GOAL_START.rank), startTotal=AP_TIERS[sr.t].base[sr.d]+AP_GOAL_START.rp;
+  const fixed=apPlan(AP_GOAL_FROM, startTotal);
+  /* 今日の目標：きのうまでの記録から、期限に届くように引き直した計画の「今日の分」 */
+  const yest=new Date(t0.getFullYear(), t0.getMonth(), t0.getDate()-1);
+  const base=L.filter(d=>d.dt<t0).pop()||L[0], re=apPlan(yest, base.total);
+  const todayRec=L.find(d=>+d.dt===+t0);
+  const target=Math.max(0, Math.round(re.at(t0)-base.total));
+  return { fixed, re, base, last, todayRec, target, games:Math.max(1,Math.round(re.mpd)), goal:apGoalTotal() };
+}
+
 /* 期間（シーズン・スプリット）ごとのまとめ */
 function apPeriodStats(L){
   const first=L[0], last=L[L.length-1], best=apBest(L);
@@ -1541,6 +1578,15 @@ function apRenderHero(){
       <div class="ap-next-t"><span>${nf(last.rp)} / ${nf(nx.need)}</span><span>${escHtml(nx.name)}まで あと <b>${nf(nx.left)}</b> RP</span></div></div>`:""}
     ${lead(last.diff==null ? `${fmtMD(last.dt)}　${last.newSeason?`${escHtml(apPeriodName(last))}開始`:"最初の記録"}`
       : `${fmtMD(last.dt)}　${tone(last.diff,`<b>${apSigned(last.diff)}</b> RP`)}${last.move>0?`　${tone(1,`${escHtml(apRankName(last.rank))}に昇格！`)}`:last.move<0?`　${tone(-1,`${escHtml(apRankName(last.rank))}に降格`)}`:isBest?"　最高記録！":""}`)}
+    ${(()=>{ const G=apGoalCtx(); if(!G) return "";
+      const md=d=>`${d.getMonth()+1}/${d.getDate()}`;
+      if(last.total>=G.goal) return facts([`<li>${AP_GOAL.name}到達！</li>`]);
+      const done=G.todayRec?G.todayRec.total-G.base.total:0, vs=Math.round(last.total-G.fixed.at(last.dt));
+      return facts([
+        `<li>今日の目標<b>+${nf(G.target)}</b>RP（約${G.games}試合${G.todayRec?`・今日 <span class="${apCls(done)}">${apSigned(done)}</span>`:""}）</li>`,
+        fact(`${AP_GOAL.name}まで あと`, nf(G.goal-last.total), `RP（${md(AP_GOAL_DEADLINE)}まで）`),
+        last.dt>AP_GOAL_FROM ? (vs ? `<li>計画より<b class="${apCls(vs)}">${nf(Math.abs(vs))}</b>RP ${vs>0?"先":"遅れ"}</li>` : `<li><b>計画どおり</b></li>`) : ""
+      ]); })()}
     ${facts([
       all ? "" : `<li>${live?"シーズン開始から":"シーズン通算"}<b class="${apCls(P.gain)}">${apSigned(P.gain)}</b>RP（${escHtml(apLabel(P.first))}から）</li>`,
       fact("最高", best.rank?escHtml(apRankName(best.rank)):nf(best.rp), best.rank?` ${nf(best.rp)}RP`:"RP"),
@@ -1550,12 +1596,13 @@ function apRenderHero(){
 
 /* 折れ線グラフ（SVG）：選んだシーズン（スプリット）の全期間。背景はランクの色、横線はディビジョンの区切り */
 function apRenderChart(){
-  const L=AP.list, x0=L[0].dt, x1=L[L.length-1].dt;
+  const L=AP.list, G=apGoalCtx(), x0=L[0].dt, x1=G?AP_GOAL_DEADLINE:L[L.length-1].dt;
   const W=600, H=220, PL=4, PR=4, PT=14, PB=22;
-  let lo=Math.min(...L.map(d=>d.total)), hi=Math.max(...L.map(d=>d.total));
+  let lo=Math.min(...L.map(d=>d.total)), hi=Math.max(...L.map(d=>d.total), G?G.goal:0);
   const pad=Math.max((hi-lo)*0.12, 50); lo=Math.max(0, lo-pad); hi=hi+pad;
   const span=Math.max(1, x1-x0);
-  const X=dt=>L.length>1 ? PL+(dt-x0)/span*(W-PL-PR) : W/2, Y=v=>PT+(1-(v-lo)/(hi-lo))*(H-PT-PB);
+  const X=dt=>L.length>1||G ? PL+(dt-x0)/span*(W-PL-PR) : W/2, Y=v=>PT+(1-(v-lo)/(hi-lo))*(H-PT-PB);
+  const planD=G?G.fixed.pts.map((p,i)=>(i?"L":"M")+X(p.dt).toFixed(1)+","+Y(p.v).toFixed(1)).join(""):"";
   const cy=v=>Math.max(PT, Math.min(H-PB, Y(v)));
   const pts=L.map(d=>[X(d.dt), Y(d.total)]);
   /* 期間が変わったところ（ランクのリセット）は線をつなげない */
@@ -1574,7 +1621,8 @@ function apRenderChart(){
   const mons=[]; for(let d=new Date(x0.getFullYear(), x0.getMonth()+1, 1); d<=x1; d=new Date(d.getFullYear(), d.getMonth()+1, 1)) mons.push(d);
   const best=apBest();
   /* 日付の目盛り：記録が少なければ全部、多ければ最初と最後を含めて6つくらい */
-  const ticks=(()=>{ const n=L.length, k=Math.min(n,6); if(n<=6) return L.map(d=>d.dt);
+  const ticks=(()=>{ if(G){ const k=6; return Array.from({length:k},(_,i)=>{ const t=new Date(+x0+(x1-x0)*i/(k-1)); return new Date(t.getFullYear(),t.getMonth(),t.getDate()); }); }
+    const n=L.length, k=Math.min(n,6); if(n<=6) return L.map(d=>d.dt);
     return [...new Set(Array.from({length:k},(_,i)=>Math.round(i*(n-1)/(k-1))))].map(i=>L[i].dt); })();
   document.getElementById("ap-chart").innerHTML=`
     <div class="bc-readout ap-readout" aria-live="polite"></div>
@@ -1583,14 +1631,15 @@ function apRenderChart(){
         ${bands.map(b=>`<rect x="0" width="${W}" y="${b.y1.toFixed(1)}" height="${Math.max(0,b.y2-b.y1).toFixed(1)}" fill="${b.c}" opacity=".13"/>`).join("")}
         ${grid.map(g=>`<line class="ap-grid${g.top?" top":""}" x1="0" x2="${W}" y1="${Y(g.v).toFixed(1)}" y2="${Y(g.v).toFixed(1)}"/>`).join("")}
         ${mons.map(d=>`<line class="ap-mon" x1="${X(d).toFixed(1)}" x2="${X(d).toFixed(1)}" y1="${PT}" y2="${H-PB}"/>`).join("")}
+        ${planD?`<path class="mh-plan" d="${planD}"/>`:""}
         <path class="ap-line" d="${line}"/>
         <line class="ap-cur" x1="0" x2="0" y1="${PT}" y2="${H-PB}" visibility="hidden"/>
       </svg>
-      ${grid.filter(g=>Y(g.v)>PT+12).map(g=>`<span class="ap-ylbl" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${escHtml(g.label)}</span>`).join("")}
+      ${grid.filter(g=>Y(g.v)>PT+12).map(g=>`<span class="ap-ylbl" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${escHtml(g.label)}</span><span class="ap-ylbl r" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${nf(g.v)}</span>`).join("")}
       ${ticks.map((d,k)=>`<span class="ap-xlbl${k===0&&ticks.length>1?" first":k===ticks.length-1&&ticks.length>1?" last":""}" style="left:${(X(d)/W*100).toFixed(2)}%">${d.getMonth()+1}/${d.getDate()}</span>`).join("")}
       ${L.map((d,i)=>`<span class="ap-dot${d===best?" best":""}${d.move>0?" promo":""}" data-i="${i}" style="left:${(pts[i][0]/W*100).toFixed(2)}%;top:${(pts[i][1]/H*100).toFixed(2)}%"></span>`).join("")}
     </div>
-    <p class="kk-note-s">なぞる・タップでその日の記録。${AP.ranked?"背景の色はランク、緑の点は昇格した日、":""}金色の点が最高記録。</p>
+    <p class="kk-note-s">${G?`点線は ${AP_GOAL_FROM.getMonth()+1}/${AP_GOAL_FROM.getDate()+1} の${escHtml(apRankName(apParseRank(AP_GOAL_START.rank)))} ${AP_GOAL_START.rp} RPから、${AP_GOAL_DEADLINE.getMonth()+1}/${AP_GOAL_DEADLINE.getDate()} に${AP_GOAL.name}へ届く計画（上のランクほど1試合で残るRPが少ないので、ゆるやかになる）。`:""}右の数字は通算RP。なぞる・タップでその日の記録。${AP.ranked?"背景の色はランク、緑の点は昇格した日、":""}金色の点が最高記録。</p>
     ${apDaysTable()}`;
   const box=document.querySelector("#ap-chart .ap-lc"), out=document.querySelector("#ap-chart .ap-readout"), cur=box.querySelector(".ap-cur");
   const pick=i=>{
