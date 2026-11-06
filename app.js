@@ -1688,12 +1688,35 @@ function apRenderChart(){
 }
 
 /* 日別の一覧（トリマと同じく、開いたときだけ見える表。新しい順） */
+/* 通算RP → そのときのランクとRP（例：3,674 → シルバーIII 174） */
+function apFromTotal(total){
+  for(let t=6;t>=0;t--){ const T=AP_TIERS[t]; if(total>=T.start){
+    if(!T.divs) return {rank:{t,d:0}, rp:total-T.start};
+    for(let d=3;d>=0;d--) if(total>=T.base[d]) return {rank:{t,d}, rp:total-T.base[d]}; } }
+  return {rank:{t:0,d:0}, rp:total};
+}
+/* 日別の一覧：実績に、計画の「その日に稼ぐ予定のRP」と「その日の終わりのランク」を並べる。
+   今のシーズンを見ているときは、期限までの先の日も出す */
 function apDaysTable(){
-  const L=AP.list.slice().reverse();
-  return `<details class="tm-table"><summary>日別の一覧を開く</summary>
-    <table><thead><tr><th>日付</th><th>ランク</th><th>RP</th><th>前回から</th></tr></thead><tbody>${
-      L.map(d=>`<tr><td>${fmtMD(d.dt)}</td><td>${d.rank?escHtml(apRankName(d.rank)):""}</td><td>${nf(d.rp)}</td><td class="${d.diff!=null?apCls(d.diff):""}">${d.diff!=null?apSigned(d.diff):""}${d.move>0?" 昇格":d.move<0?" 降格":""}${d.newSeason?"開始":""}</td></tr>`).join("")
-    }</tbody></table></details>`;
+  const G=apGoalCtx(), byDay={};
+  AP.list.forEach(d=>{ byDay[d.dt.toDateString()]=d; });
+  let days=AP.list.map(d=>d.dt);
+  if(G){ const t0=today0(); for(let d=new Date(t0); d<=AP_GOAL_DEADLINE; d=new Date(d.getFullYear(), d.getMonth(), d.getDate()+1)) days.push(new Date(d)); }
+  days=[...new Map(days.map(d=>[d.toDateString(), d])).values()].sort((x,y)=>x-y);
+  const t0=today0();
+  const plan=dt=>{ if(!G || dt<=AP_GOAL_FROM) return null;
+    const v=G.fixed.at(dt), prev=G.fixed.at(new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()-1)), p=apFromTotal(Math.round(v));
+    return {gain:Math.round(v-prev), label:`${apRankName(p.rank)} ${nf(p.rp)}`}; };
+  const rows=days.map(dt=>{ const d=byDay[dt.toDateString()], p=plan(dt), fut=!d && dt>=t0;
+    return `<tr class="${fut?"ap-fut":""}${+dt===+t0?" ap-today":""}">
+      <td>${fmtMD(dt)}</td>
+      ${G?`<td class="ap-plan-c">${p?`+${nf(p.gain)}<small>${escHtml(p.label)}</small>`:"—"}</td>`:""}
+      <td>${d?`${d.rank?escHtml(apRankName(d.rank))+" ":""}${nf(d.rp)}`:""}</td>
+      <td class="${d&&d.diff!=null?apCls(d.diff):""}">${d?`${d.diff!=null?apSigned(d.diff):""}${d.move>0?" 昇格":d.move<0?" 降格":""}${d.newSeason?"開始":""}`:""}</td>
+    </tr>`; });
+  return `<details class="tm-table ap-days"><summary>日別の一覧を開く</summary>
+    <table><thead><tr><th>日付</th>${G?"<th>予定</th>":""}<th>実績</th><th>前回から</th></tr></thead><tbody>${rows.join("")}</tbody></table>
+    ${G?`<p class="kk-note-s">予定：その日に稼ぐRPと、その日の終わりに届いていたいランク（計画の点線）。</p>`:""}</details>`;
 }
 
 /* シーズン（スプリット）ごとの成績。タップでその期間を表示 */

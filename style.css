@@ -1254,3 +1254,8 @@ details.kk-group[open] summary::after{content:"－";}
 .ap-lc.gutter .ap-ylbl{transform:translateY(-50%);left:0;width:64px;white-space:nowrap;}
 .ap-lc.gutter .ap-ylbl.r{left:auto;right:0;width:44px;text-align:right;}
 .ap-lc.gutter .ap-axis-t{display:none;}
+.ap-days td.ap-plan-c{color:var(--text2);font-variant-numeric:tabular-nums;}
+.ap-days td.ap-plan-c small{display:block;font-size:10.5px;color:var(--text3);font-weight:600;}
+.ap-days tr.ap-fut td{color:var(--text3);}
+.ap-days tr.ap-today td{background:var(--bg2);font-weight:800;}
+.ap-days td.up{color:#1f8a4c;} .ap-days td.down{color:#d0343a;}
