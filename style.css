@@ -1248,3 +1248,9 @@ details.kk-group[open] summary::after{content:"－";}
 .ap-ylbl.top{color:var(--text2);}
 .ap-ylbl.cur{color:var(--text);}
 .ap-ylbl{line-height:1.15;}
+/* グラフの描画エリア。ランク名・通算RPの目盛りは左右の余白に出して、線や点と重ねない */
+.ap-plot{position:absolute;inset:0;}
+.ap-lc.gutter .ap-plot{left:68px;right:48px;}
+.ap-lc.gutter .ap-ylbl{transform:translateY(-50%);left:0;width:64px;white-space:nowrap;}
+.ap-lc.gutter .ap-ylbl.r{left:auto;right:0;width:44px;text-align:right;}
+.ap-lc.gutter .ap-axis-t{display:none;}

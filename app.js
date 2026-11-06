@@ -1648,7 +1648,8 @@ function apRenderChart(){
   document.getElementById("ap-chart").innerHTML=`
     <div class="bc-readout ap-readout" aria-live="polite"></div>
     ${AP.ranked?`<div class="ap-axis-t"><span>ランク</span><span>通算RP</span></div>`:""}
-    <div class="ap-lc"${H!==220?` style="height:${H}px"`:""}>
+    <div class="ap-lc${AP.ranked?" gutter":""}"${H!==220?` style="height:${H}px"`:""}>
+      <div class="ap-plot">
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="日ごとのランクポイントの推移">
         ${bands.map(b=>`<rect x="0" width="${W}" y="${b.y1.toFixed(1)}" height="${Math.max(0,b.y2-b.y1).toFixed(1)}" fill="${b.c}" opacity=".13"/>`).join("")}
         ${grid.map(g=>`<line class="ap-grid${g.top?" top":""}" x1="0" x2="${W}" y1="${Y(g.v).toFixed(1)}" y2="${Y(g.v).toFixed(1)}"/>`).join("")}
@@ -1657,10 +1658,11 @@ function apRenderChart(){
         <path class="ap-line" d="${line}"/>
         <line class="ap-cur" x1="0" x2="0" y1="${PT}" y2="${H-PB}" visibility="hidden"/>
       </svg>
-      ${grid.filter(g=>Y(g.v)>PT+6).map(g=>{ const k=g.top?" top":"", cur=L[L.length-1].rank&&g.label===apRankName(L[L.length-1].rank)?" cur":"";
-        return `<span class="ap-ylbl${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${escHtml(g.label)}</span><span class="ap-ylbl r${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${nf(g.v)}</span>`; }).join("")}
       ${ticks.map((d,k)=>`<span class="ap-xlbl${k===0&&ticks.length>1?" first":k===ticks.length-1&&ticks.length>1?" last":""}" style="left:${(X(d)/W*100).toFixed(2)}%">${d.getMonth()+1}/${d.getDate()}</span>`).join("")}
       ${L.map((d,i)=>`<span class="ap-dot${d===best?" best":""}${d.move>0?" promo":""}" data-i="${i}" style="left:${(pts[i][0]/W*100).toFixed(2)}%;top:${(pts[i][1]/H*100).toFixed(2)}%"></span>`).join("")}
+      </div>
+      ${grid.filter(g=>Y(g.v)>PT+6).map(g=>{ const k=g.top?" top":"", cur=L[L.length-1].rank&&g.label===apRankName(L[L.length-1].rank)?" cur":"";
+        return `<span class="ap-ylbl${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${escHtml(g.label)}</span><span class="ap-ylbl r${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${nf(g.v)}</span>`; }).join("")}
     </div>
     ${legend([
       {type:"line", color:"#c2185b", text:"実績"},
@@ -1677,7 +1679,7 @@ function apRenderChart(){
     out.innerHTML=`${fmtMD(d.dt)}　<strong>${escHtml(apLabel(d))}</strong>${d.diff!=null?`　<span class="${apCls(d.diff)}">${apSigned(d.diff)}</span>`:""}${apMoveTag(d)}${d.memo?`　${escHtml(d.memo)}`:""}`;
   };
   const near=e=>{
-    const r=box.getBoundingClientRect(), x=(e.clientX-r.left)/r.width*W;
+    const r=box.querySelector(".ap-plot").getBoundingClientRect(), x=(e.clientX-r.left)/r.width*W;
     let bi=0; pts.forEach((p,i)=>{ if(Math.abs(p[0]-x)<Math.abs(pts[bi][0]-x)) bi=i; }); return bi;
   };
   box.addEventListener("pointermove", e=>pick(near(e)));
