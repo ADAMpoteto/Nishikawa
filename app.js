@@ -1,18 +1,6 @@
 /* =====================================================================
-   データソース（Googleスプレッドシートの公開CSV）
-   ・トリマ     : No / 日付 / 曜日 / ポイント
-   ・ランニング : No / 日付 / 曜日 / 距離 / 時間
-   ・経県値     : 下の「経県値マップ」の項を参照
+   東洋大姫路 栄冠ナイン記録（西川記録から独立）
    ===================================================================== */
-const URL_TORIMA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=619333186&single=true&output=csv";
-const URL_RUN    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=2019901314&single=true&output=csv";
-
-/* トリマの月間目標（ここを書き換えれば目標が変わります） */
-const TM_TARGETS = [10000, 50000, 100000, 300000];
-
-/* ランニングの月間距離目標（km） */
-const RUN_MONTH_GOAL = 100;
-
 /* ---------- ユーティリティ ---------- */
 const WD=["日","月","火","水","木","金","土"];
 function pd(s){ if(!s) return null; const m=String(s).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/); return m?new Date(+m[1], +m[2]-1, +m[3]):null; }
@@ -45,27 +33,6 @@ function sameDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()=
 function ymKey(dt){ return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`; }
 function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
 function errBox(msg){ return `<div class="loading">${escHtml(msg)}</div>`; }
-
-/* ページ上部：大きな数字の下に「いちばん伝えたい1行」（lead）と「補足を横に並べた行」（facts） */
-const lead=html=>html?`<p class="hero-lead">${html}</p>`:"";
-const fact=(label,val,unit)=>`<li>${label}<b>${val}</b>${unit||""}</li>`;
-const facts=items=>`<ul class="facts">${items.filter(Boolean).join("")}</ul>`;
-const signed=n=>`${n>0?"+":n<0?"−":"±"}${nf(Math.abs(n))}`;
-const tone=(n,html)=>`<span class="${n>0?"up":n<0?"down":""}">${html}</span>`;
-
-/* グラフの凡例：線や点の見本＋短い言葉。type: line / dash / dot */
-function legend(items){
-  const sw=it=>it.type==="line"?`<svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="${it.color}" stroke-width="2.5" stroke-linecap="round"/></svg>`
-    : it.type==="dash"?`<svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="#999" stroke-width="1.5" stroke-dasharray="4 3"/></svg>`
-    : `<span class="lg-dot" style="background:${it.color}"></span>`;
-  return `<ul class="lg">${items.filter(Boolean).map(it=>`<li>${sw(it)}<span>${it.text}</span></li>`).join("")}</ul>`;
-}
-
-/* 長い一覧は最初の n 件だけ見せ、残りは「それ以前」を開くと出る */
-function foldRows(rows, n, unit){
-  if(rows.length<=n+2) return rows.join("");
-  return rows.slice(0,n).join("")+`<details class="fold"><summary>それ以前の${rows.length-n}${unit||"件"}を見る</summary>${rows.slice(n).join("")}</details>`;
-}
 
 /* 縦棒グラフ（HTML/CSSで描くので画面幅に追従）。items: [{label, value, sub, cls, tip}] */
 function barChartHtml(id, items, opt){
@@ -100,2069 +67,1807 @@ function bindBarChart(id, items, defIdx){
   if(defIdx!=null && defIdx>=0) pick(defIdx);
 }
 
-/* ---------- グラフの目盛りの文字が重ならないようにする ----------
-   ・はみ出す文字は内側に寄せる
-   ・重なるときは、年の入った文字・端の文字を優先して残し、もう片方を隠す（最低 8px あける） */
-function declutterLabels(box, sel){
-  if(!box || !box.offsetWidth) return;
-  const els=[...box.querySelectorAll(sel)].filter(e=>e.textContent.trim());   // 空の目盛りは数えない
-  els.forEach(e=>{ e.classList.remove("lbl-hide"); e.style.marginLeft=""; });
-  const br=box.getBoundingClientRect();
-  els.forEach(e=>{ const r=e.getBoundingClientRect();
-    if(r.left<br.left) e.style.marginLeft=(br.left-r.left)+"px";
-    else if(r.right>br.right) e.style.marginLeft=(br.right-r.right)+"px"; });
-  const pri=e=>(/\//.test(e.textContent)?4:0)+(e===els[els.length-1]?2:0)+(e===els[0]?1:0);
-  const kept=[];
-  els.map(e=>({e, p:pri(e)})).sort((a,b)=>b.p-a.p).forEach(x=>{
-    const r=x.e.getBoundingClientRect();
-    const hit=kept.some(k=>r.left<k.right+8 && k.left<r.right+8);
-    if(hit) x.e.classList.add("lbl-hide"); else kept.push(r);
-  });
-}
-/* 縦の目盛り：文字どうしが重ならないように。ランクの境目（.top）と今いるディビジョン（.cur）を優先 */
-function declutterY(box, sel){
-  if(!box || !box.offsetWidth) return;
-  const els=[...box.querySelectorAll(sel)]; els.forEach(e=>e.classList.remove("lbl-hide"));
-  const pri=e=>(e.classList.contains("cur")?4:0)+(e.classList.contains("top")?2:0);
-  const kept=[];
-  els.map(e=>({e, p:pri(e), r:e.getBoundingClientRect()})).sort((a,b)=>b.p-a.p).forEach(x=>{
-    if(kept.some(k=>x.r.top<k.bottom && k.top<x.r.bottom)) x.e.classList.add("lbl-hide"); else kept.push(x.r);
-  });
-}
-function declutterAll(){
-  document.querySelectorAll(".ap-lc").forEach(b=>{ declutterLabels(b, ".ap-xlbl"); declutterY(b, ".ap-ylbl:not(.r)"); declutterY(b, ".ap-ylbl.r"); });
-  document.querySelectorAll(".bc-plot").forEach(b=>declutterLabels(b, ".bc-lbl"));
-}
-let _dcT=0; window.addEventListener("resize", ()=>{ clearTimeout(_dcT); _dcT=setTimeout(declutterAll, 120); });
-new MutationObserver(()=>{ clearTimeout(_dcT); _dcT=setTimeout(declutterAll, 30); }).observe(document.body, {childList:true, subtree:true});
-
-/* ---------- ルーティング（戻る/進む・直リンク対応） ---------- */
-const PAGES=["home","torima","run","bike","gourmet","keiken","game"];
-function applyPage(page){
-  /* ゲームの中の Apex / モンハン は #apex・#mh でも開ける */
-  let sub=null; if(page==="apex"||page==="mh"){ sub=page; page="game"; }
-  if(!PAGES.includes(page)) page=PAGES[0];
-  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-  document.getElementById(page).classList.add("active");
-  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active", b.dataset.nav===page));
-  /* タブ名：西川記録 | ページ名（ナビのボタンの文字を使う） */
-  const nb=document.querySelector(`.nav-btn[data-nav="${page}"]`);
-  document.title = nb ? `西川記録 | ${nb.textContent.trim()}` : "西川記録";
-  if(page==="keiken"||page==="gourmet") kkSetMode(page);
-  if(page==="game") gameShow(sub||GAME.tab);
-  setTimeout(declutterAll, 0);   // 隠れていたページは幅0で計れないので、表示してから整える
-  window.scrollTo(0,0);
-}
-function goto(page, push){
-  if(push===undefined) push=true;
-  applyPage(page);
-  if(push){ const h="#"+page; if(location.hash!==h) history.pushState({page}, "", h); }
-}
-function parseHash(){ const h=(location.hash||"").replace(/^#/,""); return {page:h||PAGES[0]}; }
-window.addEventListener("popstate", e=>{ const st=e.state||parseHash(); applyPage(st.page); });
-window.addEventListener("scroll", ()=>{ document.querySelector("nav").classList.toggle("scrolled", window.scrollY>4); }, {passive:true});
-
 /* =====================================================================
-   トリマ
+   栄冠ナイン
+   スプレッドシートの5シート（試合ログ／イニングスコア／スタメン／選手成績／卒業生）を読み込みます。
+   どのURLがどのシートかは、1行目の見出しから自動で判定するので、順番は気にしなくてOK。
    ===================================================================== */
-const TM={ days:[], months:[], sel:null };
+const URL_EIKAN = [
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=773705402&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=2012687169&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=397796211&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=667454139&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=1031304553&single=true&output=csv",  // 選手成績
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQS4iBoUmfbNovsRGs-ynY9WyQZKBMivhCTVklD7MdmUFVZ2Y4O4AalW_wwXtddE6tkBFhxDwO8qMzn/pub?gid=130539493&single=true&output=csv"    // 能力
+].filter(Boolean);
+const ES_SCHOOL = "東洋大姫路";   // 自校名（ページの見出しに使います）
+const ES_BAT_MIN = 40;           // 打者ランキングの規定打席（打数＋四死球＋犠打）
+const ES_PIT_IP_MIN = 50;        // 投手ランキングの規定投球回（投球回が空欄の選手は登板・試合10以上で判定）
 
-async function loadTorima(){
-  let rows=[];
-  try{ rows=cleanRows((await fetchCSV(URL_TORIMA)).data); }
-  catch(e){ document.getElementById("tm-hero").innerHTML=errBox("トリマのデータを読み込めませんでした。"); return; }
-
-  const byKey={};
-  rows.forEach(o=>{
-    const dt=pd(F(o,"日付")); if(!dt) return;
-    byKey[dt.toDateString()]={ dt, p:num(F(o,"ポイント")) };
-  });
-  TM.days=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
-
-  /* 月ごとにまとめる（記録のある月＋今月） */
-  const t=today0(), curKey=ymKey(t), mm={};
-  TM.days.forEach(d=>{ if(d.p!=null){ const k=ymKey(d.dt); mm[k]=true; } });
-  mm[curKey]=true;
-  TM.months=Object.keys(mm).sort().map(k=>{
-    const [y,m]=k.split("-").map(Number);
-    const n=daysInMonth(y,m-1), list=[];
-    for(let i=1;i<=n;i++){
-      const dt=new Date(y,m-1,i), hit=byKey[dt.toDateString()];
-      list.push({ dt, p:hit?hit.p:null });
-    }
-    const ent=list.filter(d=>d.p!=null);
-    const total=ent.reduce((s,d)=>s+d.p,0);
-    return { key:k, y, m, label:`${y}年${m}月`, days:list, total, entered:ent.length,
-             avg:ent.length?total/ent.length:0, best:ent.reduce((b,d)=>(!b||d.p>b.p)?d:b,null),
-             isCur:k===curKey, isPast:k<curKey };
-  });
-
-  tmRenderMissing(byKey);
-  const sel=document.getElementById("tm-month-sel");
-  sel.innerHTML=TM.months.slice().reverse().map(m=>`<option value="${m.key}">${m.label}</option>`).join("");
-  sel.onchange=()=>tmShow(sel.value);
-  tmShow(curKey);
-  tmRenderOverall();
-}
-
-/* 未入力日のお知らせ（最初の記録日〜昨日のうち、ポイントが空欄の日） */
-function tmRenderMissing(byKey){
-  const el=document.getElementById("tm-alert");
-  const ent=TM.days.filter(d=>d.p!=null);
-  if(!ent.length){ el.hidden=true; return; }
-  const t=today0(), miss=[];
-  for(let d=new Date(ent[0].dt); d<t; d.setDate(d.getDate()+1)){
-    const hit=byKey[d.toDateString()];
-    if(!hit || hit.p==null) miss.push(new Date(d));
-  }
-  if(!miss.length){ el.hidden=true; return; }
-  const show=miss.slice(-5).reverse().map(fmtMD).join("、");
-  el.innerHTML=`<strong>未入力の日があります</strong>${escHtml(show)}${miss.length>5?` ほか${miss.length-5}日`:""}
-    <small>入力すると「1日あと何P」の計算が正しくなります。</small>`;
-  el.hidden=false;
-}
-
-/* 先月の同じ日との比較 */
-function tmCompareHtml(mo){
-  const pd0=new Date(mo.y, mo.m-2, 1), prev=TM.months.find(m=>m.key===ymKey(pd0));
-  if(!prev || !prev.entered) return "";
-  let diff, label;
-  if(mo.isCur){
-    let lastDay=0; mo.days.forEach((d,i)=>{ if(d.p!=null) lastDay=i+1; });
-    if(!lastDay) return "";
-    const upto=Math.min(lastDay, prev.days.length);
-    const prevCum=prev.days.slice(0,upto).reduce((s,d)=>s+(d.p||0),0);
-    diff=mo.total-prevCum;
-    label=`先月の同じ時点（${prev.m}/${upto}）より`;
-  }else{
-    diff=mo.total-prev.total; label="先月より";
-  }
-  const cls=diff>0?"up":diff<0?"down":"";
-  return `${label} ${tone(diff,`<b>${signed(diff)}</b> P`)}`;
-}
-
-/* 今月の残り日数：今日の分がまだ未入力なら今日も数える */
-function tmRemaining(mo){
-  if(!mo.isCur) return 0;
-  const t=today0(), last=daysInMonth(mo.y, mo.m-1);
-  let r=last-t.getDate()+1;
-  const td=mo.days[t.getDate()-1];
-  if(td && td.p!=null) r-=1;
-  return Math.max(0,r);
-}
-
-function tmShow(key){
-  const mo=TM.months.find(m=>m.key===key)||TM.months[TM.months.length-1];
-  TM.sel=mo;
-  document.getElementById("tm-month-sel").value=mo.key;
-  const rem=tmRemaining(mo);
-  const forecast=mo.isCur ? mo.total + mo.avg*rem : mo.total;
-  const t=today0();
-
-  /* HERO */
-  document.getElementById("tm-hero").innerHTML=`
-    <div class="tm-hero-label">${escHtml(mo.label)}の獲得ポイント</div>
-    <div class="tm-big">${nf(mo.total)}<small>P</small></div>
-    ${lead([mo.isCur?`残り <b>${rem}</b> 日`:(mo.isPast?"確定":""), tmCompareHtml(mo)].filter(Boolean).join("　"))}
-    ${facts([
-      fact("1日平均", nf(ceil10(mo.avg)), "P"),
-      mo.isCur && mo.entered ? fact("このペースの月末予測", nf(ceil10(forecast)), "P") : ""
-    ])}`;
-
-  /* 目標カード */
-  const nextIdx=TM_TARGETS.findIndex(T=>mo.total<T);
-  document.getElementById("tm-targets").innerHTML=TM_TARGETS.map((T,i)=>{
-    const pct=Math.min(100, mo.total/T*100);
-    let cls="", main="", sub="";
-    if(mo.total>=T){
-      /* 達成した日を探す */
-      let c=0, hitDay=null; for(const d of mo.days){ if(d.p!=null){ c+=d.p; if(c>=T){ hitDay=d.dt; break; } } }
-      cls="done"; main="達成！"; sub=hitDay?`${fmtMD(hitDay)} に到達`:"";
-    }else if(mo.isCur && rem>0){
-      const left=T-mo.total, per=ceil10(left/rem);
-      main=`1日 <strong>${nf(per)}</strong> P`;
-      if(forecast>=T){ cls="ok"; sub=`あと ${nf(left)} P／今のペースなら届く`; }
-      else{
-        const up=ceil10(per-mo.avg);
-        cls= per>mo.avg*3 ? "far" : "push";
-        sub=`あと ${nf(left)} P／平均より +${nf(up)} P/日`;
-      }
-    }else{
-      cls="miss"; main="未達"; sub=`${pct.toFixed(1)}%（あと ${nf(T-mo.total)} P だった）`;
-    }
-    return `<div class="tgt ${cls}${i===nextIdx&&mo.isCur?" next":""}">
-      <div class="tgt-head"><span class="tgt-goal">${nf(T)} P</span>${i===nextIdx&&mo.isCur?'<span class="tgt-tag">次の目標</span>':""}</div>
-      <div class="tgt-main">${main}</div>
-      <div class="tgt-bar"><span style="width:${pct}%"></span></div>
-      <div class="tgt-sub">${sub}</div>
-    </div>`;
-  }).join("");
-  document.getElementById("tm-target-note").textContent = mo.isCur
-    ? "「1日◯P」は（目標 − 今月の獲得P）÷ 残り日数。毎日入力するたびに自動で変わります。"
-    : "過去の月は結果のみ表示しています。";
-
-  /* 日別グラフ */
-  const items=mo.days.map(d=>{
-    const future=d.dt>t, wk=d.dt.getDay();
-    const lbl=(d.dt.getDate()===1||d.dt.getDate()%5===0)?String(d.dt.getDate()):"";
-    return { value:d.p, label:lbl,
-      cls:[d.p==null?(future?"future":"blank"):"", wk===0?"sun":wk===6?"sat":"", sameDay(d.dt,t)?"today":""].join(" "),
-      tip:`${fmtMD(d.dt)}　${d.p==null?(future?"これから":"未入力"):`<strong>${nf(d.p)}</strong> P`}` };
-  });
-  const lines=[{value:mo.avg, label:`平均 ${nf(ceil10(mo.avg))}`, cls:"avg"}];
-  if(mo.isCur && rem>0 && nextIdx>=0){
-    const per=ceil10((TM_TARGETS[nextIdx]-mo.total)/rem);
-    const maxDay=Math.max(0,...mo.days.map(d=>d.p||0));
-    if(per<=Math.max(maxDay,1)*1.6) lines.push({value:per, label:`${nf(TM_TARGETS[nextIdx])}P に必要 ${nf(per)}`, cls:"need"});
-  }
-  let lastIdx=-1; mo.days.forEach((d,i)=>{ if(d.p!=null) lastIdx=i; });
-  document.getElementById("tm-daily").innerHTML=barChartHtml("tm-chart", items, {lines})
-    + `<div class="stats-row tm-mini">
-        <div class="stat-chip">入力日数 <strong>${mo.entered}</strong> 日</div>
-        ${mo.best?`<div class="stat-chip">この月の最高 <strong>${nf(mo.best.p)}</strong> P（${fmtMD(mo.best.dt)}）</div>`:""}
-      </div>
-      <details class="tm-table"><summary>日別の一覧を開く</summary>
-        <table><thead><tr><th>日付</th><th>ポイント</th><th>累計</th></tr></thead><tbody>${
-          (()=>{ let c=0; return mo.days.filter(d=>d.p!=null).map(d=>{ c+=d.p; return `<tr><td>${fmtMD(d.dt)}</td><td>${nf(d.p)}</td><td>${nf(c)}</td></tr>`; }).join(""); })()
-        }</tbody></table>
-      </details>`;
-  bindBarChart("tm-chart", items, lastIdx);
-  document.querySelectorAll(".mlist-row[data-m]").forEach(r=>r.classList.toggle("on", r.dataset.m===mo.key));
-}
-
-function tmRenderOverall(){
-  const ent=TM.days.filter(d=>d.p!=null);
-  const total=ent.reduce((s,d)=>s+d.p,0);
-  document.getElementById("tm-overall").innerHTML=`
-    <div class="stats-row">
-      <div class="stat-chip">累計 <strong>${nf(total)}</strong> P</div>
-      <div class="stat-chip">記録 <strong>${ent.length}</strong> 日</div>
-    </div>`;
-
-  const mo=TM.months.filter(m=>m.entered>0);
-  const maxT=Math.max(1,...mo.map(m=>m.total));
-  const bestM=mo.reduce((b,m)=>(!b||m.total>b.total)?m:b,null);
-  document.getElementById("tm-months").innerHTML=foldRows(mo.slice().reverse().map(m=>`
-    <button type="button" class="mlist-row" data-m="${m.key}">
-      <span class="mlist-name"><span class="mlist-y">${m.y}年</span><span class="mlist-m">${m.m}月</span>${m===bestM&&mo.length>1?'<em>ベスト</em>':""}</span>
-      <span class="mlist-bar"><span style="width:${m.total/maxT*100}%"></span></span>
-      <span class="mlist-val">${nf(m.total)} P<small>平均 ${nf(ceil10(m.avg))}／${m.entered}日</small></span>
-    </button>`), 6, "か月");
-  document.querySelectorAll("#tm-months .mlist-row").forEach(r=>r.onclick=()=>{
-    tmShow(r.dataset.m);
-    const a=document.getElementById("torima"); window.scrollTo({top:a.offsetTop, behavior:prefersReduced()?"auto":"smooth"});
-  });
-  document.querySelectorAll(".mlist-row[data-m]").forEach(r=>r.classList.toggle("on", TM.sel && r.dataset.m===TM.sel.key));
-}
-
-/* =====================================================================
-   ランニング
-   ===================================================================== */
-const RUN={ list:[], sort:"pace" };
-const RUN_SORTS=[
-  { key:"pace", label:"ペースが速い順", cmp:(a,b)=>a.pace-b.pace, val:r=>fmtPace(r.pace), unit:"/km" },
-  { key:"dist", label:"距離が長い順",   cmp:(a,b)=>b.km-a.km,     val:r=>r.km.toFixed(2), unit:"km" },
-  { key:"time", label:"時間が長い順",   cmp:(a,b)=>b.sec-a.sec,   val:r=>fmtDur(r.sec), unit:"" }
+const ES_TAIKAI = [
+  {k:"夏の都道府県大会", s:"夏・県"}, {k:"夏の甲子園", s:"夏・甲子園"},
+  {k:"秋の都道府県大会", s:"秋・県"}, {k:"秋の地区大会", s:"秋・地区"},
+  {k:"神宮大会", s:"神宮"}, {k:"春の甲子園", s:"春・甲子園"}
 ];
-function parseDur(s){ const p=String(s||"").trim().split(":").map(Number); if(p.some(isNaN)||!p.length||p[0]==="") return null;
-  if(p.length===3) return p[0]*3600+p[1]*60+p[2]; if(p.length===2) return p[0]*60+p[1]; return null; }
-function fmtDur(sec){ sec=Math.round(sec); const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=sec%60;
-  return h?`${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${m}:${String(s).padStart(2,"0")}`; }
-function fmtPace(sec){ sec=Math.round(sec); return `${Math.floor(sec/60)}'${String(sec%60).padStart(2,"0")}"`; }
+const ES_B9_SLOTS = ["投","捕","一","二","三","遊","外","外","外"];
+const ES = { games:[], inn:{}, lineup:[], grads:[], years:[], sel:null, b9:"star", team:"", rk:"star", lineupSeason:"夏", oppPref:"", draftTeam:"", decade:null, pane:"year" };
 
-async function loadRun(){
-  let rows=[];
-  try{ rows=cleanRows((await fetchCSV(URL_RUN)).data); }
-  catch(e){ document.getElementById("run-hero").innerHTML=errBox("ランニングのデータを読み込めませんでした。"); return; }
-  RUN.list=rows.map(o=>{
-    const dt=pd(F(o,"日付")), km=num(F(o,"距離")), sec=parseDur(F(o,"時間"));
-    if(!dt||!km||!sec) return null;
-    return { dt, km, sec, pace:sec/km };
-  }).filter(Boolean).sort((a,b)=>a.dt-b.dt);
-  RUN.list.forEach((r,i)=>r.no=i+1);
-  if(!RUN.list.length){ document.getElementById("run-hero").innerHTML=errBox("まだ記録がありません。"); return; }
-  runRenderHero();
-  runRenderTabs();
-  runRenderRanking();
-  runRenderTrend();
-  runRenderMonths();
-  runRenderGoal();
+/* 全角数字→半角、"－" などは空扱い */
+const esHalf = s => String(s==null?"":s).replace(/[０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+function esNum(s){ const t=esHalf(s).replace(/[，,]/g,".").replace(/[^\d.\-]/g,""); if(t===""||t==="-"||t==="."||/^-?\.?$/.test(t)) return null; const n=Number(t); return isFinite(n)?n:null; }
+function esInt(s){ const t=esHalf(s).replace(/[,，\s]/g,""); if(!/^-?\d+(\.\d+)?$/.test(t)) return null; return Number(t); }
+const esYear = s => { const m=esHalf(s).match(/(\d{4})/); return m?+m[1]:null; };
+const esMark = s => /[〇○◯●✓✔1]/.test(String(s||""));
+function esIP(s){ const t=esHalf(s).trim(); if(!t) return null; const m=t.match(/^(\d+)(?:\.(\d))?$/); if(!m) return esNum(t); return +m[1] + (m[2]?(+m[2])/3:0); }
+const esIPfmt = v => { const w=Math.floor(v+1e-9), f=Math.round((v-w)*3); return f?`${w}.${f}`:`${w}`; };
+const esAvgFmt = v => v.toFixed(3).replace(/^0/,"");
+
+/* 見出しからシートの種類を判定 */
+function esKind(fields){
+  const has = k => fields.includes(k);
+  if(has("打順")) return "lineup";
+  if(has("試合No") && (has("打数") || has("投球回"))) return "box";
+  if(has("試合No") && (has("1") || has("R"))) return "inn";
+  if(has("相手校") && has("得点")) return "games";
+  if(has("時点") && has("名前")) return "abil";
+  if(has("卒業時★") || (has("入学年度") && has("名前"))) return "grads";
+  return null;
 }
 
-/* 今月の距離目標 */
-function runRenderGoal(){
-  const t=today0(), key=ymKey(t), G=RUN_MONTH_GOAL;
-  const runs=RUN.list.filter(r=>ymKey(r.dt)===key);
-  const km=runs.reduce((s,r)=>s+r.km,0);
-  const last=daysInMonth(t.getFullYear(), t.getMonth());
-  let rem=last-t.getDate()+1; if(runs.some(r=>sameDay(r.dt,t))) rem--;
-  rem=Math.max(0,rem);
-  const left=Math.max(0,G-km), pct=Math.min(100,km/G*100);
-  let main, sub, cls="";
-  if(km>=G){ cls="done"; main="達成！"; sub=`今月 ${km.toFixed(2)} km`; }
-  else if(rem>0){
-    const per=left/rem;
-    main=`あと <strong>${left.toFixed(2)}</strong> km`;
-    sub=`残り ${rem} 日 → 1日 ${per.toFixed(2)} km／5kmランなら あと ${Math.ceil(left/5)} 回`;
-    cls = per<=2 ? "ok" : per<=5 ? "push" : "far";
-  }else{ cls="miss"; main="未達"; sub=`今月 ${km.toFixed(2)} km`; }
-  document.getElementById("run-goal").innerHTML=`
-    <div class="tgt goal-wide ${cls}">
-      <div class="tgt-head"><span class="tgt-goal">${t.getMonth()+1}月の目標 ${G} km</span><span class="tgt-goal">${km.toFixed(2)} km・${runs.length}本</span></div>
-      <div class="tgt-main">${main}</div>
-      <div class="tgt-bar"><span style="width:${pct}%"></span></div>
-      <div class="tgt-sub">${sub}</div>
-    </div>`;
-}
-
-function runRenderHero(){
-  const L=RUN.list, n=L.length;
-  const km=L.reduce((s,r)=>s+r.km,0);
-  const latest=L[n-1];
-  const byPace=L.slice().sort((a,b)=>a.pace-b.pace);
-  const rank=byPace.indexOf(latest)+1, pb=rank===1&&n>1;
-  const prev=L[n-2], d=prev?Math.round(latest.pace-prev.pace):0;
-  const gap=Math.max(0, Math.round(latest.pace-byPace[0].pace));
-  const oldBest=n>1?Math.min(...L.slice(0,n-1).map(r=>r.pace)):latest.pace;
-  /* 1行目：最新ランがどうだったか */
-  const leadHtml = n===1 ? "記念すべき1本目！"
-    : `最新ラン（${fmtMD(latest.dt)}）<b>${fmtPace(latest.pace)}</b>/km　`
-      + (pb ? tone(1,`自己ベスト更新！ ${Math.round(oldBest-latest.pace)}秒/km 速い`)
-            : d ? tone(-d,`前回より ${Math.abs(d)}秒/km ${d<0?"速い":"遅い"}`) : "前回と同じペース");
-  document.getElementById("run-hero").innerHTML=`
-    <div class="tm-hero-label">これまでの累計距離</div>
-    <div class="tm-big">${km.toFixed(2)}<small>km</small></div>
-    ${lead(leadHtml)}
-    ${facts([
-      fact("ベスト", fmtPace(byPace[0].pace), `/km（${fmtMD(byPace[0].dt)}）`),
-      !pb && n>1 ? fact("ベストまで", gap, "秒/km") : "",
-      fact("今回の順位", rank, `位 / ${n}本`)
-    ])}`;
-}
-
-function runRenderTabs(){
-  document.getElementById("run-tabs").innerHTML=RUN_SORTS.map(s=>
-    `<button type="button" class="day-tab${s.key===RUN.sort?" active":""}" data-s="${s.key}">${s.label}</button>`).join("");
-  document.querySelectorAll("#run-tabs .day-tab").forEach(b=>b.onclick=()=>{
-    RUN.sort=b.dataset.s;
-    document.querySelectorAll("#run-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
-    runRenderRanking();
+async function loadEikan(){
+  const hero=document.getElementById("es-hero");
+  const res=await Promise.allSettled(URL_EIKAN.map(u=>fetchCSV(u)));
+  const got={};
+  res.forEach(r=>{
+    if(r.status!=="fulfilled") return;
+    const fields=(r.value.meta.fields||[]).map(k=>String(k).replace(/^﻿/,"").replace(/\s+/g,"").trim());
+    const kind=esKind(fields);
+    if(kind && !got[kind]) got[kind]=cleanRows(r.value.data);
   });
-}
+  if(!got.games && !got.grads){ const m="栄冠ナインのデータを読み込めませんでした（シートの見出しを確認してください）。"; hero.innerHTML=errBox(m); document.getElementById("pg-home").innerHTML=`<div class="wrap">${errBox(m)}</div>`; return; }
 
-function runRenderRanking(){
-  const s=RUN_SORTS.find(x=>x.key===RUN.sort);
-  const L=RUN.list.slice().sort(s.cmp).slice(0,10);
-  const latest=RUN.list[RUN.list.length-1];
-  const medal=["🥇","🥈","🥉"];
-  /* 右に並び替えの基準の値を大きく、下にそれ以外の項目とハーフ・フル換算 */
-  const subOf={
-    pace:r=>[`${r.km.toFixed(2)}km`, fmtDur(r.sec)],
-    dist:r=>[fmtDur(r.sec), `${fmtPace(r.pace)}/km`],
-    time:r=>[`${r.km.toFixed(2)}km`, `${fmtPace(r.pace)}/km`]
-  }[s.key];
-  const valOf={
-    pace:r=>`${fmtPace(r.pace)}<small>/km</small>`,
-    dist:r=>`${r.km.toFixed(2)}<small>km</small>`,
-    time:r=>fmtDur(r.sec)
-  }[s.key];
-  /* どのタブ・どの画面幅でも4行：①日付と基準の値 ②距離／タイムなど ③ハーフ換算 ④フル換算 */
-  document.getElementById("run-rank").innerHTML=L.map((r,i)=>`
-    <div class="rk rk-run${i<3?" top top"+(i+1):""}">
-      <div class="rk-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:`${i+1}`}</div>
-      <div class="rk-body">
-        <div class="rk-l1"><span class="rk-date">${r.dt.getFullYear()}/${fmtMD(r.dt)}${r===latest?'<span class="rk-new">NEW</span>':""}</span><span class="rk-val">${valOf(r)}</span></div>
-        <div class="rk-sub">${subOf(r).join("／")}</div>
-        <div class="rk-sub rk-conv">ハーフ換算 <b>${fmtDur(r.pace*21.0975)}</b></div>
-        <div class="rk-sub rk-conv">フル換算 <b>${fmtDur(r.pace*42.195)}</b></div>
-      </div>
-    </div>`).join("");
-}
+  /* 試合ログ */
+  ES.games=(got.games||[]).map((o,i)=>{
+    const year=esYear(F(o,"年度")), opp=F(o,"相手校"), rs=esInt(F(o,"得点")), ra=esInt(F(o,"失点"));
+    if(!year || !opp || rs==null || ra==null) return null;
+    let wl=F(o,"勝敗"); if(!/^[勝負分]$/.test(wl)) wl = rs>ra?"勝":rs<ra?"負":"分";
+    return { no:esInt(F(o,"No"))||i+1, year, date:pd(F(o,"日付")), taikai:F(o,"大会"), round:esHalf(F(o,"回戦")), myPref:F(o,"自校都道府県"),
+      side:F(o,"先攻後攻"), opp, oppPref:F(o,"相手都道府県"), power:F(o,"相手戦力").toUpperCase(), rs, ra, wl, note:F(o,"補足") };
+  }).filter(Boolean).sort((a,b)=>a.no-b.no);
 
-function runRenderTrend(){
-  const L=RUN.list.slice(-10);
-  const sp=L.map(r=>3600/r.pace); // km/h
-  const lo=Math.min(...sp)*0.85;
-  const best=RUN.list.reduce((b,r)=>(!b||r.pace<b.pace)?r:b,null);
-  const items=L.map((r,i)=>({ value:sp[i]-lo, label:(i===0||i===L.length-1||L.length<=12)?`${r.dt.getMonth()+1}/${r.dt.getDate()}`:"",
-    cls:r===best?"best":"", tip:`#${r.no}　${fmtMD(r.dt)}　<strong>${fmtPace(r.pace)}</strong>/km（${r.km.toFixed(2)}km）${r===best?"　自己ベスト":""}` }));
-  document.getElementById("run-trend").innerHTML=barChartHtml("run-chart", items)
-    + `<p class="kk-note-s">棒が高いほど速い。タップでその日の記録。</p>`;
-  bindBarChart("run-chart", items, L.length-1);
-}
-
-function runRenderMonths(){
-  const mm={};
-  RUN.list.forEach(r=>{ const k=ymKey(r.dt); (mm[k]=mm[k]||{key:k, y:r.dt.getFullYear(), m:r.dt.getMonth()+1, km:0, n:0, sec:0}); mm[k].km+=r.km; mm[k].n++; mm[k].sec+=r.sec; });
-  const mo=Object.values(mm).sort((a,b)=>a.key<b.key?1:-1);
-  const max=Math.max(...mo.map(m=>m.km));
-  const scale=Math.max(max, RUN_MONTH_GOAL);
-  document.getElementById("run-months").innerHTML=foldRows(mo.map(m=>`
-    <div class="mlist-row static">
-      <span class="mlist-name"><span class="mlist-y">${m.y}年</span><span class="mlist-m">${m.m}月</span>${m.km>=RUN_MONTH_GOAL?`<em>${RUN_MONTH_GOAL}km達成</em>`:m.km===max&&mo.length>1?'<em>ベスト</em>':""}</span>
-      <span class="mlist-bar goal"><span style="width:${m.km/scale*100}%"></span><i style="left:${RUN_MONTH_GOAL/scale*100}%"></i></span>
-      <span class="mlist-val">${m.km.toFixed(2)} km<small>${m.n}本・平均 ${fmtPace(m.sec/m.km)}/km</small></span>
-    </div>`), 6, "か月");
-}
-
-/* ---------- 経県値マップ（全国・市区町村単位） ----------
-   スプレッドシート列 : 団体コード / 都道府県名 / 市区町村名 / レベル / 日付 / メモ
-   ・団体コード … 総務省「全国地方公共団体コード」の6桁（例 232017）。5桁でも可
-   ・レベル     … 3：宿泊 / 2：訪問 / 1：通過（空欄＝未踏）。数字だけ・言葉だけでも可
-   ・政令市の行（例: 名古屋市 231002）は、個別の記入がない配下の全区にまとめて反映
-   地図データ : GEO_DIR に「{都道府県名}.geojson」「{都道府県名}_border.geojson」（国土数値情報 N03）
-   ------------------------------------------------------------------------ */
-const URL_KEIKEN = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=889344232&single=true&output=csv";        // ← 経県値シートの公開CSV URL（他のURLと同じ「ウェブに公開→CSV」で取得）
-const GEO_DIR = "geojson/";           // GeoJSON の置き場所。index.html と同じフォルダなら ""、geojson フォルダなら "geojson/"
-const KK_PREF_DEFAULT = "兵庫県";   // 最初に表示する都道府県
-
-/* 都道府県名と市区町村数（政令市は区単位。総務省 R6.1.1） */
-const KK_PREFS=[["北海道",194],["青森県",40],["岩手県",33],["宮城県",39],["秋田県",25],["山形県",35],["福島県",59],["茨城県",44],["栃木県",25],["群馬県",35],["埼玉県",72],["千葉県",59],["東京都",62],["神奈川県",58],["新潟県",37],["富山県",15],["石川県",19],["福井県",17],["山梨県",27],["長野県",77],["岐阜県",42],["静岡県",39],["愛知県",69],["三重県",29],["滋賀県",19],["京都府",36],["大阪府",72],["兵庫県",49],["奈良県",39],["和歌山県",30],["鳥取県",19],["島根県",19],["岡山県",30],["広島県",30],["山口県",19],["徳島県",24],["香川県",17],["愛媛県",20],["高知県",34],["福岡県",72],["佐賀県",20],["長崎県",21],["熊本県",49],["大分県",18],["宮崎県",26],["鹿児島県",43],["沖縄県",41]];
-const KK_REGIONS=[["北海道・東北",0,7],["関東",7,14],["中部",14,23],["近畿",23,30],["中国",30,35],["四国",35,39],["九州・沖縄",39,47]];
-const KK_PREF_IDX={}; KK_PREFS.forEach((p,i)=>KK_PREF_IDX[p[0]]=i);
-const kkPrefCode=pref=>String(KK_PREF_IDX[pref]+1).padStart(2,"0");
-/* 政令市（5桁）→ 配下の区（5桁） */
-const KK_WARDS=(o=>{ const m={}; Object.keys(o).forEach(k=>m[k]=o[k].split(" ")); return m; })({"01100":"01101 01102 01103 01104 01105 01106 01107 01108 01109 01110","04100":"04101 04102 04103 04104 04105","11100":"11101 11102 11103 11104 11105 11106 11107 11108 11109 11110","12100":"12101 12102 12103 12104 12105 12106","14100":"14101 14102 14103 14104 14105 14106 14107 14108 14109 14110 14111 14112 14113 14114 14115 14116 14117 14118","14130":"14131 14132 14133 14134 14135 14136 14137","14150":"14151 14152 14153","15100":"15101 15102 15103 15104 15105 15106 15107 15108","22100":"22101 22102 22103","22130":"22138 22139 22140","23100":"23101 23102 23103 23104 23105 23106 23107 23108 23109 23110 23111 23112 23113 23114 23115 23116","26100":"26101 26102 26103 26104 26105 26106 26107 26108 26109 26110 26111","27100":"27102 27103 27104 27106 27107 27108 27109 27111 27113 27114 27115 27116 27117 27118 27119 27120 27121 27122 27123 27124 27125 27126 27127 27128","27140":"27141 27142 27143 27144 27145 27146 27147","28100":"28101 28102 28105 28106 28107 28108 28109 28110 28111","33100":"33101 33102 33103 33104","34100":"34101 34102 34103 34104 34105 34106 34107 34108","40100":"40101 40103 40105 40106 40107 40108 40109","40130":"40131 40132 40133 40134 40135 40136 40137","43100":"43101 43102 43103 43104 43105"});
-
-/* レベル（3段階）。遠くからでも見分けやすいよう色の種類を変え、暖かい色ほど深く関わった場所 */
-const KK_LEVELS=[
-  {lv:3, label:"宿泊", note:"1泊以上した",               color:"#d9453f", words:["宿泊","泊","住んだ","居住","住"]},
-  {lv:2, label:"訪問", note:"観光や用事で歩き回った",     color:"#f2b632", words:["訪問","訪れ","観光","遊んだ","降り立った","降りた"]},
-  {lv:1, label:"通過", note:"電車や車で通っただけ",       color:"#8ec5e8", words:["通過","乗り換え"]},
-  {lv:0, label:"未踏", note:"行ったことがない",           color:"#ffffff", words:["未踏","なし"]}
-];
-KK_LEVELS.forEach(l=>l.tag=`${l.lv}：${l.label}`);
-const KK_MAX=KK_LEVELS[0].lv;
-const KK_BY_LV={}; KK_LEVELS.forEach(l=>KK_BY_LV[l.lv]=l);
-const KK={ mode:"keiken", ready:false, rows:[], note:"", pref:null, feats:[], byCode:{}, rec:{}, selected:null, filter:null,
-           home:null, limit:null, minW:1, view:null, anim:0, geoCache:{}, token:0 };
-
-const kkZen2Han=s=>String(s||"").replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
-function kkNormName(s){ return String(s||"").replace(/[\s\u3000]/g,""); }
-function kkParseLevel(v){
-  const s=kkNormName(v);
-  if(!s) return 0;
-  const n=kkZen2Han(s);
-  const m=n.match(/^(\d+)/);   // 「3」「3：泊まった」など先頭の数字を優先
-  if(m) return Math.max(0, Math.min(KK_MAX, Number(m[1])));
-  const hit=KK_LEVELS.find(l=>l.words.some(w=>s.includes(w)));
-  return hit?hit.lv:0;
-}
-function kkCheckDigitOK(c6){
-  const s=[6,5,4,3,2].reduce((a,w,i)=>a+Number(c6[i])*w,0);
-  return Number(c6[5])===(11-s%11)%10;
-}
-/* シートの1行 → { code(5桁), pref, name, lv, memo, date } */
-function kkNormRow(o){
-  const raw=kkZen2Han(F(o,"団体コード")).replace(/\D/g,"");
-  let pref=kkNormName(F(o,"都道府県名"));
-  const name=kkNormName(F(o,"市区町村名"));
-  if(KK_PREF_IDX[pref]==null) pref="";
-  // 6桁は先頭5桁。5桁は「本来の5桁」か「先頭の0が消えた6桁（01〜09の道県）」のどちらか
-  const cands = raw.length===6 ? [raw.slice(0,5)]
-              : raw.length===5 ? (kkCheckDigitOK("0"+raw) ? [("0"+raw).slice(0,5), raw] : [raw, ("0"+raw).slice(0,5)])
-              : [];
-  let code="";
-  if(pref){ code=cands.find(c=>c.startsWith(kkPrefCode(pref)))||""; }
-  else if(cands.length){
-    code=cands.find(c=>KK_PREFS[Number(c.slice(0,2))-1])||"";
-    if(code) pref=KK_PREFS[Number(code.slice(0,2))-1][0];
-  }
-  if(!code && !name) return null;
-  return { code, pref, name, lv:kkParseLevel(F(o,"レベル")||F(o,"状態")), memo:F(o,"メモ"), date:F(o,"日付") };
-}
-
-/* ある都道府県の記録を市区町村コードごとにまとめる。feats があれば名前だけの行も地図の形に結びつける */
-function kkPrefRecords(pref, feats){
-  const byCode={}, byName={}, parents=[];
-  const nameIdx={}; (feats||[]).forEach(f=>{ if(f.real){ nameIdx[kkNormName(f.name)]=f.code; if(!f.ward) nameIdx[kkNormName(f.city)]=f.code; } });
-  const put=(map,key,r)=>{
-    const cur=map[key];
-    if(!cur || r.lv>cur.lv) map[key]={lv:r.lv, memo:r.memo, date:r.date};
-    else if(r.lv===cur.lv){ if(!cur.memo && r.memo) cur.memo=r.memo; if(!cur.date && r.date) cur.date=r.date; }
-  };
-  KK.rows.forEach(r=>{
-    if(r.pref!==pref && !(r.pref==="" && feats)) return;
-    if(r.code && KK_WARDS[r.code]){ parents.push(r); return; }
-    if(r.code){ put(byCode, r.code, r); return; }
-    if(feats){ const c=nameIdx[r.name]; if(c) put(byCode, c, r); }
-    else put(byName, r.name, r);
-  });
-  // 政令市の行は、個別の記入がない区だけに反映（政令市の行が複数あれば高いほう）
-  const fromParent={};
-  parents.forEach(r=>KK_WARDS[r.code].forEach(w=>{ if(!byCode[w]) put(fromParent, w, r); }));
-  Object.assign(byCode, fromParent);
-  return { byCode, byName };
-}
-
-function fetchJSON(url){ return fetch(encodeURI(url)).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }); }
-function kkLoadGeo(pref){
-  if(!KK.geoCache[pref]){
-    KK.geoCache[pref]=Promise.all([
-      fetchJSON(`${GEO_DIR}${pref}.geojson`),
-      fetchJSON(`${GEO_DIR}${pref}_border.geojson`).catch(()=>null)
-    ]).catch(e=>{ delete KK.geoCache[pref]; throw e; });
-  }
-  return KK.geoCache[pref];
-}
-
-async function loadKeiken(){
-  // 都道府県セレクト
-  const sel=document.getElementById("kk-pref-sel");
-  sel.innerHTML=KK_REGIONS.map(([rg,a,b])=>`<optgroup label="${rg}">${
-    KK_PREFS.slice(a,b).map(([p])=>`<option value="${p}">${p}</option>`).join("")}</optgroup>`).join("");
-  sel.onchange=()=>kkShowPref(sel.value);
-  document.querySelectorAll(".kk-ctrl button").forEach(b=>b.addEventListener("click", ()=>{
-    if(!KK.home || !document.getElementById("kk-svg")) return;
-    const z=b.dataset.z;
-    if(z==="in") kkZoomBy(1.6); else if(z==="out") kkZoomBy(1/1.6); else kkZoomTo(KK.home.slice());
-  }));
-
-  if(!URL_KEIKEN){
-    KK.note="スプレッドシートがまだつながっていません。app.js の URL_KEIKEN に経県値シートの公開CSVのURLを入れると、地図に色が付きます。";
-  }else{
-    try{
-      // 1行目に説明書きがあっても大丈夫なよう、「団体コード」がある行を見出しとして探す
-      const r=await fetchCSVRaw(URL_KEIKEN);
-      const data=r.data||[];
-      const hi=data.findIndex(row=>(row||[]).some(c=>String(c).replace(/^\uFEFF/,"").trim()==="団体コード"));
-      if(hi<0) throw new Error("見出し行（団体コード）が見つかりません");
-      const head=data[hi].map(c=>String(c).replace(/^\uFEFF/,"").trim());
-      KK.rows=data.slice(hi+1).map(row=>{ const o={}; head.forEach((k,i)=>{ if(k) o[k]=(row||[])[i]; }); return o; })
-                  .map(kkNormRow).filter(Boolean);
-    }
-    catch(e){ KK.note="経県値シートを読み込めませんでした。シートが「ウェブに公開」されているか、URLが正しいかを確認してください。"; }
-  }
-  KK.ready=true;
-  kkRenderNation();
-  kkShowPref(KK_PREF_IDX[KK_PREF_DEFAULT]!=null ? KK_PREF_DEFAULT : "東京都");
-}
-
-/* 経県値ページとグルメページで同じ地図を使い回す（表示中のページへ地図ごと移動） */
-function kkSetMode(mode){
-  const slot=document.getElementById("kk-slot-"+mode), box=document.getElementById("kk-shared");
-  if(slot && box && box.parentNode!==slot) slot.appendChild(box);
-  const changed=KK.mode!==mode;
-  KK.mode=mode;
-  document.getElementById("kk-nation-title").textContent = "全国";
-  document.getElementById("kk-pref-anchor").textContent = "都道府県";
-  box.classList.toggle("gm-mode", mode==="gourmet");
-  document.getElementById("kk-info").innerHTML=`<p class="kk-info-empty">地図の市区町村をタップすると、ここに${mode==="gourmet"?"お店の一覧":"記録"}が表示されます。</p>`;
-  if(!changed || !KK.ready) return;
-  KK.filter=null; KK.selected=null;
-  kkRenderNation();
-  if(document.getElementById("kk-svg")) kkRenderPref();
-}
-
-/* ---- 全国のまとめ（都道府県ごとの最高レベル＝本家の経県値） ---- */
-function kkRenderNation(){
-  if(KK.mode==="gourmet") return gmRenderNation();
-  let nationScore=0, prefVisited=0, muniVisited=0, muniTotal=0;
-  const tiles=KK_PREFS.map(([pref,total])=>{
-    const {byCode,byName}=kkPrefRecords(pref, null);
-    const vals=Object.values(byCode).concat(Object.values(byName));
-    const max=vals.reduce((m,v)=>Math.max(m,v.lv),0);
-    const visited=Math.min(total, vals.filter(v=>v.lv>0).length);
-    nationScore+=max; if(max>0) prefVisited++; muniVisited+=visited; muniTotal+=total;
-    return { pref, total, max, visited };
-  });
-  document.getElementById("kk-nation-stats").innerHTML=`
-    <div class="stat-chip">全国の経県値 <strong>${nationScore}</strong> / ${KK_PREFS.length*KK_MAX}点</div>
-    <div class="stat-chip">足を運んだ都道府県 <strong>${prefVisited}</strong> / ${KK_PREFS.length}</div>
-    <div class="stat-chip">市区町村 <strong>${muniVisited}</strong> / ${muniTotal}</div>`;
-  const byPref={}; tiles.forEach(t=>byPref[t.pref]=t);
-  document.getElementById("kk-nation").innerHTML=KK_REGIONS.map(([rg,a,b])=>`
-    <div class="kk-region">
-      <div class="kk-region-name">${rg}</div>
-      <div class="kk-tiles">${KK_PREFS.slice(a,b).map(([p])=>{ const t=byPref[p];
-        return `<button type="button" class="kk-tile${p===KK.pref?" active":""}" data-pref="${p}" aria-label="${p}：${KK_BY_LV[t.max].tag}、${t.visited}/${t.total}市区町村">
-          <span class="kk-sw" style="background:${KK_BY_LV[t.max].color}"></span><span class="kk-tile-name">${p}</span><span class="kk-tile-n">${t.visited}/${t.total}</span>
-        </button>`; }).join("")}</div>
-    </div>`).join("");
-  document.querySelectorAll(".kk-tile").forEach(b=>b.onclick=()=>{
-    kkShowPref(b.dataset.pref);
-    const a=document.getElementById("kk-pref-anchor"), nav=document.querySelector("nav");
-    window.scrollTo({ top:Math.max(0, window.scrollY+a.getBoundingClientRect().top-(nav?nav.offsetHeight:0)-8), behavior:prefersReduced()?"auto":"smooth" });
-  });
-  const noteEl=document.getElementById("kk-note");
-  noteEl.hidden=!KK.note; noteEl.textContent=KK.note||"";
-}
-
-/* ---- 都道府県を切り替え ---- */
-async function kkShowPref(pref){
-  const token=++KK.token;
-  KK.pref=pref; KK.selected=null; KK.filter=null;
-  document.getElementById("kk-pref-sel").value=pref;
-  document.querySelectorAll(".kk-tile").forEach(t=>t.classList.toggle("active", t.dataset.pref===pref));
-  document.getElementById("kk-info").innerHTML='<p class="kk-info-empty">地図の市区町村をタップすると、ここに記録が表示されます。</p>';
-  const mapEl=document.getElementById("kk-map");
-  mapEl.innerHTML='<div class="loading">読み込み中…</div>';
-  let geo, border;
-  try{ [geo, border]=await kkLoadGeo(pref); }
-  catch(e){
-    if(token!==KK.token) return;
-    KK.feats=[]; KK.byCode={}; KK.rec={};
-    mapEl.innerHTML=`<div class="loading">${escHtml(pref)}の地図データがありません。<br>「${escHtml(GEO_DIR+pref)}.geojson」を置き、Webサーバー経由（GitHub Pages など）で開いてください。</div>`;
-    ["kk-stats","kk-legend","kk-list"].forEach(id=>document.getElementById(id).innerHTML="");
-    return;
-  }
-  if(token!==KK.token) return;
-  kkBuildMap(geo, border);
-  KK.rec=kkPrefRecords(pref, KK.feats).byCode;
-  kkRenderPref();
-}
-
-/* ---- GeoJSON → SVG ---- */
-function kkEachCoord(geom, fn){
-  const walk=a=>{ if(typeof a[0]==="number") fn(a); else a.forEach(walk); };
-  walk(geom.coordinates);
-}
-/* N03 の版による属性の違いを吸収（政令市の区が N03_005 か N03_003+N03_004 か） */
-function kkFeatInfo(p){
-  const code=String(p.N03_007||"").replace(/\D/g,"").padStart(5,"0");
-  let city=p.N03_004||"", ward=p.N03_005||"";
-  if(!ward && p.N03_003 && /市$/.test(p.N03_003) && /区$/.test(city)){ ward=city; city=p.N03_003; }
-  const real=!!city && city!=="所属未定地" && !/000$/.test(code);
-  return { code, city, ward, name:city+ward, real };
-}
-function kkBuildMap(geo, border){
-  const src=(geo.features||[]).filter(f=>f.geometry);
-  // 古い N03 は島ごとに別フィーチャーなので、コード単位にまとめる
-  const groups={}, order=[];
-  src.forEach((f,i)=>{
-    const inf=kkFeatInfo(f.properties||{});
-    const key=inf.real ? inf.code : "void"+i;
-    if(!groups[key]){ groups[key]={...inf, geoms:[]}; order.push(key); }
-    groups[key].geoms.push(f.geometry);
-  });
-  const feats=order.map(k=>groups[k]);
-
-  // 中心から極端に離れた島（小笠原など）は「主な範囲」から外す
-  const lats=[]; src.forEach(f=>kkEachCoord(f.geometry,([,y])=>lats.push(y)));
-  lats.sort((a,b)=>a-b);
-  const kx=Math.cos((lats[Math.floor(lats.length/2)]||35)*Math.PI/180);
-  feats.forEach(f=>{
-    const b=[Infinity,Infinity,-Infinity,-Infinity];
-    f.geoms.forEach(g=>kkEachCoord(g,([x,y])=>{ x*=kx; y=-y; if(x<b[0])b[0]=x; if(y<b[1])b[1]=y; if(x>b[2])b[2]=x; if(y>b[3])b[3]=y; }));
-    f.rb=b; f.cx=(b[0]+b[2])/2; f.cy=(b[1]+b[3])/2;
-  });
-  const med=a=>{ const s=a.slice().sort((x,y)=>x-y); return s[Math.floor(s.length/2)]||0; };
-  const reals=feats.filter(f=>f.real && isFinite(f.cx));
-  const mx=med(reals.map(f=>f.cx)), my=med(reals.map(f=>f.cy));
-  reals.forEach(f=>f.dist=Math.hypot(f.cx-mx, f.cy-my));
-  const md=Math.max(med(reals.map(f=>f.dist)), 0.05);
-  const union=list=>list.reduce((b,f)=>[Math.min(b[0],f.rb[0]),Math.min(b[1],f.rb[1]),Math.max(b[2],f.rb[2]),Math.max(b[3],f.rb[3])],[Infinity,Infinity,-Infinity,-Infinity]);
-  const fullR=union(feats.filter(f=>isFinite(f.cx)));
-  let mainR=union(reals.filter(f=>f.dist<=md*4));
-  const area=b=>(b[2]-b[0])*(b[3]-b[1]);
-  const trimmed = area(fullR) > area(mainR)*1.6;
-  if(!trimmed) mainR=fullR;
-
-  // 主な範囲の幅を 1000 とする座標系
-  const S=1000/Math.max(mainR[2]-mainR[0], 1e-6);
-  const P=([lon,lat])=>[ +((lon*kx-mainR[0])*S).toFixed(2), +((-lat-mainR[1])*S).toFixed(2) ];
-  const toBox=r=>[(r[0]-mainR[0])*S, (r[1]-mainR[1])*S, (r[2]-mainR[0])*S, (r[3]-mainR[1])*S];
-  const lineStr=(pts,close)=>pts.map((c,i)=>{ const [x,y]=P(c); return (i?"L":"M")+x+","+y; }).join("")+(close?"Z":"");
-  const ringStr=r=>r.map((p,i)=>(i?"L":"M")+p[0]+","+p[1]).join("")+"Z";
-  feats.forEach(f=>{
-    // 投影済みのポリゴン [[ring...]...]
-    const polys=[];
-    f.geoms.forEach(g=>{
-      const ps = g.type==="Polygon" ? [g.coordinates] : g.type==="MultiPolygon" ? g.coordinates : [];
-      ps.forEach(rings=>polys.push(rings.map(r=>r.map(P))));
-    });
-    f.d=polys.map(rings=>rings.map(ringStr).join("")).join("");
-    f.box=toBox(f.rb);
-    // 名前の位置：いちばん大きい島の「内側でいちばん広く空いている点」（形がいびつでも区域内に収まる）
-    if(f.real && polys.length){
-      const big=polys.reduce((a,b)=>Math.abs(kkRingArea(b[0]))>Math.abs(kkRingArea(a[0]))?b:a);
-      const [lx,ly,lr]=kkPolylabel(big);
-      f.lx=lx; f.ly=ly; f.lr=lr; f.label=f.ward||f.city;
-    }
-    delete f.geoms;
-  });
-  KK.feats=feats;
-  KK.byCode={}; feats.forEach(f=>{ if(f.real) KK.byCode[f.code]=f; });
-
-  // 表示範囲：最初は「主な範囲」。縮小は離島まで全部入るところまで、拡大は 16 倍まで
-  const pad=(b,m)=>[b[0]-m, b[1]-m, (b[2]-b[0])+m*2, (b[3]-b[1])+m*2];
-  const mainBox=pad(toBox(mainR), 14);
-  const fb=toBox(fullR);
-  KK.home=mainBox;
-  KK.limit=kkFitAspect(pad(fb, Math.max(fb[2]-fb[0], fb[3]-fb[1])*0.06), mainBox);
-  KK.minW=mainBox[2]/16;
-  KK.view=mainBox.slice();
-
-  let borderD="";
-  if(border && border.features){
-    border.features.forEach(f=>{
-      const g=f.geometry; if(!g) return;
-      const lines = g.type==="LineString" ? [g.coordinates] : g.type==="MultiLineString" ? g.coordinates
-                  : g.type==="Polygon" ? g.coordinates : g.type==="MultiPolygon" ? g.coordinates.flat() : [];
-      borderD+=lines.map(l=>lineStr(l,false)).join("");
-    });
-  }
-  const paths=feats.map(f=> f.real
-    ? `<path class="kk-muni" data-code="${f.code}" d="${f.d}" tabindex="0" role="button" aria-label="${escHtml(f.name)}"></path>`
-    : `<path class="kk-muni kk-void" d="${f.d}" aria-hidden="true"></path>`).join("");
-  document.getElementById("kk-map").innerHTML=
-    `<svg id="kk-svg" viewBox="${KK.view.join(" ")}" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="${escHtml(KK.pref)}の市区町村 ${KK.mode==="gourmet"?"グルメ地図":"経県値マップ"}">
-      <g id="kk-munis">${paths}</g>
-      ${borderD?`<path class="kk-border" d="${borderD}"></path>`:""}
-      <g id="kk-labels" class="kk-labels" aria-hidden="true">${feats.filter(f=>f.label).map(f=>
-        `<text x="${f.lx.toFixed(1)}" y="${f.ly.toFixed(1)}" data-code="${f.code}">${escHtml(f.label)}</text>`).join("")}</g>
-    </svg>`;
-  kkBindMap();
-  kkUpdateLabels();
-  if(window.ResizeObserver){
-    if(KK.ro) KK.ro.disconnect();
-    KK.ro=new ResizeObserver(()=>kkUpdateLabels());
-    KK.ro.observe(document.getElementById("kk-svg"));
-  }
-}
-
-function kkBindMap(){
-  const svg=document.getElementById("kk-svg");
-  const tip=document.getElementById("kk-tip");
-  const wrap=document.getElementById("kk-mapwrap");
-  const codeOf=t=>t && t.classList && t.classList.contains("kk-muni") ? t.dataset.code : null;
-  svg.addEventListener("click", e=>{ if(KK.dragged){ KK.dragged=false; return; } const c=codeOf(e.target); if(c) kkSelect(c); });
-  kkBindPanZoom(svg);
-  svg.addEventListener("keydown", e=>{
-    if(e.key!=="Enter" && e.key!==" ") return;
-    const c=codeOf(e.target); if(c){ e.preventDefault(); kkSelect(c); }
-  });
-  svg.addEventListener("pointermove", e=>{
-    const c=codeOf(e.target);
-    if(e.pointerType!=="mouse" || !c){ tip.hidden=true; return; }
-    const f=KK.byCode[c], l=kkByLv(kkLv(c));
-    const tag=KK.mode==="gourmet" ? `${(GM.byCode[c]||[]).length}軒` : l.tag;
-    tip.innerHTML=`<span class="kk-sw" style="background:${l.color}"></span>${escHtml(f.name)}<em>${tag}</em>`;
-    const r=wrap.getBoundingClientRect();
-    tip.hidden=false;
-    tip.style.left=Math.max(6, Math.min(e.clientX-r.left+14, r.width-tip.offsetWidth-6))+"px";
-    tip.style.top=(e.clientY-r.top+16)+"px";
-  });
-  svg.addEventListener("pointerleave", ()=>{ tip.hidden=true; });
-}
-
-
-/* ---- 市区町村名ラベル ---- */
-const KK_LABEL_PX=11;   // 画面上の文字の大きさ（px）。拡大縮小しても一定
-function kkRingArea(r){ let a=0; for(let i=0,j=r.length-1;i<r.length;j=i++) a+=(r[j][0]-r[i][0])*(r[j][1]+r[i][1]); return a/2; }
-function kkSegDist2(px,py,a,b){
-  let x=a[0], y=a[1], dx=b[0]-x, dy=b[1]-y;
-  if(dx||dy){ const t=((px-x)*dx+(py-y)*dy)/(dx*dx+dy*dy); if(t>1){ x=b[0]; y=b[1]; } else if(t>0){ x+=dx*t; y+=dy*t; } }
-  dx=px-x; dy=py-y; return dx*dx+dy*dy;
-}
-/* 点からポリゴン境界までの距離（内側なら正、外側なら負） */
-function kkPointDist(x,y,poly){
-  let inside=false, min=Infinity;
-  poly.forEach(r=>{
-    for(let i=0,j=r.length-1;i<r.length;j=i++){
-      const a=r[i], b=r[j];
-      if((a[1]>y)!==(b[1]>y) && x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0]) inside=!inside;
-      min=Math.min(min, kkSegDist2(x,y,a,b));
-    }
-  });
-  return (inside?1:-1)*Math.sqrt(min);
-}
-/* polylabel（到達不能極）：ポリゴン内でもっとも境界から遠い点 → [x, y, 半径] */
-function kkPolylabel(poly){
-  const outer=poly[0];
-  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
-  outer.forEach(([x,y])=>{ if(x<x0)x0=x; if(y<y0)y0=y; if(x>x1)x1=x; if(y>y1)y1=y; });
-  const w=x1-x0, h=y1-y0, size=Math.min(w,h);
-  if(!size) return [x0,y0,0];
-  const precision=Math.max(size/40, 0.3);
-  const cell=(x,y,hh)=>{ const d=kkPointDist(x,y,poly); return {x,y,h:hh,d,max:d+hh*Math.SQRT2}; };
-  const q=[];
-  for(let x=x0;x<x1;x+=size) for(let y=y0;y<y1;y+=size) q.push(cell(x+size/2,y+size/2,size/2));
-  let best=cell(x0+w/2, y0+h/2, 0);
-  // 重心も候補に
-  let cx=0,cy=0,ca=0;
-  for(let i=0,j=outer.length-1;i<outer.length;j=i++){ const a=outer[i],b=outer[j],f=a[0]*b[1]-b[0]*a[1]; cx+=(a[0]+b[0])*f; cy+=(a[1]+b[1])*f; ca+=f*3; }
-  if(ca){ const c=cell(cx/ca, cy/ca, 0); if(c.d>best.d) best=c; }
-  let guard=0;
-  while(q.length && guard++<4000){
-    let mi=0; for(let i=1;i<q.length;i++) if(q[i].max>q[mi].max) mi=i;
-    const c=q.splice(mi,1)[0];
-    if(c.d>best.d) best=c;
-    if(c.max-best.d<=precision) continue;
-    const hh=c.h/2;
-    q.push(cell(c.x-hh,c.y-hh,hh), cell(c.x+hh,c.y-hh,hh), cell(c.x-hh,c.y+hh,hh), cell(c.x+hh,c.y+hh,hh));
-  }
-  return [best.x, best.y, Math.max(best.d,0)];
-}
-/* 今の拡大率で、区域に収まる名前だけを表示する */
-function kkUpdateLabels(){
-  const svg=document.getElementById("kk-svg"), g=document.getElementById("kk-labels");
-  if(!svg || !g || !KK.view) return;
-  const r=svg.getBoundingClientRect();
-  if(!r.width) return;                                  // ページ非表示中
-  const ppu=Math.min(r.width/KK.view[2], r.height/KK.view[3]);   // 1単位あたりの画面px
-  const fs=KK_LABEL_PX/ppu;
-  g.setAttribute("font-size", fs.toFixed(3));
-  g.setAttribute("stroke-width", (fs*0.3).toFixed(3));
-  g.querySelectorAll("text").forEach(t=>{
-    const f=KK.byCode[t.dataset.code]; if(!f) return;
-    const diam=f.lr*2*ppu, textW=f.label.length*KK_LABEL_PX;
-    t.classList.toggle("off", !(diam>=KK_LABEL_PX*1.3 && diam>=textW*0.7));
-  });
-}
-
-/* 拡大しても地図の縦横比（＝表示の高さ）が変わらないよう、全体表示と同じ比率に広げる */
-function kkFitAspect(b, ref){
-  const ar=ref[2]/ref[3];
-  let [x,y,w,h]=b;
-  if(w/h<ar){ const nw=h*ar; x-=(nw-w)/2; w=nw; } else { const nh=w/ar; y-=(nh-h)/2; h=nh; }
-  return [x,y,w,h];
-}
-
-/* ---- 拡大・縮小・移動 ----
-   PC：ホイールで拡大縮小、ドラッグで移動、ダブルクリックで拡大
-   スマホ：2本指で拡大縮小、1本指で移動
-   ボタン：＋ / − / 元に戻す */
-function kkClampView(v){
-  let [x,y,w,h]=v;
-  const ar=KK.home[2]/KK.home[3];
-  w=Math.max(KK.minW, Math.min(KK.limit[2], w)); h=w/ar;
-  // 表示の中心が地図の範囲から出ないように
-  const L=KK.limit, cx=Math.max(L[0], Math.min(L[0]+L[2], x+v[2]/2)), cy=Math.max(L[1], Math.min(L[1]+L[3], y+v[3]/2));
-  return [cx-w/2, cy-h/2, w, h];
-}
-function kkSetView(v){
-  const svg=document.getElementById("kk-svg"); if(!svg) return;
-  KK.view=v;
-  svg.setAttribute("viewBox", v.map(n=>n.toFixed(2)).join(" "));
-  kkUpdateLabels();
-}
-/* 画面上の点 → 地図の座標 */
-function kkClientToMap(svg, cx, cy){
-  const r=svg.getBoundingClientRect(), v=KK.view;
-  const s=Math.min(r.width/v[2], r.height/v[3]);
-  const ox=(r.width-v[2]*s)/2, oy=(r.height-v[3]*s)/2;
-  return [v[0]+(cx-r.left-ox)/s, v[1]+(cy-r.top-oy)/s, s];
-}
-/* (ux,uy) を動かさずに factor 倍に拡大 */
-function kkZoomAt(ux, uy, factor, base){
-  const v=base||KK.view;
-  const nw=v[2]/factor, k=nw/v[2];
-  return kkClampView([ux-(ux-v[0])*k, uy-(uy-v[1])*k, nw, v[3]*k]);
-}
-function kkZoomBy(factor){
-  const v=KK.view;
-  kkZoomTo(kkZoomAt(v[0]+v[2]/2, v[1]+v[3]/2, factor));
-}
-function kkBindPanZoom(svg){
-  const pts=new Map();
-  let start=null;     // ジェスチャー開始時の状態
-  const snapshot=()=>{
-    const list=[...pts.values()];
-    const c = list.length>1 ? [(list[0].x+list[1].x)/2, (list[0].y+list[1].y)/2] : [list[0].x, list[0].y];
-    const d = list.length>1 ? Math.hypot(list[0].x-list[1].x, list[0].y-list[1].y) : 0;
-    start={ view:KK.view.slice(), c, d, n:list.length, moved:false };
-  };
-  svg.addEventListener("pointerdown", e=>{
-    if(e.button>0) return;
-    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    cancelAnimationFrame(KK.anim);
-    snapshot();
-  });
-  svg.addEventListener("pointermove", e=>{
-    if(!pts.has(e.pointerId) || !start) return;
-    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    const list=[...pts.values()];
-    const c = list.length>1 ? [(list[0].x+list[1].x)/2, (list[0].y+list[1].y)/2] : [list[0].x, list[0].y];
-    if(!start.moved && Math.hypot(c[0]-start.c[0], c[1]-start.c[1])<5 && list.length<2) return;
-    if(!start.moved){ start.moved=true; try{ svg.setPointerCapture(e.pointerId); }catch(_){} svg.classList.add("dragging"); document.getElementById("kk-tip").hidden=true; }
-    const r=svg.getBoundingClientRect(), v0=start.view;
-    const s=Math.min(r.width/v0[2], r.height/v0[3]);
-    // 移動（開始時の表示から、指の移動ぶんずらす）
-    let v=[v0[0]-(c[0]-start.c[0])/s, v0[1]-(c[1]-start.c[1])/s, v0[2], v0[3]];
-    // 2本指なら拡大縮小
-    if(list.length>1 && start.d>0){
-      const d=Math.hypot(list[0].x-list[1].x, list[0].y-list[1].y);
-      const ox=(r.width-v0[2]*s)/2, oy=(r.height-v0[3]*s)/2;
-      const ux=v[0]+(c[0]-r.left-ox)/s, uy=v[1]+(c[1]-r.top-oy)/s;
-      v=kkZoomAt(ux, uy, d/start.d, v);
-    }
-    kkSetView(kkClampView(v));
-  });
-  const end=e=>{
-    if(!pts.has(e.pointerId)) return;
-    if(start && start.moved) KK.dragged=true;
-    pts.delete(e.pointerId);
-    svg.classList.remove("dragging");
-    if(pts.size){ snapshot(); start.moved=true; } else start=null;
-    setTimeout(()=>{ KK.dragged=false; }, 0);
-  };
-  svg.addEventListener("pointerup", end);
-  svg.addEventListener("pointercancel", end);
-  svg.addEventListener("wheel", e=>{
-    e.preventDefault();
-    const [ux,uy]=kkClientToMap(svg, e.clientX, e.clientY);
-    const factor=Math.exp(-e.deltaY*(e.deltaMode===1?0.05:0.0022));
-    cancelAnimationFrame(KK.anim);
-    kkSetView(kkZoomAt(ux, uy, factor));
-  }, { passive:false });
-  svg.addEventListener("dblclick", e=>{
-    e.preventDefault();
-    const [ux,uy]=kkClientToMap(svg, e.clientX, e.clientY);
-    kkZoomTo(kkZoomAt(ux, uy, 2));
-  });
-}
-/* 一覧から選んだとき：名前が見えないほど小さければ、その市区町村まで寄る */
-function kkFocus(code){
-  const f=KK.byCode[code]; if(!f) return;
-  const t=document.querySelector(`#kk-labels text[data-code="${code}"]`);
-  const b=f.box, cx=(b[0]+b[2])/2, cy=(b[1]+b[3])/2;
-  const v=KK.view;
-  const inView = cx>v[0] && cx<v[0]+v[2] && cy>v[1] && cy<v[1]+v[3];
-  if(t && !t.classList.contains("off") && inView) return;
-  const w=Math.max((b[2]-b[0])*3.2, (b[3]-b[1])*3.2*KK.home[2]/KK.home[3]);
-  const nw=Math.min(v[2], w);
-  kkZoomTo(kkClampView([cx-nw/2, cy-nw*KK.home[3]/KK.home[2]/2, nw, nw*KK.home[3]/KK.home[2]]));
-}
-function kkZoomTo(target){
-  const svg=document.getElementById("kk-svg"); if(!svg) return;
-  const from=KK.view.slice();
-  const set=v=>kkSetView(v);
-  cancelAnimationFrame(KK.anim);
-  if(prefersReduced()){ set(target.slice()); return; }
-  const t0=performance.now(), dur=420;
-  const step=now=>{
-    const t=Math.min(1,(now-t0)/dur), e=1-Math.pow(1-t,3);
-    set(from.map((v,i)=>v+(target[i]-v)*e));
-    if(t<1) KK.anim=requestAnimationFrame(step);
-  };
-  KK.anim=requestAnimationFrame(step);
-}
-
-/* ---- 都道府県ごとの描画 ---- */
-function kkLevels(){ return KK.mode==="gourmet" ? GM_LEVELS : KK_LEVELS; }
-function kkByLv(lv){ return kkLevels().find(l=>l.lv===lv)||kkLevels()[kkLevels().length-1]; }
-function kkLv(code){
-  if(KK.mode==="gourmet") return gmBucket((GM.byCode[code]||[]).length);
-  return (KK.rec[code]||{}).lv||0;
-}
-
-function kkRenderPref(){
-  const real=KK.feats.filter(f=>f.real);
-  const total=real.length;
-  const count={}; kkLevels().forEach(l=>count[l.lv]=0);
-  let score=0;
-  real.forEach(f=>{ const lv=kkLv(f.code); count[lv]++; score+=lv; });
-  const visited=total-count[0];
-
-  document.querySelectorAll("#kk-svg .kk-muni[data-code]").forEach(p=>{
-    const c=p.dataset.code, l=kkByLv(kkLv(c));
-    p.style.fill=l.color;
-    p.setAttribute("aria-label", `${KK.byCode[c].name}、${KK.mode==="gourmet"?(GM.byCode[c]||[]).length+"軒":l.tag}`);
-    p.classList.toggle("dim", KK.filter!=null && kkLv(c)!==KK.filter);
+  /* イニングスコア */
+  ES.inn={};
+  (got.inn||[]).forEach(o=>{
+    const no=esInt(F(o,"試合No")); if(!no) return;
+    const inns=[]; for(let k=1;k<=15;k++) inns.push(F(o,String(k)));
+    if(inns.every(v=>v==="") && !F(o,"R") && !F(o,"H") && !F(o,"E")) return;   // 試合No・先攻後攻だけ自動で並んだ未入力の行
+    (ES.inn[no]=ES.inn[no]||[]).push({ side:F(o,"先攻後攻"), team:F(o,"高校名"), inns, R:F(o,"R"), H:F(o,"H"), E:F(o,"E") });
   });
 
-  if(KK.mode==="gourmet"){
-    const shops=real.reduce((n,f)=>n+(GM.byCode[f.code]||[]).length,0);
-    const rated=[].concat(...real.map(f=>GM.byCode[f.code]||[])).filter(r=>r.my!=null);
-    const avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:0;
-    document.getElementById("kk-stats").innerHTML=`
-    <div class="stat-chip">${escHtml(KK.pref)}で食べたお店 <strong>${shops}</strong> 軒</div>
-    <div class="stat-chip">市区町村 <strong>${visited}</strong> / ${total}</div>
-    ${rated.length?`<div class="stat-chip">評価の平均 <strong>${avg.toFixed(2)}</strong></div>`:""}`;
-  }else document.getElementById("kk-stats").innerHTML=`
-    <div class="stat-chip">${escHtml(KK.pref)}の経県値 <strong>${score}</strong> / ${total*KK_MAX}点</div>
-    <div class="stat-chip">足を運んだ <strong>${visited}</strong> / ${total} 市区町村</div>
-    <div class="stat-chip">制覇率 <strong>${total?Math.round(visited/total*100):0}%</strong></div>`;
+  /* 選手成績（1試合×1選手） */
+  ES.box=(got.box||[]).map(o=>{
+    const no=esInt(F(o,"試合No")), name=F(o,"名前"); if(!no||!name) return null;
+    const dec=F(o,"決定")||F(o,"勝敗");
+    return { no, name, ab:esInt(F(o,"打数")), r:esInt(F(o,"得点")), h:esInt(F(o,"安打")), d2:esInt(F(o,"二塁打")), d3:esInt(F(o,"三塁打")), hr:esInt(F(o,"本塁打")), rbi:esInt(F(o,"打点")),
+      so:esInt(F(o,"三振")), bb:esInt(F(o,"四死球")), sh:esInt(F(o,"犠打")), sb:esInt(F(o,"盗塁")), dp:esInt(F(o,"併殺")), e:esInt(F(o,"失策")),
+      ip:esIP(F(o,"投球回")), np:esInt(F(o,"球数")), bf:esInt(F(o,"打者")), ha:esInt(F(o,"被安打")), k:esInt(F(o,"奪三振")), pbb:esInt(F(o,"与四死球")),
+      pr:esInt(F(o,"失点")), er:esInt(F(o,"自責点")), wp:esInt(F(o,"暴投")), hra:esInt(F(o,"被本塁打")),
+      dec: /^(勝|敗)$/.test(dec) ? dec : /^(S|Ｓ|セーブ)$/.test(dec) ? "S" : /^(H|Ｈ|ホールド)$/.test(dec) ? "H" : "" };
+  }).filter(b=>b && (b.ab!=null || b.ip!=null));   // 数字が何も入っていない行（出場なし）は無視
 
-  document.getElementById("kk-legend").innerHTML=kkLevels().slice().reverse().map(l=>`
-    <button type="button" class="kk-leg${KK.filter===l.lv?" active":""}" data-lv="${l.lv}" aria-pressed="${KK.filter===l.lv}" title="${l.note}">
-      <span class="kk-sw" style="background:${l.color}"></span>${l.tag}<span class="kk-leg-n">${count[l.lv]}</span>
-    </button>`).join("");
-  document.querySelectorAll(".kk-leg").forEach(b=>b.onclick=()=>{
-    const lv=Number(b.dataset.lv);
-    KK.filter = KK.filter===lv ? null : lv;
-    kkRenderPref();
-  });
-
-  // 一覧（レベルの高い順。未踏は折りたたみ）
-  const gmN=f=>(GM.byCode[f.code]||[]).length;
-  const chip=f=>`<button type="button" class="kk-chip" data-code="${f.code}">${escHtml(f.name)}${KK.mode==="gourmet"&&gmN(f)?`<span class="kk-chip-n">${gmN(f)}</span>`:""}</button>`;
-  document.getElementById("kk-list").innerHTML=kkLevels().map(l=>{
-    const fs=real.filter(f=>kkLv(f.code)===l.lv).sort((a,b)=>KK.mode==="gourmet"&&gmN(b)!==gmN(a)?gmN(b)-gmN(a):(a.code<b.code?-1:1));
-    if(!fs.length) return "";
-    const head=`<span class="kk-sw" style="background:${l.color}"></span>${l.tag}<span class="kk-leg-n">${fs.length}</span>`;
-    const body=`<div class="kk-chips">${fs.map(chip).join("")}</div>`;
-    return l.lv===0
-      ? `<details class="kk-group"><summary class="kk-group-head">${head}</summary>${body}</details>`
-      : `<div class="kk-group"><div class="kk-group-head">${head}</div>${body}</div>`;
-  }).join("");
-  document.querySelectorAll(".kk-chip").forEach(b=>b.onclick=()=>{
-    const c=b.dataset.code;
-    kkFocus(c);
-    kkSelect(c);
-    const m=document.getElementById("kk-mapwrap"), nav=document.querySelector("nav");
-    window.scrollTo({ top:Math.max(0, window.scrollY+m.getBoundingClientRect().top-(nav?nav.offsetHeight:0)-8), behavior:prefersReduced()?"auto":"smooth" });
-  });
-
-  if(KK.selected) kkSelect(KK.selected);
-}
-
-function kkSelect(code){
-  const f=KK.byCode[code]; if(!f) return;
-  KK.selected=code;
-  const g=document.getElementById("kk-munis");
-  g.querySelectorAll(".kk-muni.sel").forEach(p=>p.classList.remove("sel"));
-  const p=g.querySelector(`.kk-muni[data-code="${code}"]`);
-  if(p){ p.classList.add("sel"); g.appendChild(p); p.focus({preventScroll:true}); }
-  if(KK.mode==="gourmet"){ gmRenderInfo(code, f); return; }
-  const r=KK.rec[code]||{}, l=KK_BY_LV[r.lv||0];
-  document.getElementById("kk-info").innerHTML=`
-    <div class="kk-info-head">
-      <span class="kk-info-name">${escHtml(f.name)}</span>
-      <span class="kk-badge" style="--c:${l.color}">${l.tag}</span>
-    </div>
-    ${r.date?`<div class="kk-info-date">${escHtml(r.date)}</div>`:""}
-    ${r.memo?`<div class="kk-info-memo">${escHtml(r.memo)}</div>`:""}`;
-}
-
-/* =====================================================================
-   グルメ（食べログ）
-   列 : No / 日付 / 曜日 / 店名 / 都道府県 / 市区町村 / 評価 / Instagram（投稿対象・投稿済）/ ジャンル
-   ・都道府県＋市区町村を経県値シートの市区町村一覧と照らし合わせて地図に反映します
-     （政令市は「神戸市中央区」のように区まで、郡名は付けない）
-   ・ジャンルは「、」区切りで複数でも、1つでもOK
-   ===================================================================== */
-const URL_GOURMET = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1336707621&single=true&output=csv";
-
-/* 市区町村の色分け（軒数）。経県値と見分けがつくよう、食べ物らしい橙系 */
-const GM_LEVELS=[
-  {lv:4, label:"10軒〜",  tag:"10軒〜",  note:"10軒以上", color:"#b8401c"},
-  {lv:3, label:"5〜9軒",  tag:"5〜9軒",  note:"5〜9軒",   color:"#ea7a3b"},
-  {lv:2, label:"2〜4軒",  tag:"2〜4軒",  note:"2〜4軒",   color:"#f8b765"},
-  {lv:1, label:"1軒",     tag:"1軒",     note:"1軒",      color:"#fde1ad"},
-  {lv:0, label:"0軒",     tag:"0軒",     note:"まだ食べていない", color:"#ffffff"}
-];
-const gmBucket=n=> n>=10?4 : n>=5?3 : n>=2?2 : n>=1?1 : 0;
-const gmPrefBucket=n=> n>=50?4 : n>=20?3 : n>=5?2 : n>=1?1 : 0;
-const GM={ list:[], byCode:{}, byPref:{}, tab:"すべて", note:"" };
-
-function gmParseYM(s){ const m=String(s||"").match(/(\d{4})\D+(\d{1,2})/); return m?new Date(+m[1], +m[2]-1, 1):null; }
-function gmFmtYM(d){ return d?`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}`:""; }
-function gmFmtDate(r){ return r.dt?`${r.dt.getFullYear()}/${fmtMD(r.dt)}`:gmFmtYM(r.ym); }
-
-async function loadGourmet(){
-  let rows=[];
-  try{ rows=cleanRows((await fetchCSV(URL_GOURMET)).data); }
-  catch(e){ document.getElementById("gm-hero").innerHTML=errBox("食べログのデータを読み込めませんでした。"); return; }
-
-  /* 名前 → 団体コード（経県値シートの全市区町村を辞書として使う） */
-  const nameIdx={}; KK.rows.forEach(r=>{ if(r.code && r.pref) nameIdx[r.pref+"\u0001"+r.name]=r.code; });
-
-  GM.list=rows.map(o=>{
-    const name=F(o,"店名"); if(!name) return null;
-    /* 列名は「都道府県／市区町村」「都道府県名／市区町村名」のどちらでも読めるようにする */
-    const pf=F(o,"都道府県")||F(o,"都道府県名"), mu=F(o,"市区町村")||F(o,"市区町村名");
-    const k=kkNormRow({ "団体コード":F(o,"団体コード"), "都道府県名":pf, "市区町村名":mu })||{code:"",pref:"",name:""};
-    let code=k.code;
-    if(!code && k.pref && k.name) code=nameIdx[k.pref+"\u0001"+k.name]||"";
-    const dt=pd(F(o,"日付"));
-    return { code, pref:k.pref, muni:mu, name, genre:F(o,"ジャンル"),
-      genres:F(o,"ジャンル").split(/[、,，]/).map(x=>x.trim()).filter(Boolean),
-      dt, ym:dt||gmParseYM(F(o,"訪問月")), my:num(F(o,"評価")||F(o,"自分の評価")) };
+  /* スタメン */
+  ES.lineup=(got.lineup||[]).map(o=>{
+    const year=esYear(F(o,"年度")), name=F(o,"名前"); if(!year||!name) return null;
+    return { year, season:F(o,"時期")||"夏", order:esHalf(F(o,"打順")), name, grade:esHalf(F(o,"学年")), num:esHalf(F(o,"背番号")), pos:F(o,"守備"),
+      games:esInt(F(o,"試合")), avg:esNum(F(o,"打率")), hr:esInt(F(o,"本塁打")), rbi:esInt(F(o,"打点")), sb:esInt(F(o,"盗塁")),
+      app:esInt(F(o,"登板")), gs:esInt(F(o,"先発")), w:esInt(F(o,"勝")), l:esInt(F(o,"敗")), sv:esInt(F(o,"セーブ")),
+      cg:esInt(F(o,"完投")), sho:esInt(F(o,"完封")), nh:esInt(F(o,"ノーノー")), ip:esIP(F(o,"投球回")), k:esInt(F(o,"奪三振")),
+      bb:esInt(F(o,"与四死球")), era:esNum(F(o,"防御率")) };
   }).filter(Boolean);
 
-  GM.byCode={}; GM.byPref={};
-  GM.list.forEach(r=>{
-    if(r.code) (GM.byCode[r.code]=GM.byCode[r.code]||[]).push(r);
-    if(r.pref) (GM.byPref[r.pref]=GM.byPref[r.pref]||[]).push(r);
+  /* 卒業生 */
+  ES.grads=(got.grads||[]).map(o=>{
+    const name=F(o,"名前"); if(!name) return null;
+    const g={ name, year:esYear(F(o,"入学年度")), from:F(o,"出身"), scout:esMark(F(o,"スカウト")), tensei:esMark(F(o,"転生")), transfer:esMark(F(o,"転校生")),
+      pos0:F(o,"入学時守備"), star0:esInt(F(o,"入学時★")), pos:F(o,"卒業時守備")||F(o,"入学時守備"), star:esInt(F(o,"卒業時★")),
+      games:esInt(F(o,"試合")), avg:esNum(F(o,"打率")), hr:esInt(F(o,"本塁打")), rbi:esInt(F(o,"打点")), sb:esInt(F(o,"盗塁")),
+      app:esInt(F(o,"登板")), gs:esInt(F(o,"先発")), w:esInt(F(o,"勝")), l:esInt(F(o,"敗")), sv:esInt(F(o,"セーブ")),
+      cg:esInt(F(o,"完投")), sho:esInt(F(o,"完封")), nh:esInt(F(o,"ノーノー")), ip:esIP(F(o,"投球回")), k:esInt(F(o,"奪三振")),
+      bb:esInt(F(o,"与四死球")), era:esNum(F(o,"防御率")),
+      course:F(o,"進路"), team:F(o,"球団").replace(/^[-－ー]$/,""), rank:esHalf(F(o,"順位")).replace(/^[-－ー]$/,""),
+      /* 卒業時の能力 */
+      kana:F(o,"よみがな"), birth:F(o,"誕生日"), chara:F(o,"性格"), th:F(o,"投"), bt:F(o,"打") };
+    if(g.avg!=null && g.avg>1) g.avg=null;               // 打率の入力ミス（2.810 など）は除外
+    g.grow = (g.star!=null && g.star0!=null) ? g.star-g.star0 : null;
+    g.pro = g.course==="プロ野球選手" || !!g.team;
+    return g;
+  }).filter(Boolean);
+
+  /* 能力（入学時・卒業時）：名前＋入学年度で卒業生につなぐ。ランキング等は卒業時（なければ入学時）の値を使う */
+  ES.abilLoaded = !!got.abil;
+  (got.abil||[]).forEach(o=>{
+    const name=F(o,"名前"), when=F(o,"時点"); if(!name || !/^(入学時|卒業時)$/.test(when)) return;
+    const yr=esYear(F(o,"入学年度"));
+    const g=ES.grads.find(x=>x.name===name && (yr==null || x.year===yr)) || ES.grads.find(x=>x.name===name);
+    if(!g) return;
+    const a=esParseAbil(o);
+    /* 利き腕（投げ・打ち）は能力シートの時点ごと。空欄なら卒業生シートの値を使う */
+    const th=F(o,"投げ"), bt=F(o,"打ち"), ch=F(o,"性格"); if(th) a.th=th; if(bt) a.bt=bt; if(ch) a.chara=ch;
+    (g.ab=g.ab||{})[when]=a;
   });
-  const noMap=GM.list.filter(r=>!r.code).length;
-  GM.note = noMap ? `地図に載せられなかったお店が ${noMap} 軒あります（都道府県名・市区町村名を確認してください）。` : "";
-
-  if(!GM.list.length){ document.getElementById("gm-hero").innerHTML=errBox("まだ記録がありません。"); return; }
-  gmRenderHero(); gmRenderTabs(); gmRenderRank(); gmRenderGenre();
-  if(KK.mode==="gourmet" && KK.ready){ kkRenderNation(); if(document.getElementById("kk-svg")) kkRenderPref(); }
+  const esMainPos = p => /^[左中右]$/.test(p) ? "外" : p;
+  ES.grads.forEach(g=>{
+    Object.values(g.ab||{}).forEach(a=>{ a.fld = a.def ? (a.def[esMainPos(g.pos)] ?? null) : null; });
+    if(g.ab) Object.assign(g, g.ab["卒業時"]||g.ab["入学時"]);
+  });
+  ES.gameByNo={}; ES.games.forEach(g=>{ ES.gameByNo[g.no]=g; g.season = /^夏/.test(g.taikai) ? "夏" : "秋春"; });
+  /* 1人で投げ切った試合は、勝敗が空欄なら試合の結果から勝ち／負けを付ける */
+  ES.box.forEach(b=>{
+    if(b.ip==null || b.dec) return;
+    const gm=ES.gameByNo[b.no]; if(!gm) return;
+    if(ES.box.filter(x=>x.no===b.no && x.ip!=null).length===1) b.dec = gm.wl==="勝"?"勝":gm.wl==="負"?"敗":"";
+  });
+  esBuildMvp();
+  /* 卒業生の成績が空欄なら、選手成績シートから自動計算する */
+  ES.grads.forEach(g=>{ esFillFromBox(g); esGradDerived(g); });
+  esBuildYears();
+  esInitSubnav();
+  esRenderHero(); esRenderYears(); esInitYearSel(); esRenderB9Tabs(); esRenderB9();
+  esRenderRoster(); esRenderRkTabs(); esRenderRk(); esRenderRecords(); esRenderRivals(); esRenderDraft();
+  tyAfterLoad();
 }
 
-function gmRenderHero(){
-  const L=GM.list, rated=L.filter(r=>r.my!=null);
-  const avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:0;
-  const prefs=Object.keys(GM.byPref).length, munis=Object.keys(GM.byCode).length;
-  document.getElementById("gm-hero").innerHTML=`
-    <div class="tm-hero-label">これまでに投稿したお店</div>
-    <div class="tm-big">${nf(L.length)}<small>軒</small></div>
-    <div class="gm-hero-sub">${prefs}都道府県・${munis}市区町村${rated.length?`・評価の平均 ${avg.toFixed(2)}`:""}</div>`;
+/* ---------- 集計 ---------- */
+/* 大会ごとの成績の呼び方。秋の県大会・地区大会はゲーム上2試合なので、2回戦が決勝扱い */
+const ES_FINAL = { "秋の都道府県大会":"2回戦", "秋の地区大会":"2回戦" };
+const ES_LOSS = {
+  "秋の都道府県大会": {"1回戦":"ベスト4", "2回戦":"準優勝"},
+  "秋の地区大会":     {"1回戦":"ベスト4", "2回戦":"準優勝"},
+  "神宮大会":         {"1回戦":"ベスト8", "2回戦":"ベスト8"},
+  "春の甲子園":       {"1回戦":"ベスト32", "2回戦":"ベスト16"},
+  "夏の甲子園":       {"1回戦":"1回戦敗退", "2回戦":"ベスト32", "3回戦":"ベスト16"}
+};
+function esResult(games, taikai){
+  if(!games.length) return "";
+  const last=games[games.length-1], r=last.round.replace(/\s/g,"");
+  const fin=ES_FINAL[taikai]||"決勝";
+  if(last.wl==="勝") return r===fin ? "優勝" : "勝ち上がり中";
+  if(r===fin) return "準優勝";
+  const m=ES_LOSS[taikai]||{};
+  if(m[r]) return m[r];
+  if(r==="準決勝") return "ベスト4";
+  if(r==="準々決勝") return "ベスト8";
+  return `${r}敗退`;
 }
-
-/* ジャンルの集計（1軒に複数ジャンルがあれば、それぞれに数える） */
-function gmGenreStats(){
+function esBuildYears(){
   const m={};
-  GM.list.forEach(r=>r.genres.forEach(g=>{ const s=(m[g]=m[g]||{g, n:0, sum:0, rn:0}); s.n++; if(r.my!=null){ s.sum+=r.my; s.rn++; } }));
-  return Object.values(m).sort((a,b)=>b.n-a.n);
+  ES.games.forEach(g=>{ (m[g.year]=m[g.year]||[]).push(g); });
+  ES.lineup.forEach(l=>{ m[l.year]=m[l.year]||[]; });
+  ES.years=Object.keys(m).map(Number).sort((a,b)=>b-a).map(y=>{
+    const G=m[y], res={};
+    ES_TAIKAI.forEach(t=>{ res[t.k]=esResult(G.filter(g=>g.taikai===t.k), t.k); });
+    const w=G.filter(g=>g.wl==="勝").length, l=G.filter(g=>g.wl==="負").length;
+    const pref=(G.find(g=>g.myPref)||{}).myPref||"";
+    return { y, games:G, res, w, l, pref, rs:G.reduce((a,g)=>a+g.rs,0), ra:G.reduce((a,g)=>a+g.ra,0) };
+  });
+}
+function esStreaks(){
+  let cur=0, best={n:0}, run=[];
+  ES.games.forEach(g=>{
+    if(g.wl==="勝"){ cur++; run.push(g); if(cur>best.n) best={n:cur, from:run[0], to:g, stop:null}; }
+    else { if(best.to && best.to===run[run.length-1] && !best.stop) best.stop=g; cur=0; run=[]; }
+  });
+  return { best, cur };
+}
+const esBadgeCls = r => r==="優勝"?"v" : r==="準優勝"?"s" : r==="ベスト4"?"b4" : r==="勝ち上がり中"?"live" : "";
+const esGameLbl = g => `${g.year}年度 ${g.taikai} ${g.round}`;
+
+/* ---------- ヒーロー ---------- */
+function esRenderHero(){
+  const G=ES.games, w=G.filter(g=>g.wl==="勝").length, l=G.filter(g=>g.wl==="負").length, d=G.length-w-l;
+  const cnt=k=>ES.years.filter(y=>y.res[k]==="優勝").length;
+  const st=esStreaks(), pro=ES.grads.filter(g=>g.pro).length;
+  const rs=G.reduce((a,g)=>a+g.rs,0), ra=G.reduce((a,g)=>a+g.ra,0);
+  document.getElementById("es-hero").innerHTML=`
+    <div class="t-chips t-chips6">
+      <div class="t-chip big"><span>${escHtml(ES_SCHOOL)} 通算成績</span><b>${nf(w)}<small>勝</small>${nf(l)}<small>敗</small>${d?`${d}<small>分</small>`:""}</b><em>${G.length}試合・勝率 ${w+l?esAvgFmt(w/(w+l)):"-"}・得点 ${nf(rs)}／失点 ${nf(ra)}</em></div>
+      <div class="t-chip gold"><span>夏の甲子園優勝</span><b>${cnt("夏の甲子園")}<small>回</small></b></div>
+      <div class="t-chip gold"><span>春の甲子園優勝</span><b>${cnt("春の甲子園")}<small>回</small></b></div>
+      <div class="t-chip"><span>甲子園出場</span><b>${ES.years.reduce((a,Y)=>a+["夏の甲子園","春の甲子園"].filter(k=>Y.games.some(g=>g.taikai===k)).length,0)}<small>回</small></b></div>
+      <div class="t-chip"><span>神宮大会優勝</span><b>${cnt("神宮大会")}<small>回</small></b></div>
+      <div class="t-chip"><span>最長連勝</span><b>${st.best.n}<small>連勝</small></b></div>
+      <div class="t-chip"><span>プロ入り</span><b>${pro}<small>人</small></b></div>
+    </div>`;
 }
 
-/* よく食べるジャンル TOP10。それより下のジャンルは「その他」にまとめる（タブもグラフも同じ分け方） */
-const GM_TOP = 10, GM_OTHER = "その他";
-function gmTopGenres(){
-  /* 軒数の多い順。同じ軒数なら評価の平均が高い順 */
-  return gmGenreStats().sort((a,b)=>b.n-a.n || (b.rn?b.sum/b.rn:0)-(a.rn?a.sum/a.rn:0)).slice(0,GM_TOP).map(s=>s.g);
-}
-/* そのお店がタブ t に入るか */
-function gmInTab(r, t){ return t==="すべて" || r.genres.includes(t); }
-/* タブ：「すべて」とTOP10のジャンルはボタン。11位以下のジャンルも1つずつ、最後の「ほかのジャンル」から選べる（まとめない） */
-function gmRenderTabs(){
-  const top=gmTopGenres(), rated=GM.list.filter(r=>r.my!=null);
-  const rest=gmGenreStats().filter(s=>s.rn>0 && !top.includes(s.g)).sort((a,b)=>b.rn-a.rn || a.g.localeCompare(b.g,"ja"));
-  const all=["すべて", ...top, ...rest.map(s=>s.g)];
-  if(!all.includes(GM.tab)) GM.tab="すべて";
-  const inRest=rest.some(s=>s.g===GM.tab);
-  const cnt=t=>rated.filter(r=>gmInTab(r,t)).length;
-  const box=document.getElementById("gm-tabs");
-  box.classList.add("gm-tabs-scroll");
-  box.innerHTML=["すべて", ...top].map(t=>
-    `<button type="button" class="day-tab${t===GM.tab?" active":""}" data-t="${escHtml(t)}">${escHtml(t)}<small>${cnt(t)}</small></button>`).join("")
-    + (rest.length ? `<label class="day-tab gm-tab-more${inRest?" active":""}"><span>${inRest?escHtml(GM.tab):"ほかのジャンル"}</span>${inRest?`<small>${cnt(GM.tab)}</small>`:`<small>${rest.length}種</small>`}
-        <select aria-label="ほかのジャンルを選ぶ"><option value="">ほかのジャンル（${rest.length}種）</option>${rest.map(s=>`<option value="${escHtml(s.g)}"${s.g===GM.tab?" selected":""}>${escHtml(s.g)}（${s.rn}）</option>`).join("")}</select></label>` : "");
-  box.querySelectorAll("button.day-tab").forEach(b=>b.onclick=()=>gmSelectTab(b.dataset.t));
-  const sel=box.querySelector("select"); if(sel) sel.onchange=e=>{ if(e.target.value) gmSelectTab(e.target.value); };
-}
-function gmSelectTab(t, scroll){
-  GM.tab=t;
-  gmRenderTabs(); gmRenderRank();
-  const box=document.getElementById("gm-tabs"), on=box.querySelector(".day-tab.active");
-  if(on) box.scrollTo({left: on.offsetLeft - box.clientWidth/2 + on.offsetWidth/2, behavior:"smooth"});
-  if(scroll) box.closest(".card-section").scrollIntoView({behavior:"smooth", block:"start"});
+/* ---------- 表示の切り替え（年度／選手／記録・対戦校） ---------- */
+function esInitSubnav(){ /* ヘッダーのメニューで切り替え（esGoto） */ }
+
+/* ---------- 年度別成績（年代ごとに表示） ---------- */
+function esRenderYears(){
+  const el=document.getElementById("es-years");
+  if(!ES.years.length){ el.innerHTML=errBox("まだ試合の記録がありません。"); return; }
+  const decades=[...new Set(ES.years.map(Y=>Math.floor(Y.y/10)*10))].sort((a,b)=>b-a);
+  if(ES.decade==null || !decades.includes(ES.decade)) ES.decade=decades[0];
+  const D=ES.years.filter(Y=>Math.floor(Y.y/10)*10===ES.decade);
+  const v=D.reduce((a,Y)=>a+ES_TAIKAI.filter(t=>Y.res[t.k]==="優勝").length,0);
+  el.innerHTML=`
+    ${decades.length>1?`<div class="day-tabs es-decs" id="es-dec">${decades.map(d=>{
+      const n=ES.years.filter(Y=>Math.floor(Y.y/10)*10===d).length;
+      return `<button type="button" class="day-tab${d===ES.decade?" active":""}" data-d="${d}">${d}年代<span class="tab-sub">${n}</span></button>`; }).join("")}</div>`:""}
+    <div class="es-tbl-wrap"><table class="es-tbl">
+    <thead><tr><th class="es-sticky">年度</th>${ES_TAIKAI.map(t=>`<th>${t.s}</th>`).join("")}<th>勝敗</th></tr></thead>
+    <tbody>${D.map(Y=>`
+      <tr data-y="${Y.y}" tabindex="0" aria-label="${Y.y}年度の記録を見る"${Y.y===ES.sel?' class="on"':""}>
+        <th class="es-sticky"><span class="es-y">${Y.y}</span><span class="es-pref">${escHtml(Y.pref)}</span></th>
+        ${ES_TAIKAI.map(t=>{ const r=Y.res[t.k]; return `<td data-l="${t.s}"${r?"":' class="nil"'}>${r?`<span class="es-res ${esBadgeCls(r)}">${escHtml(r)}</span>`:`<span class="es-none">－</span>`}</td>`; }).join("")}
+        <td class="es-wl">${Y.w}-${Y.l}</td>
+      </tr>`).join("")}</tbody></table></div>
+    <p class="kk-note-s">${ES.decade}年代：${D.length}年度・優勝 ${v} 回。年度をタップすると「年度の記録」が開きます</p>`;
+  el.querySelectorAll("#es-dec .day-tab").forEach(b=>b.onclick=()=>{ ES.decade=+b.dataset.d; esRenderYears(); });
+  el.querySelectorAll("tbody tr").forEach(tr=>{
+    const go=()=>{ esShowYear(+tr.dataset.y); location.hash="#year/detail"; };
+    tr.addEventListener("click", go);
+    tr.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } });
+  });
 }
 
-function gmShopHtml(r, rank){
-  const medal=["🥇","🥈","🥉"];
-  const pos = rank<3 ? `<span class="rk-medal" aria-label="${rank+1}位">${medal[rank]}</span>` : `${rank+1}`;
-  return `<div class="gm-row">
-    <div class="gm-pos">${pos}</div>
-    <div class="gm-main">
-      <div class="gm-title">${escHtml(r.name)}</div>
-      <div class="gm-meta">${escHtml([r.muni||r.pref, r.genres[0]].filter(Boolean).join("・"))}</div>
+/* ---------- 年度の記録 ---------- */
+function esInitYearSel(){
+  const sel=document.getElementById("es-year-sel");
+  sel.parentElement.hidden = !ES.years.length;   // 試合がないときは空の選択欄を出さない
+  if(!ES.years.length){ sel.innerHTML=""; document.getElementById("es-year").innerHTML=errBox("まだ記録がありません。"); return; }
+  sel.innerHTML=ES.years.map(Y=>`<option value="${Y.y}">${Y.y}年度${Y.pref?`（${escHtml(Y.pref)}）`:""}</option>`).join("");
+  sel.onchange=()=>esShowYear(+sel.value);
+  esShowYear(ES.years[0].y);
+}
+function esShowYear(y){
+  ES.sel=y;
+  document.getElementById("es-year-sel").value=String(y);
+  const dec=Math.floor(y/10)*10;
+  if(ES.decade!=null && dec!==ES.decade){ ES.decade=dec; esRenderYears(); }
+  document.querySelectorAll(".es-tbl tbody tr").forEach(tr=>tr.classList.toggle("on", +tr.dataset.y===y));
+  const Y=ES.years.find(v=>v.y===y); if(!Y) return;
+  const groups=ES_TAIKAI.map(t=>({t, G:Y.games.filter(g=>g.taikai===t.k)})).filter(x=>x.G.length);
+  const other=Y.games.filter(g=>!ES_TAIKAI.some(t=>t.k===g.taikai));
+  if(other.length) groups.push({t:{k:"その他", s:"その他"}, G:other});
+  const seasons=["夏","秋春"].filter(s=>ES.lineup.some(l=>l.year===y && l.season===s));
+  if(!seasons.includes(ES.lineupSeason)) ES.lineupSeason=seasons[0]||"夏";
+  document.getElementById("es-year").innerHTML=`
+    <div class="stats-row">
+      <div class="stat-chip"><strong>${Y.w}</strong> 勝 <strong>${Y.l}</strong> 敗</div>
+      <div class="stat-chip">得点 <strong>${Y.rs}</strong>／失点 <strong>${Y.ra}</strong></div>
+      ${Y.pref?`<div class="stat-chip">${escHtml(Y.pref)}代表</div>`:""}
     </div>
-    <div class="gm-score">${gmScore(r.my)}</div>
+    <div class="es-fold">
+    ${groups.length?groups.map(({t,G})=>{ const r=esResult(G, t.k), w=G.filter(g=>g.wl==="勝").length, l=G.filter(g=>g.wl==="負").length; return `
+      <details class="es-tk">
+        <summary class="es-tk-head"><span class="es-tk-name">${escHtml(t.k)}</span><span class="es-tk-wl">${w}勝${l}敗</span>${r?`<span class="es-res ${esBadgeCls(r)}">${escHtml(r)}</span>`:""}</summary>
+        <div class="es-tk-body">${G.map(esGameHtml).join("")}</div>
+      </details>`; }).join(""):errBox("この年度の試合はまだありません。")}
+      <details class="es-tk">
+        <summary class="es-tk-head"><span class="es-tk-name">スタメン</span><span class="es-tk-wl">${seasons.length?seasons.map(s=>s==="夏"?"夏":"秋・春").join("／"):"記録なし"}</span></summary>
+        <div class="es-tk-body">
+        ${seasons.length?`<div class="day-tabs" id="es-lu-tabs">${seasons.map(s=>`<button type="button" class="day-tab${s===ES.lineupSeason?" active":""}" data-s="${s}">${s==="夏"?"夏":"秋・春"}</button>`).join("")}</div>
+          <div id="es-lu"></div>`:`<p class="kk-info-empty">この年度のスタメンはまだありません。</p>`}
+        </div>
+      </details>
+    </div>`;
+  document.querySelectorAll("#es-lu-tabs .day-tab").forEach(b=>b.onclick=()=>{
+    ES.lineupSeason=b.dataset.s;
+    document.querySelectorAll("#es-lu-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
+    esRenderLineup();
+  });
+  if(seasons.length) esRenderLineup();
+}
+/* ---------- 試合のMVP（打撃・投手それぞれ1人。勝っても負けても選手成績から自動で選ぶ） ---------- */
+/*
+  評価のしかた
+  打撃：①打席の中身を「得点の価値」で数える（単打0.47・二塁打0.78・三塁打1.09・本塁打1.40・四死球0.33点、凡打は−0.27点、
+          併殺・三振・失策は追加でマイナス、盗塁＋0.2）
+        ②チームの得点のうち、自分が絡んだ割合（打点は6割・ホームインは4割の手柄）を加点。1−0の決勝打は大きく、大差の試合の1打点は小さい
+        ③2点差以内の接戦なら②を1.5倍
+  投手：①平均的な投手ならこの回数で何点取られるか（全試合の失点率から計算）と比べて、何点防いだか
+        ②奪三振を少し加点
+        ③接戦（2点差以内）で勝ち投手・セーブなら加点、完投も少し加点
+*/
+/* その試合の先発投手：スタメンで投手として入っている選手（打順あり、またはDHの「投」）。いなければ最初に入力した投手 */
+function esStarterOf(no){
+  const P=ES.box.filter(b=>b.no===no && b.ip!=null); if(!P.length) return null;
+  const gm=ES.gameByNo[no];
+  const L=gm ? ES.lineup.filter(l=>l.year===gm.year && l.season===gm.season && l.pos==="投" && (/^\d+$/.test(l.order)||l.order==="投")) : [];
+  return P.find(b=>L.some(l=>esSameName(l.name,b.name))) || P[0];
+}
+function esGameMargin(no){ const g=ES.gameByNo[no]; return g ? Math.abs(g.rs-g.ra) : 99; }
+function esBatScore(b){
+  if(b.ab==null) return -Infinity;
+  const n=k=>b[k]||0, single=Math.max(0, n("h")-n("d2")-n("d3")-n("hr")), outs=Math.max(0, n("ab")-n("h"));
+  const lw = 0.47*single + 0.78*n("d2") + 1.09*n("d3") + 1.40*n("hr") + 0.33*n("bb") + 0.2*n("sb") + 0.05*n("sh")
+           - 0.27*outs - 0.37*n("dp") - 0.05*n("so") - 0.5*n("e");
+  const gm=ES.gameByNo[b.no], team=gm ? gm.rs : 0;
+  /* 得点への関与：打点は6割、ホームインは4割の手柄として数える（本塁打は自分で還るので打点＋得点で1点ぶん） */
+  const share = team>0 ? Math.min(1, (0.6*n("rbi") + 0.4*Math.max(n("r"), n("hr")))/team) : 0;
+  return lw + share*2*(esGameMargin(b.no)<=2 ? 1.5 : 1);
+}
+function esRaPerOut(){
+  if(ES._raOut!=null) return ES._raOut;
+  let o=0, r=0; ES.box.forEach(b=>{ if(b.ip==null) return; o+=Math.round(b.ip*3); r+= b.pr!=null?b.pr:(b.er||0); });
+  return ES._raOut = o>0 ? r/o : 4/27;
+}
+function esPitScore(b, nP){
+  if(b.ip==null) return -Infinity;
+  const outs=Math.round(b.ip*3), ra=b.pr!=null?b.pr:(b.er||0), close=esGameMargin(b.no)<=2;
+  const saved = outs*esRaPerOut() - ra;
+  return saved + 0.08*(b.k||0) + ((b.dec==="勝"||b.dec==="S") ? (close?1:0.3) : b.dec==="H" ? (close?0.7:0.2) : 0) + (nP===1?0.5:0);
+}
+function esBuildMvp(){
+  ES.mvp={}; ES._raOut=null;
+  const by={}; ES.box.forEach(b=>(by[b.no]=by[b.no]||[]).push(b));
+  Object.keys(by).forEach(no=>{
+    const B=by[no], nP=B.filter(b=>b.ip!=null).length;
+    const top=f=>{ let best=null, bs=-Infinity; B.forEach(b=>{ const v=f(b); if(v>bs){ bs=v; best=b; } }); return {best, bs}; };
+    const bt=top(esBatScore), pt=top(b=>esPitScore(b,nP));
+    ES.mvp[no]={ bat: bt.best && bt.bs>0 && (bt.best.h||bt.best.rbi||bt.best.bb) ? bt.best : null, pit: pt.best && pt.bs>-Infinity ? pt.best : null };
+  });
+}
+const esIsMvp = (b, kind) => !!(ES.mvp && ES.mvp[b.no] && ES.mvp[b.no][kind]===b);
+function esMvpDesc(b, kind){
+  const P=[];
+  if(kind==="pit"){
+    const nP=ES.box.filter(x=>x.no===b.no && x.ip!=null).length, ra=b.pr!=null?b.pr:b.er;
+    P.push(`${esIPfmt(b.ip)}回`); if(b.k) P.push(`${b.k}奪三振`); if(ra!=null) P.push(`${ra}失点`);
+    if(nP===1) P.push(ra===0?"完封":"完投");
+    if(b.dec) P.push(b.dec==="勝"?"勝利":b.dec==="敗"?"敗戦":b.dec==="H"?"ホールド":"セーブ");
+  } else {
+    P.push(`${b.ab}打数${b.h||0}安打`); if(b.hr) P.push(`${b.hr}本塁打`); if(b.d3) P.push(`三塁打${b.d3>1?b.d3:""}`); if(b.d2) P.push(`二塁打${b.d2>1?b.d2:""}`);
+    if(b.rbi) P.push(`${b.rbi}打点`); if(b.sb) P.push(`${b.sb}盗塁`);
+  }
+  return P.join(" ");
+}
+/* MVPの見出し（新聞の見出し風のひとこと） */
+function esMvpTitle(b, kind){
+  const gm=ES.gameByNo[b.no], lost=gm && gm.wl==="負";
+  if(kind==="pit"){
+    const nP=ES.box.filter(x=>x.no===b.no && x.ip!=null).length, ra=b.pr!=null?b.pr:b.er, cg=nP===1;
+    if(cg && b.ha===0) return "ノーヒットノーラン達成！";
+    if(cg && ra===0) return `${b.ha!=null?b.ha+"安打":""}完封`;
+    if((b.k||0)>=10) return lost ? `${b.k}奪三振も実らず` : `${b.k}奪三振の快投`;
+    if(cg && b.ip>9) return `延長${Math.floor(b.ip)}回を一人で投げ抜く`;
+    if(cg) return lost ? "最後まで一人で投げ抜いた" : "完投で勝利をつかむ";
+    const ipT = (()=>{ const o=Math.round(b.ip*3), w=Math.floor(o/3), f=o%3; return `${w}回${f?`${f}/3`:""}`; })();
+    const raT = ra==null ? "" : ra===0 ? "無失点" : `${ra}失点`;
+    if(esStarterOf(b.no)===b){
+      if(b.dec==="勝") return raT ? `先発${ipT}を${raT}で勝利` : `先発${ipT}で勝利`;
+      if(lost) return "負けはしたが粘りの投球";
+      return raT ? `先発${ipT}を${raT}` : `先発として${ipT}`;
+    }
+    if(b.dec==="S") return "最後を締めた守護神";
+    if(b.dec==="H") return "リードを守ってつないだ";
+    if(b.dec==="勝") return "流れを変えた好リリーフ";
+    if(lost) return "負けはしたが粘りのリリーフ";
+    return raT ? `${ipT}を${raT}の好救援` : `${ipT}の好救援`;
+  }
+  const h=b.h||0, hr=b.hr||0, d2=b.d2||0, d3=b.d3||0, single=h-d2-d3-hr;
+  const pre = lost ? "意地の" : "";
+  if(single>0 && d2>0 && d3>0 && hr>0) return "サイクルヒット達成！";
+  if(hr>=2) return `1試合${hr}本のアーチ`;
+  if(h>=4) return lost ? `意地の${h}安打` : `${h}安打の固め打ち`;
+  if((b.rbi||0)>=4) return `${b.rbi}打点の大暴れ`;
+  if(hr===1 && (b.rbi||0)>=2) return `${pre}一発含む${b.rbi}打点`;
+  if(h===3) return `${pre}猛打賞`;
+  if(hr===1) return lost ? "意地の一発" : "一発で流れを呼ぶ";
+  if((b.sb||0)>=2) return "足でかき回す";
+  if((b.rbi||0)>=2) return `${pre}${b.rbi}打点の勝負強さ`;
+  if((b.bb||0)>=2) return "しぶとく出塁";
+  if(h<=1) return lost ? "意地の一打" : "チームを勢いづける一打";
+  return lost ? `意地の${h}安打` : `${h}安打の活躍`;
+}
+function esMvpHtml(no){
+  const M=ES.mvp && ES.mvp[no]; if(!M || (!M.bat && !M.pit)) return "";
+  const gm=ES.gameByNo[no];
+  const one=(b,kind,lbl)=>{
+    if(!b) return "";
+    const l=gm && ES.lineup.find(x=>x.year===gm.year && x.season===gm.season && esSameName(x.name,b.name));
+    const sub=l ? [l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ") : "";
+    return `<div class="es-mvp-row"><span class="es-mvp-b ${kind}">${lbl}</span>${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos, kind==="pit"&&esStarterOf(b.no)!==b?"rp":"")}">${escHtml(l.pos)}</span>`:""}<b>${escHtml(b.name)}</b>${sub?`<small>${sub}</small>`:""}<span class="es-mvp-d"><b class="es-mvp-t">${escHtml(esMvpTitle(b,kind))}</b>${escHtml(esMvpDesc(b,kind))}</span></div>`;
+  };
+  return `<div class="es-mvp">${one(M.bat,"bat","打撃MVP")}${one(M.pit,"pit","投手MVP")}</div>`;
+}
+function esGameHtml(g){
+  const ls=ES.inn[g.no];
+  const mv=(ES.mvp && ES.mvp[g.no]) || {};
+  const mvs=[mv.bat?`打 ${mv.bat.name}`:"", mv.pit?`投 ${mv.pit.name}`:""].filter(Boolean).join("／");
+  const meta=[g.date?fmtMD(g.date):"", g.oppPref, g.power?`戦力${g.power}`:"", g.note].filter(Boolean).join("・");
+  const row=`<span class="es-rd">${escHtml(g.round)}</span>
+    <span class="es-opp"><span class="es-opp-name">${escHtml(g.opp)}</span><span class="es-opp-meta">${escHtml(meta)}</span>${mvs?`<span class="es-opp-meta es-opp-mvp">MVP ${escHtml(mvs)}</span>`:""}</span>
+    <span class="es-score ${g.wl==="勝"?"w":g.wl==="負"?"l":""}"><span class="es-wlb">${g.wl}</span>${g.rs}-${g.ra}</span>`;
+  const box=esBoxScore(g.no);
+  if((!ls || !ls.length) && !box) return `<div class="es-game">${row}</div>`;
+  return `<details class="es-game"><summary>${row}</summary>${esMvpHtml(g.no)}${ls&&ls.length?esLineScore(ls):""}${box}</details>`;
+}
+function esLineScore(rows){
+  const ord=s=>s==="先攻"?0:s==="後攻"?1:2;
+  const R=rows.slice().sort((a,b)=>ord(a.side)-ord(b.side));
+  let n=9; R.forEach(r=>r.inns.forEach((v,i)=>{ if(v!=="" && i+1>n) n=i+1; }));
+  const cell=v=>{ const t=String(v||"").trim(); return /^[xX✕×]$/.test(t)?"✕":escHtml(esHalf(t)); };
+  return `<div class="es-ls-wrap"><table class="es-ls">
+    <thead><tr><th></th>${Array.from({length:n},(_,i)=>`<th>${i+1}</th>`).join("")}<th class="es-ls-r">R</th><th>H</th><th>E</th></tr></thead>
+    <tbody>${R.map(r=>`<tr class="${r.team===ES_SCHOOL?"me":""}"><th>${escHtml(r.team||r.side)}</th>${r.inns.slice(0,n).map(v=>`<td>${cell(v)}</td>`).join("")}
+      <td class="es-ls-r">${cell(r.R)}</td><td>${cell(r.H)}</td><td>${cell(r.E)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+/* スタメンの名前（名字だけでもOK）から卒業生を探す：名字＋入学年度（年度−学年+1）、同じ名字が複数なら守備で絞る */
+const esPosN = p => /^[左中右外]$/.test(p) ? "外" : p;
+function esFindGrad(l){
+  const ent = /^\d$/.test(l.grade) ? l.year-(+l.grade)+1 : null;
+  const sur = n => String(n||"").split(/[\s　]+/)[0];
+  let c=ES.grads.filter(g=>(g.name===l.name || sur(g.name)===l.name) && (ent==null || g.year===ent));
+  if(c.length>1){ const c2=c.filter(g=>esPosN(l.pos)===esPosN(g.pos) || esPosN(l.pos)===esPosN(g.pos0)); if(c2.length) c=c2; }
+  return c[0]||null;
+}
+/* 守備位置アイコンの色分け：投手=赤、捕手=青、内野=黄、外野=緑 */
+/* 守備位置アイコンの色（パワプロに合わせる）：先発=赤、中継ぎ・抑え=ピンク、捕手=青、内野=黄、外野=黄緑
+   role に "rp" を渡すと、投手を中継ぎ色（ピンク）にする（控えの投手・救援で投げた投手） */
+function esPosCls(p, role){
+  p=String(p||"");
+  if(p==="投") return role==="rp" ? "p-rel" : "p-pit";
+  if(p==="捕") return "p-cat";
+  if(/^[一二三遊]$/.test(p)) return "p-inf";
+  if(/^[左中右外]$/.test(p)) return "p-of";
+  return "p-etc";
+}
+/* 背番号を丸数字に（1〜50。それ以上は #番号） */
+function esCircled(n){
+  n=+n; if(!n) return "";
+  if(n<=20) return String.fromCharCode(0x2460+n-1);
+  if(n<=35) return String.fromCharCode(0x3251+n-21);
+  if(n<=50) return String.fromCharCode(0x32B1+n-36);
+  return `#${n}`;
+}
+/* ===== 選手の成績（選手成績シートを足し算して出す） ===== */
+const esSur = n => String(n||"").split(/[\s　]+/)[0];
+const esSameName = (a,b) => a===b || esSur(a)===b || a===esSur(b);
+const esSeasonKey = r => r.year*2 + (r.season==="夏"?0:1);
+const esPeriodLbl = (y,s) => `${y}${s==="夏"?"夏":"秋春"}`;
+/* 選手を「名前＋入学年度」で特定。卒業生 g があればその名前と入学年度を使う */
+function esIdent(l, g){
+  if(g) return { name:g.name, entry:g.year };
+  const entry = /^\d$/.test(l.grade) ? l.year-(+l.grade)+1 : null;
+  return { name:l.name, entry };
+}
+/* その選手の試合ごとの記録（古い順） */
+function esBoxOf(id){
+  return ES.box.filter(b=>{
+    if(!esSameName(b.name, id.name)) return false;
+    const gm=ES.gameByNo[b.no]; if(!gm) return false;
+    return id.entry==null || (gm.year>=id.entry && gm.year<=id.entry+2);
+  }).sort((a,b)=>a.no-b.no);
+}
+/* 卒業生の通算：空欄の項目だけ、選手成績の合計で埋める */
+function esFillFromBox(g){
+  const B=esBoxOf({name:g.name, entry:g.year}); if(!B.length) return;
+  const t=esAgg(B);
+  /* 先発＝その試合で最初に入力した投手、完投＝1人で投げ切った、完封＝完投で失点0、ノーノー＝完投で被安打0 */
+  let gs=0, cg=0, sho=0, nh=0;
+  B.forEach(b=>{
+    if(b.ip==null) return;
+    const P=ES.box.filter(x=>x.no===b.no && x.ip!=null), gm=ES.gameByNo[b.no];
+    const sp=gm && ES.lineup.find(l=>l.year===gm.year && l.season===gm.season && (/^\d+$/.test(l.order)||l.order==="投") && l.pos==="投");
+    const starter=(sp && P.find(x=>esSameName(x.name, sp.name))) || P[0];
+    if(starter===b) gs++;
+    if(P.length===1){ cg++; if(gm && gm.ra===0) sho++; if(b.ha===0) nh++; }
+  });
+  const set=(k,v)=>{ if(g[k]==null && v!=null){ g[k]=v; g.auto=true; } };
+  if(t.bat){ set("games",t.g); set("avg",t.avg); set("hr",t.hr); set("rbi",t.rbi); set("sb",t.sb); set("ops",t.ops);
+    set("pa",t.ab+t.bb+t.sh); set("h",t.h); set("r",t.r); set("d2",t.d2); set("d3",t.d3); set("bbb",t.bb); set("sh",t.sh); set("obp",t.obp); set("slg",t.slg); }
+  else set("games",t.g);
+  set("mvpB", B.filter(b=>esIsMvp(b,"bat")).length || null);
+  set("mvpP", B.filter(b=>esIsMvp(b,"pit")).length || null);
+  if(t.pit){ set("app",t.app); set("gs",gs); set("w",t.w); set("l",t.l); set("sv",t.sv); set("cg",cg); set("sho",sho); set("nh",nh);
+    set("ip",t.ip); set("k",t.k); set("bb",t.pbb); set("era",t.era); set("ha",t.ha); set("hd",t.hd||null);
+    if(t.outs>0){ set("k9",t.k*27/t.outs); set("whip",(t.ha+t.pbb)*3/t.outs); } }
+}
+/* 打率などの規定：打席（打数＋四死球＋犠打）が ES_BAT_MIN 以上の野手 */
+function esBatQ(g){ return (g.pa!=null ? g.pa : (g.games||0)*4) >= ES_BAT_MIN && g.pos!=="投"; }
+function esGradDerived(g){
+  g.batScore = (esBatQ(g) && g.avg!=null)
+    ? g.avg*100 + (g.hr||0)*3 + (g.rbi||0) + (g.sb||0) : null;
+  g.pitQual = g.era!=null && (g.ip!=null ? g.ip>=ES_PIT_IP_MIN : ((g.app||g.games||0)>=10));
+}
+const esDecCls = d => d==="勝"?"w":d==="敗"?"l":d==="H"?"h":"s";
+/* 勝敗の表示：12-3 2S 5H */
+const esWLtxt = t => `${t.w}-${t.l}${t.sv?` ${t.sv}S`:""}${t.hd?` ${t.hd}H`:""}`;
+function esAgg(B){
+  const t={ g:0, ab:0, r:0, h:0, d2:0, d3:0, hr:0, rbi:0, so:0, sb:0, bb:0, sh:0, dp:0, e:0, app:0, outs:0, ha:0, er:0, k:0, pbb:0, w:0, l:0, sv:0, hd:0, bat:false, pit:false };
+  B.forEach(b=>{
+    t.g++;
+    if(b.ab!=null){ t.bat=true; t.ab+=b.ab; t.h+=b.h||0; t.hr+=b.hr||0; t.rbi+=b.rbi||0; t.sb+=b.sb||0; t.bb+=b.bb||0;
+      t.r+=b.r||0; t.d2+=b.d2||0; t.d3+=b.d3||0; t.so+=b.so||0; t.sh+=b.sh||0; t.dp+=b.dp||0; t.e+=b.e||0; }
+    if(b.ip!=null){ t.pit=true; t.app++; t.outs+=Math.round(b.ip*3); t.ha+=b.ha||0; t.er+=b.er||0; t.k+=b.k||0; t.pbb+=b.pbb||0;
+      if(b.dec==="勝") t.w++; else if(b.dec==="敗") t.l++; else if(b.dec==="S") t.sv++; else if(b.dec==="H") t.hd++; }
+  });
+  t.avg = t.ab>0 ? t.h/t.ab : null;
+  /* 出塁率は (安打+四死球)/(打数+四死球)、長打率は 塁打/打数（犠飛は記録しないので含めない） */
+  t.obp = (t.ab+t.bb)>0 ? (t.h+t.bb)/(t.ab+t.bb) : null;
+  t.slg = t.ab>0 ? (t.h + t.d2 + t.d3*2 + t.hr*3)/t.ab : null;
+  t.ops = (t.obp!=null && t.slg!=null) ? t.obp+t.slg : null;
+  t.era = t.outs>0 ? t.er*27/t.outs : null;
+  t.ip = t.outs/3;
+  return t;
+}
+const esF = (v,fn) => v==null ? "-" : (fn?fn(v):v);
+function esCellsHtml(cells){ return `<div class="es-cells">${cells.map(([k,v])=>`<div class="es-cell"><span>${k}</span><b>${escHtml(v)}</b></div>`).join("")}</div>`; }
+function esAggCells(t, pit){
+  return esCellsHtml(pit
+    ? [["防御率", esF(t.era,v=>v.toFixed(2))], ["勝敗", esWLtxt(t)], ["奪三振", t.k], ["投球回", esIPfmt(t.ip)]]
+    : [["打率", esF(t.avg,esAvgFmt)], ["本塁打", t.hr], ["打点", t.rbi], ["盗塁", t.sb]]);
+}
+/* 時期ごとの表 */
+function esPeriodTable(B, pit, curKey){
+  const per={}; B.forEach(b=>{ const gm=ES.gameByNo[b.no], k=gm.year*2+(gm.season==="夏"?0:1); (per[k]=per[k]||{y:gm.year,s:gm.season,B:[]}).B.push(b); });
+  const P=Object.keys(per).map(Number).sort((a,b)=>a-b).map(k=>({k, ...per[k], t:esAgg(per[k].B)}));
+  if(!P.length) return "";
+  const head = pit ? ["登板","勝敗","投球回","奪三振","防御率"] : ["試合","打率","OPS","本","点","盗"];
+  const row = t => pit
+    ? [t.app, esWLtxt(t), esIPfmt(t.ip), t.k, esF(t.era,v=>v.toFixed(2))]
+    : [t.g, `${esF(t.avg,esAvgFmt)}<small>${t.h}/${t.ab}</small>`, esF(t.ops,esAvgFmt), t.hr, t.rbi, t.sb];
+  return `<div class="es-car-sub">時期ごとの成績</div>
+    <div class="es-st-wrap"><table class="es-st-tbl"><thead><tr><th>時期</th>${head.map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+    <tbody>${P.map(p=>`<tr${p.k===curKey?' class="cur"':""}><th>${esPeriodLbl(p.y,p.s)}</th>${row(p.t).map(v=>`<td>${v}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+/* 試合ごとの成績（折りたたみ） */
+/* 相手の戦力（S〜G）別の成績 */
+const ES_PW = ["S","A","B","C","D","E","F","G"];
+function esRankTable(B, pit){
+  const per={}; B.forEach(b=>{ const gm=ES.gameByNo[b.no]; if(!gm || !gm.power) return; (per[gm.power]=per[gm.power]||[]).push(b); });
+  const ks=ES_PW.filter(k=>per[k]); if(!ks.length) return "";
+  const head = pit ? ["登板","勝敗","投球回","奪三振","防御率"] : ["試合","打率","OPS","本","点"];
+  const row = t => pit
+    ? [t.app, esWLtxt(t), esIPfmt(t.ip), t.k, esF(t.era,v=>v.toFixed(2))]
+    : [t.g, `${esF(t.avg,esAvgFmt)}<small>${t.h}/${t.ab}</small>`, esF(t.ops,esAvgFmt), t.hr, t.rbi];
+  return `<div class="es-car-sub">相手の戦力別の成績</div>
+    <div class="es-st-wrap"><table class="es-st-tbl es-rank-tbl"><thead><tr><th>戦力</th>${head.map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+    <tbody>${ks.map(k=>`<tr><th><span class="es-pw pw-${k}">${k}</span></th>${row(esAgg(per[k])).map(v=>`<td>${v}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+function esGameLog(B, pit, title){
+  if(!B.length) return "";
+  const line = b => pit && b.ip!=null
+    ? `${esIPfmt(b.ip)}回 ${b.er!=null?b.er:"-"}自責 ${b.k!=null?b.k:"-"}K${b.dec?`<b class="es-dec ${esDecCls(b.dec)}">${b.dec}</b>`:""}`
+    : b.ab!=null ? `${b.ab}打数${b.h||0}安打${b.hr?` <b>${b.hr}本</b>`:""}${b.d3?` 三塁打${b.d3>1?b.d3:""}`:""}${b.d2?` 二塁打${b.d2>1?b.d2:""}`:""}${b.rbi?` ${b.rbi}打点`:""}${b.bb?` ${b.bb}四死球`:""}${b.sb?` ${b.sb}盗塁`:""}` : "出場";
+  return `<details class="es-glog"><summary>${escHtml(title)}（${B.length}試合）</summary>
+    <ul>${B.map(b=>{ const gm=ES.gameByNo[b.no]; return `<li><span class="es-glog-g">${escHtml(`${gm.year} ${gm.taikai.replace(/^(夏の|秋の|春の)/,"")} ${gm.round}`)}<small>vs ${escHtml(gm.opp)}</small></span><span class="es-glog-s">${esIsMvp(b, pit && b.ip!=null ? "pit" : "bat")?`<span class="es-mvp-b sm">MVP</span>`:""}${line(b)}</span></li>`; }).join("")}</ul></details>`;
+}
+/* 選手カード。l=スタメンの行（年度タブから開いたとき）、g=卒業生 */
+/* ---------- 卒業時の能力（パワプロ風） ---------- */
+/* ランク：S 90〜／A 80〜／B 70〜／C 60〜／D 50〜／E 40〜／F 20〜／G 1〜 */
+function esRankOf(v){ return v>=90?"S":v>=80?"A":v>=70?"B":v>=60?"C":v>=50?"D":v>=40?"E":v>=20?"F":"G"; }
+const esSplitList = t => String(t||"").split(/[、,，・\/／\s]+/).map(x=>x.trim()).filter(Boolean);
+/* 変化球の方向（右投げ基準）：up=ストレート系 L=シュート DL=シンカー D=フォーク DR=カーブ R=スライダー */
+function esPitchDir(n){
+  if(/ナックルカーブ|Dスライダー|スラーブ|カーブ|ドロップ/.test(n)) return "DR";
+  if(/Vスライダー|フォーク|SFF|スプリット|チェンジアップ|パーム|ナックル/.test(n)) return /サークル/.test(n) ? "DL" : "D";
+  if(/スライダー|カット|スラッター/.test(n)) return "R";
+  if(/シュート/.test(n)) return "L";
+  if(/シンカー|スクリュー|サークル/.test(n)) return "DL";
+  return "UP";   // ツーシーム・ムービング・ジャイロ・超スローなど（第2ストレート）
+}
+function esPitchChart(P, lefty){
+  const dirs={ L:[], DL:[], D:[], DR:[], R:[], UP:[] };
+  P.forEach(p=>{ let d=p.dir||esPitchDir(p.name); if(lefty) d={L:"R",R:"L",DL:"DR",DR:"DL"}[d]||d; dirs[d].push(p); });
+  const cx=160, cy=42, cell=11, gap=2, r0=14;
+  const vec={ L:[-1,0], R:[1,0], D:[0,1], DL:[-0.7071,0.7071], DR:[0.7071,0.7071] };
+  let svg="";
+  Object.keys(vec).forEach(d=>{
+    const [vx,vy]=vec[d], L=dirs[d], lv=Math.max(0,...L.map(p=>p.lv)), ang=Math.atan2(vy,vx)*180/Math.PI;
+    for(let i=0;i<7;i++){
+      const t=r0+i*(cell+gap)+cell/2, x=cx+vx*t, y=cy+vy*t;
+      const on=i<lv, col= on ? (i>=5?"#e8343f":i>=3?"#f0602a":"#f59b16") : "#5c9ef0";
+      svg+=`<rect x="${(x-cell/2).toFixed(1)}" y="${(y-5).toFixed(1)}" width="${cell}" height="10" rx="2" fill="${col}" stroke="${on?"#b8371b":"#2a64c8"}" stroke-width="1" transform="rotate(${ang.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`;
+    }
+    if(L.length){
+      /* 横の腕は先端の上、斜め・下は先端の外側に名前 */
+      const horiz=Math.abs(vy)<0.1, t=r0+7*(cell+gap)+(horiz?-4:0); let x=cx+vx*t; const y=cy+vy*t+(horiz?-10:16);
+      const anchor = horiz ? (vx<0?"start":"end") : "middle";
+      /* 斜め・下は先端の下に中央ぞろえ。長い名前でも枠からはみ出さないように寄せる */
+      if(!horiz){ const hw=L.map(p=>p.name).join("・").length*5.6+2; x=Math.max(hw, Math.min(320-hw, x)); }
+      svg+=`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" class="es-pc-t">${escHtml(L.map(p=>p.name).join("・"))}</text>`;
+    }
+  });
+  const up=dirs.UP.map(p=>p.name);
+  svg+=`<path d="M${cx-6} ${cy-14} L${cx} ${cy-22} L${cx+6} ${cy-14} Z" fill="#f08a24"/><text x="${cx}" y="${cy-27}" text-anchor="middle" class="es-pc-t">ストレート${up.length?"・"+escHtml(up.join("・")):""}</text>`;
+  svg+=`<circle cx="${cx}" cy="${cy}" r="9" fill="#fff" stroke="#4a8fe0" stroke-width="2"/>`;
+  return `<svg class="es-pc" viewBox="0 0 320 182" role="img" aria-label="変化球">${svg}</svg>`;
+}
+function esParseAbil(o){
+  /* 守備力は位置ごと（投〜外）、変化球は方向ごとの列 */
+  const def={}; ["投","捕","一","二","三","遊","外"].forEach(p=>{ const v=esInt(F(o,p)); if(v!=null) def[p]=v; });
+  const pitches=[]; const st2=F(o,"第2ストレート"); if(st2) pitches.push({dir:"UP", name:st2, lv:0});
+  /* 変化球：系統ごとに「球種」と「変化量」の2列（例：カーブ系＝Dスライダー、カーブ変化量＝2） */
+  [["スライダー","R"],["カーブ","DR"],["フォーク","D"],["シンカー","DL"],["シュート","L"]].forEach(([k,dir])=>{
+    const nm=F(o,k+"系"), lv=esInt(F(o,k+"変化量"));
+    if(nm || lv) pitches.push({dir, name:nm||k, lv:lv||1});
+  });
+  return { apt:F(o,"適性"), def,
+    traj:esInt(F(o,"弾道")), meet:esInt(F(o,"ミート")), pow:esInt(F(o,"パワー")), run:esInt(F(o,"走力")),
+    arm:esInt(F(o,"肩力")), catch_:esInt(F(o,"捕球")),
+    velo:esInt(F(o,"球速")), ctl:esInt(F(o,"コントロール")), sta:esInt(F(o,"スタミナ")),
+    pitches, skillsF:F(o,"野手特能")||F(o,"特能"), skillsP:F(o,"投手特能"),
+    skills:[F(o,"野手特能")||F(o,"特能"), F(o,"投手特能")].filter(Boolean).join("、"),
+    /* ランク特能は A〜G。それ以外の文字（例：チャンスの列に「勝負師」）は金特として「★勝負師」で持つ */
+    rk:Object.fromEntries(ES_RANK_SK.map(k=>{ const v=esHalf(F(o,k)).trim();
+      return [k, /^[A-Ga-g]$/.test(v) ? v.toUpperCase() : v ? "★"+v.replace(/^[★☆]/,"") : ""]; }).filter(([,v])=>v)) };
+}
+/* ランクで記録する特能（能力シートの列名） */
+const ES_RANK_P = ["対ピンチ","対左打者","打たれ強さ","ケガしにくさ","ノビ","クイック","回復"];
+const ES_RANK_F = ["チャンス","対左投手","キャッチャー","ケガしにくさ","盗塁","走塁","送球","回復"];
+const ES_RANK_SK = [...new Set([...ES_RANK_F, ...ES_RANK_P])];
+/* 「特能」セルの赤特（よくあるもの）。ここにない赤特は先頭に▼か末尾に×を付ければ赤になる */
+/* 特能の色分け（パワプロ公式の一覧どおり。リストにないものは青特）
+   出典：Game8「パワプロ2026-2027 特殊能力一覧」の金特・赤特・緑特一覧 */
+const esSkNorm = x => String(x||"").trim().replace(/[×✕]/g,"✕").replace(/[○〇◯]/g,"◯").replace(/[Ａ-Ｇ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+const ES_GOLD_SET  = new Set(["威圧感", "ギアチェンジ", "内角無双", "ド根性", "引っ張り屋", "トリックスター", "バズーカ送球", "エースキラー", "ロケットスタート", "低球必打", "高球必打", "内角必打", "怪童", "怪物球威", "ガソリンタンク", "驚異の切れ味", "強心臓", "精密機械", "走者釘付", "鉄腕", "ドクターK", "不屈の魂", "変幻自在", "本塁打厳禁", "アーチスト", "安打製造機", "一球入魂", "気迫ヘッド", "球界の頭脳", "恐怖の満塁男", "切り込み隊長", "芸術的流し打ち", "高速ベースラン", "高速レーザー", "ささやき戦術", "重戦車", "勝負師", "ストライク送球", "代打の神様", "鉄の壁", "電光石火", "伝説のサヨナラ男", "左キラー", "魔術師", "鉄人", "広角砲", "メッタ打ち", "精神的支柱", "終盤力", "火事場の馬鹿力", "大番狂わせ", "外角必打", "勝利の星", "左腕キラー", "主砲キラー", "ハイスピンジャイロ", "逆襲", "ヒートアップ", "渾身の決勝打", "ディレイドアーム", "完全燃焼", "超投打躍動", "闘魂", "トップギア", "クロスキャノン", "暴れ球", "神の子", "世界の代打王", "世界の盗塁王", "ケンカ投法", "牛若丸", "忍者", "世界の王", "打撃の神様", "小坂ゾーン", "草魂", "火の玉ストレート", "怪物", "世界の代打男", "レッドスター", "ゴジラ", "SHO-TIME", "ID野球の申し子", "Big Fly"]);
+const ES_RED_SET   = new Set(["エラー", "三振", "併殺", "扇風機", "ムード✕", "一発", "ガラスのハート", "軽い球", "シュート回転", "スロースターター", "寸前", "短気", "ノミの心臓", "負け運", "四球", "乱調", "国際大会✕", "対ランナー✕", "雑草魂G", "雑草魂F", "悲劇のエース", "平成の怪物G", "平成の怪物F", "抜け球", "対ランナー", "ボール先行"]);
+const ES_GREEN_SET = new Set(["調子安定", "調子極端", "速球中心", "変化球中心", "投球位置左", "投球位置右", "テンポ◯", "野手調子安定", "野手調子極端", "人気者", "強振多用", "ミート多用", "積極打法", "慎重打法", "積極走塁", "積極守備", "チームプレイ◯", "チームプレイ✕", "選球眼", "積極盗塁", "慎重盗塁", "スーパーカートリオ", "ブンブン丸"]);
+const ES_RED_SK   = { test: x => ES_RED_SET.has(esSkNorm(x)) };
+const ES_GREEN_SK = { test: x => ES_GREEN_SET.has(esSkNorm(x)) };
+const ES_GOLD_SK  = { test: x => ES_GOLD_SET.has(esSkNorm(x)) };
+/* 特能1つの色：gold（金）／green（緑）／red（赤）／blue（青）／plain（ふつう）。先頭の★＝金、▼＝赤、◆＝緑で手動指定もできる */
+function esSkillClass(raw){
+  let x=esSkNorm(raw), cls="";
+  if(/^[★☆]/.test(x)){ x=x.slice(1); cls="gold"; } else if(/^[▼▽]/.test(x)){ x=x.slice(1); cls="red"; } else if(/^[◆◇]/.test(x)){ x=x.slice(1); cls="green"; }
+  let nm=x, rk="";
+  if(!ES_GOLD_SK.test(x) && !ES_GREEN_SK.test(x) && !ES_RED_SK.test(x)){
+    /* 末尾のランク：A〜G はランク特能（チャンス・ノビなど）だけ、◯・◎・✕ はどの特能でも */
+    const m=x.match(/^(.*?)([A-G])$/), m2=x.match(/^(.*?)([◎◯✕])$/);
+    if(m && ES_RANK_SK.includes(m[1])){ nm=m[1]; rk=m[2]; }
+    else if(m2 && m2[1]){ nm=m2[1]; rk=m2[2]; }
+  }
+  if(!cls){
+    if(ES_GOLD_SK.test(x)) cls="gold";
+    else if(ES_GREEN_SK.test(x)) cls="green";
+    else if(ES_RED_SK.test(x)) cls="red";
+    else if(rk) cls = /[AB◎◯]/.test(rk) ? "blue" : /[CDE]/.test(rk) ? "plain" : "red";
+    else cls="blue";
+  }
+  return {nm, rk, cls};
+}
+/* ランク特能の色：A・Bは青特、C〜Eはふつう、F・Gは赤特、文字なら金特 */
+const esRankCls = r => /^★/.test(r) ? "gold" : /^[AB]$/.test(r) ? "blue" : /^[FG]$/.test(r) ? "red" : "";
+function esRankGrid(g, keys){
+  const L=keys.filter(k=>g.rk && g.rk[k]); if(!L.length) return "";
+  return `<div class="es-rks">${L.map(k=>`<div class="es-rkc"><span>${k}</span><b class="rkt-${g.rk[k]}">${g.rk[k]}</b></div>`).join("")}</div>`;
+}
+/* 特能チップ：★付き＝金、赤特＝赤、末尾のランク／記号で色分け（A・B・◎・◯＝青、C・D＝灰、E〜G・×＝赤） */
+function esSkillChips(list){
+  return esSplitList(list).map(x=>{ const k=esSkillClass(x);
+    return `<span class="pc-sk ${k.cls}">${escHtml(k.nm)}${k.rk?`<b>${escHtml(k.rk)}</b>`:""}</span>`; }).join("");
+}
+/* ---------- 選手カード（パワプロの選手画面風）：成績・能力・守備・プロフィール ---------- */
+function esPwNum(g){   // スタメン表から背番号（最後の時期のもの）
+  const L=ES.lineup.filter(l=>l.num && esFindGrad(l)===g).sort((a,b)=>a.year-b.year||(a.season==="夏"?0:1)-(b.season==="夏"?0:1));
+  return L.length ? L[L.length-1].num : "";
+}
+const ES_ABIL_KEYS=["apt","def","traj","meet","pow","run","arm","fld","catch_","velo","ctl","sta","pitches","skills","skillsF","skillsP","rk"];
+const esPwRk = (r, sm) => `<b class="pw2-rk rk-${r}${sm?" sm":""}">${r}</b>`;
+/* 能力タブの中身。prev があれば入学時からの伸びを小さく出す */
+function esAbilityParts(g, prev){
+  const dif=k=> (prev && prev[k]!=null && g[k]!=null && g[k]!==prev[k]) ? `<small class="${g[k]>prev[k]?"up":"dn"}">${g[k]>prev[k]?"+":""}${g[k]-prev[k]}</small>` : "";
+  /* 能力1行：名前・ランク・数値・バー */
+  const row=(lbl,k)=>{ const v=g[k]; if(v==null) return ""; const r=esRankOf(v);
+    return `<div class="pc-ab"><span class="pc-ab-l">${lbl}</span><b class="pc-rk rk-${r}">${r}</b><span class="pc-ab-v">${v}${dif(k)}</span><span class="pc-bar"><i class="rk-${r}" style="width:${Math.min(100,v)}%"></i></span></div>`; };
+  const pitDefault = g.pos!=="投" && !g.apt && (g.ctl||0)<=1 && (g.sta||0)<=1 && !(g.pitches&&g.pitches.length) && !g.skillsP;
+  const hasP = !pitDefault && (g.velo!=null || g.ctl!=null || g.sta!=null || (g.pitches&&g.pitches.length) || ["対ピンチ","対左打者","打たれ強さ","ノビ","クイック"].some(k=>g.rk&&g.rk[k]) || !!g.skillsP);
+  const hasF = [g.traj,g.meet,g.pow,g.run,g.arm,g.fld,g.catch_].some(v=>v!=null) || ["チャンス","対左投手","キャッチャー","盗塁","走塁","送球"].some(k=>g.rk&&g.rk[k]) || !!g.skillsF;
+  const hasD = g.def && Object.keys(g.def).length;
+  const mainP = /^[左中右]$/.test(g.pos) ? "外" : g.pos;
+  /* 特能：ランク特能（決まった項目）＋「特能」セル */
+  /* 特能：前と同じ並び。決まった項目（ランク特能）を固定の順で先に並べ、空欄でも項目名を出す（null は空きマス）。そのあとに「特能」セルの特能 */
+  const skills=(keys, list)=>{
+    const cells=keys.map(k=>{ if(k==null) return `<span class="pc-sk empty gap"></span>`; const r=(g.rk&&g.rk[k])||"";
+      if(/^★/.test(r)) return `<span class="pc-sk gold" title="${k}">${escHtml(r.slice(1))}</span>`;
+      const c = !r ? "none" : /^[AB]$/.test(r) ? "blue" : /^[FG]$/.test(r) ? "red" : "plain";
+      return `<span class="pc-sk ${c}">${k}<b>${r||"-"}</b></span>`; });
+    esSplitList(list).forEach(x=>{ const k=esSkillClass(x); cells.push(`<span class="pc-sk ${k.cls}">${escHtml(k.nm)}${k.rk?`<b>${escHtml(k.rk)}</b>`:""}</span>`); });
+    while(cells.length<8 || cells.length%2) cells.push(`<span class="pc-sk empty"></span>`);
+    while(cells.length%4) cells.push(`<span class="pc-sk empty pad4"></span>`);
+    return `<div class="pc-sks">${cells.join("")}</div>`;
+  };
+  const out={};
+  if(hasP) out.p=`<div class="pc-cols"><div>
+      ${g.velo!=null?`<div class="pc-velo"><span>球速</span><b>${g.velo}<small>km/h</small></b>${dif("velo")}</div>`:""}
+      ${row("コントロール","ctl")}${row("スタミナ","sta")}
+      ${g.pitches&&g.pitches.length?`<div class="pc-pc">${esPitchChart(g.pitches, g.th==="左")}</div>`:""}
+    </div><div><div class="pc-sub">特殊能力</div>${skills(["対ピンチ","対左打者","打たれ強さ","ケガしにくさ","ノビ","クイック",null,"回復"], g.skillsP)}</div></div>`;
+  if(hasF) out.f=`<div class="pc-cols"><div>
+      ${g.traj!=null?`<div class="pc-ab traj"><span class="pc-ab-l">弾道</span><span class="pc-traj">${[1,2,3,4].map(n=>`<i class="${n<=g.traj?"on":""}"></i>`).join("")}</span><span class="pc-ab-v">${g.traj}${dif("traj")}</span></div>`:""}
+      ${row("ミート","meet")}${row("パワー","pow")}${row("走力","run")}${row("肩力","arm")}${row("守備力","fld")}${row("捕球","catch_")}
+    </div><div><div class="pc-sub">特殊能力</div>${skills(ES_RANK_F, g.skillsF)}</div></div>`;
+  if(hasD){ const top=Math.max(...Object.values(g.def).filter(v=>v!=null));
+    out.d=`<div class="pc-defs">${["投","捕","一","二","三","遊","外"].map(p=>{ const v=g.def[p];
+      return `<div class="pc-def ${esPosCls(p)}${p===mainP?" main":""}${v==null?" none":v<top?" low":""}"><span class="pc-def-p">${p}</span>${v!=null?`<b class="pc-rk rk-${esRankOf(v)}">${esRankOf(v)}</b><i>${v}</i>`:`<i>--</i>`}</div>`; }).join("")}</div>
+      <p class="pc-none">★ がメインの守備位置。一番高い守備力より低い位置は薄く表示。</p>`; }
+  return out;
+}
+/* 入学時／卒業時の切り替え（同じカードの中の能力タブがまとめて切り替わる） */
+document.addEventListener("click", e=>{
+  const b=e.target.closest(".es-abseg-b"); if(!b) return;
+  const card=b.closest(".pc"); if(!card) return;
+  card.querySelectorAll(".es-abseg-b").forEach(x=>x.classList.toggle("active", x.dataset.w===b.dataset.w));
+  card.querySelectorAll(".es-abview").forEach(v=>v.hidden = v.dataset.w!==b.dataset.w);
+});
+/* タブの切り替え */
+document.addEventListener("click", e=>{
+  const b=e.target.closest(".pc-tab"); if(!b) return;
+  const card=b.closest(".pc"); if(!card) return;
+  card.dataset.tab=b.dataset.t;
+  card.querySelectorAll(".pc-tab").forEach(x=>x.classList.toggle("on", x===b));
+  card.querySelectorAll(".pc-pane").forEach(p=>p.hidden = p.dataset.t!==b.dataset.t);
+});
+/* 誕生日を「2008年6月9日」の形に */
+function esBirthFmt(v){
+  const m=String(v||"").match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  return m ? `${+m[1]}年${+m[2]}月${+m[3]}日` : (v||"");
+}
+function esPlayerCard(l, g){
+  const id=esIdent(l||{}, g); const B=id.name?esBoxOf(id):[];
+  const all=esAgg(B);
+  const pit = l ? (l.pos==="投" && all.pit) : (g ? (g.pos==="投" && all.pit) || (!all.bat && all.pit) : all.pit && !all.bat);
+  const pos = (g && g.pos) || (l && l.pos) || "";
+  const name = g ? g.name : (l ? l.name : "");
+
+  /* --- 成績 --- */
+  let st="";
+  if(l){
+    const cur=B.filter(b=>{ const gm=ES.gameByNo[b.no]; return gm.year===l.year && gm.season===l.season; });
+    if(cur.length){
+      st+=`<div class="es-car-sub">${l.year}年度 ${l.season==="夏"?"夏":"秋・春"}の成績</div>${esAggCells(esAgg(cur), pit)}`;
+      st+=esGameLog(cur, pit, "この時期の試合ごとの成績");
+    } else st+=`<p class="es-car-note">この時期の試合ごとの記録はまだありません。</p>`;
+  }
+  if(B.length){
+    /* 通算の4つの数字はカードの上に出しているので、投打の両方がある選手だけもう片方を出す */
+    if(all.pit && all.bat) st+=`<div class="es-car-sub">通算（${pit?"打撃":"投手"}）</div>${esAggCells(all, !pit)}`;
+    st+=esPeriodTable(B, pit, l?esSeasonKey(l):null);
+    st+=esRankTable(B, pit);
+    if(!l) st+=esGameLog(B, pit, "試合ごとの成績");
+  }
+  if(!st) st=`<p class="es-car-note">まだ試合の記録がありません。</p>`;
+
+  /* --- 能力（入学時／卒業時） --- */
+  const A=(g&&g.ab)||{}, ws=["入学時","卒業時"].filter(w=>A[w]);
+  const base=g?{...g}:{}; ES_ABIL_KEYS.forEach(k=>delete base[k]);
+  const views = ws.map(w=>[w, esAbilityParts({...base, ...A[w]}, w==="卒業時"?A["入学時"]:null)]);
+  const cur = ws[ws.length-1];
+  const wl = w => (w==="入学時" && g && g.transfer) ? "転校時" : w;   // 転校生は「入学時」を「転校時」と表示
+  const seg = ws.length>1 ? `<div class="es-abseg">${ws.map(w=>`<button type="button" class="es-abseg-b${w===cur?" active":""}" data-w="${w}">${wl(w)}</button>`).join("")}</div>`
+            : (cur ? `<div class="es-abseg one"><span>${wl(cur)}</span></div>` : "");
+  const abPane = k => { const vs=views.filter(([,o])=>o[k]); if(!vs.length) return "";
+    return seg + vs.map(([w,o])=>`<div class="es-abview" data-w="${w}"${w===cur?"":" hidden"}>${o[k]}</div>`).join(""); };
+
+  /* --- プロフィール --- */
+  const pro = g ? (g.team ? `${g.team}${g.rank?` ${g.rank}位`:""}` : g.course) : "";
+  const prof = g ? [["氏名", escHtml(g.name)], ["よびかた", escHtml(g.kana)], ["出身", escHtml(g.from)], ["性格", (()=>{ const c0=A["入学時"]&&A["入学時"].chara, c1=A["卒業時"]&&A["卒業時"].chara;
+      return c0&&c1&&c0!==c1 ? `${escHtml(c0)}<small class="pw2-arrow">→</small>${escHtml(c1)}` : escHtml(c1||c0||g.chara); })()],
+    ["スカウト", [g.scout?"スカウト":"", g.tensei?"転生":"", g.transfer?"転校生":""].filter(Boolean).join("・")], ["進路", escHtml(pro)], ["誕生日", escHtml(esBirthFmt(g.birth))]].filter(([,v])=>v) : [];
+
+  /* --- 上の部分（名前・背番号・★・通算の数字） --- */
+  const num = (l && l.num) || (g ? esPwNum(g) : "");
+  const apt = (A["卒業時"]||A["入学時"]||{}).apt;
+  const handOf = o => o && (o.th||o.bt) ? `${o.th?escHtml(o.th)+"投":""}${o.bt?escHtml(o.bt==="両"?"両打":o.bt+"打"):""}` : "";
+  const hands = ws.map(w=>[w, handOf({...base, th:g.th, bt:g.bt, ...A[w]})]);
+  const hand = hands.length>1 && hands[0][1]!==hands[1][1]
+    ? hands.map(([w,h])=>`<span class="es-abview" data-w="${w}"${w===cur?"":" hidden"}>${h||"-"}</span>`).join("")
+    : (hands.length ? hands[hands.length-1][1] : handOf(g));
+  const star = g ? (g.star!=null ? g.star : g.star0) : null;
+  const isPit = pos==="投";
+  const gr = g ? (typeof tyGrade==="function" ? tyGrade(g) : null) : (l && l.grade ? +l.grade : null);
+  const meta = [g&&g.year!=null?`${g.year}年度入学`:"", g&&g.from?`${g.from}出身`:"", gr?`${gr}年`:(g&&(g.star!=null||g.course||g.team)?"卒業":"")].filter(Boolean).join("・");
+  const sum = isPit
+    ? [["防御率", all.pit?esF(all.era,v=>v.toFixed(2)):"-"], ["勝敗", all.pit?`${all.w}-${all.l}`:"-"], ["奪三振", all.pit?all.k:"-"], ["投球回", all.pit?esIPfmt(all.ip):"-"]]
+    : [["打率", all.bat?esF(all.avg,esAvgFmt):"-"], ["本塁打", all.bat?all.hr:"-"], ["打点", all.bat?all.rbi:"-"], ["盗塁", all.bat?all.sb:"-"]];
+  const head=`<div class="pc-head">
+      <div class="pc-bgno" aria-hidden="true">${escHtml(num||"")}</div>
+      <div class="pc-id">
+        <div class="pc-pos">${pos?`<span class="es-pos ${esPosCls(pos)}">${escHtml(pos)}</span>`:""}<span>${escHtml(isPit?(apt||"投手"):({"捕":"捕手","一":"一塁手","二":"二塁手","三":"三塁手","遊":"遊撃手","左":"左翼手","中":"中堅手","右":"右翼手","外":"外野手"}[pos]||pos))}</span>${hand?`<span class="pc-hand">${hand}</span>`:""}</div>
+        <div class="pc-name">${num?`<span class="pc-no">${escHtml(num)}</span>`:""}${escHtml(name)}</div>
+        ${g&&g.kana?`<div class="pc-kana">${escHtml(g.kana)}</div>`:""}
+        ${meta?`<div class="pc-meta">${escHtml(meta)}${g?esTags(g):""}</div>`:""}
+      </div>
+      ${star!=null?`<div class="pc-star"><span>★</span><b>${star}</b><small>${g&&g.star!=null?"卒業時":"入学時"}</small></div>`:""}
+    </div>
+    ${B.length?`<div class="pc-sum">${sum.map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("")}<p>記録した${B.length}試合の通算</p></div>`:""}`;
+
+  const tabs=[["s","成績", `<div class="pc-stats">${st}</div>`]];
+  const pP=abPane("p"), pF=abPane("f"), pD=abPane("d");
+  if(pP) tabs.push(["p","投手能力", pP]);
+  if(pF) tabs.push(["f","野手能力", pF]);
+  if(pD) tabs.push(["d","守備", pD]);
+  if(prof.length) tabs.push(["i","プロフィール", `<dl class="pc-prof">${prof.map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>`]);
+  const first = (l || B.length) ? "s" : (pP && isPit ? "p" : pF ? "f" : tabs[0][0]);
+  return `<div class="pc" data-tab="${first}">
+    ${head}
+    <div class="pc-tabs">${tabs.map(([k,t])=>`<button type="button" class="pc-tab${k===first?" on":""}" data-t="${k}">${t}</button>`).join("")}</div>
+    <div class="pc-body">${tabs.map(([k,,h])=>`<div class="pc-pane" data-t="${k}"${k===first?"":" hidden"}>${h}</div>`).join("")}</div>
   </div>`;
 }
-const gmScore=v=>v==null?"-":v.toFixed(1);     // 自分の評価（1桁）
+/* 試合のボックススコア（その試合の自校の選手成績） */
+function esBoxScore(no){
+  const B=ES.box.filter(b=>b.no===no); if(!B.length) return "";
+  /* その試合の時期のスタメン表から、打順・守備・背番号を引く（打順が数字＝スタメン、補欠＝途中出場） */
+  const gm=ES.gameByNo[no];
+  const L=gm ? ES.lineup.filter(l=>l.year===gm.year && l.season===gm.season) : [];
+  const luOf=b=>L.find(l=>esSameName(l.name,b.name)) || null;
+  const isBat=l=>l && /^\d+$/.test(l.order);
+  const tag=(b,l,sub,role)=>`<span class="es-bx-pl">${l&&l.pos?`<span class="es-pos sm ${esPosCls(l.pos,role)}">${escHtml(l.pos)}</span>`:""}<span class="es-bx-nm">${escHtml(b.name)}</span>${l&&(l.grade||l.num)?`<small>${[l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ")}</small>`:""}${sub?`<em class="es-bx-sub">途中</em>`:""}</span>`;
 
-function gmRenderRank(){
-  const L=GM.list.filter(r=>r.my!=null && gmInTab(r, GM.tab))
-    .sort((a,b)=>b.my-a.my || (b.ym||0)-(a.ym||0)).slice(0,10);
-  document.getElementById("gm-rank").innerHTML = L.length ? L.map((r,i)=>gmShopHtml(r, i)).join("") : errBox("このジャンルの記録はまだありません。");
+  const bat=B.filter(b=>b.ab!=null).map((b,i)=>({b, l:luOf(b), i}));
+  bat.sort((x,y)=>(isBat(x.l)?+x.l.order:100+x.i)-(isBat(y.l)?+y.l.order:100+y.i));
+  /* 投手：先発（スタメンの投手）を先頭に、あとは入力順 */
+  const pit=B.filter(b=>b.ip!=null).map((b,i)=>({b, l:luOf(b), i}));
+  const sp=esStarterOf(no), spIdx=Math.max(0, pit.findIndex(x=>x.b===sp));
+  pit.forEach((x,i)=>x.k = i===spIdx ? -1 : x.i);
+  pit.sort((x,y)=>x.k-y.k);
+
+  const T=esAgg(bat.map(x=>x.b));
+  /* [見出し, 項目, 0でも表示するか] */
+  const BC=[["打数","ab",1],["得点","r",0,1],["安打","h",1],["二","d2",0,1],["三","d3",0,1],["本","hr"],["打点","rbi"],["三振","so"],["四死","bb"],["犠打","sh",0,1],["盗塁","sb"],["併殺","dp",0,1],["失策","e",0,1]];
+  const PC=[["回","ip",1],["球数","np",1,2],["打者","bf",1,1],["安打","ha",1],["本","hra",0,1],["三振","k",1],["四死","pbb"],["失点","pr",1],["自責","er",1],["暴投","wp",0,1]];
+  const mh = c => c[3]===1 ? ' class="mh"' : c[3]===2 ? ' class="mh2"' : "";
+  return `<div class="es-box">
+    ${bat.length?`<div class="es-st-wrap"><table class="es-box-tbl"><thead><tr><th class="es-bx-no">打順</th><th>打撃</th>${BC.map(c=>`<th${mh(c)}>${c[0]}</th>`).join("")}</tr></thead>
+      <tbody>${bat.map(({b,l})=>{ const st=isBat(l), sub=!st && !(l && l.order==="投"); return `<tr class="${sub?"sub":""}"><td class="es-bx-no">${st?escHtml(l.order):sub?"途中":""}</td><th>${tag(b,l,false, st||(l&&l.order==="投")?"":"rp")}</th>${BC.map(c=>`<td${mh(c)}>${c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}</tr>`; }).join("")}
+      <tr class="tot"><td class="es-bx-no"></td><th>計</th>${BC.map(c=>`<td${mh(c)}>${c[2]?T[c[1]]:(T[c[1]]||"")}</td>`).join("")}</tr></tbody></table></div>`:""}
+    ${pit.length?`<div class="es-st-wrap"><table class="es-box-tbl"><thead><tr><th class="es-bx-no"></th><th>投手</th>${PC.map(c=>`<th${mh(c)}>${c[0]}</th>`).join("")}<th></th></tr></thead>
+      <tbody>${pit.map(({b,l},i)=>`<tr class="${i?"sub":""}"><td class="es-bx-no">${i?"":"先発"}</td><th>${tag(b,l,false,i?"rp":"")}</th>${PC.map(c=>`<td${mh(c)}>${c[1]==="ip"?esIPfmt(b.ip):c[2]?esF(b[c[1]]):(b[c[1]]||"")}</td>`).join("")}<td>${b.dec?`<b class="es-dec ${esDecCls(b.dec)}">${b.dec}</b>`:""}</td></tr>`).join("")}</tbody></table></div>`:""}
+  </div>`;
 }
-
-function gmRenderGenre(){
-  const top=gmTopGenres(), st=Object.fromEntries(gmGenreStats().map(x=>[x.g,x]));
-  const S=top.map(g=>({g, n:st[g].n}));
-  const others=GM.list.filter(r=>r.genres.length && !r.genres.some(g=>top.includes(g)));
-  if(others.length) S.push({g:GM_OTHER, n:others.length, kinds:new Set(others.flatMap(r=>r.genres)).size});
-  const max=Math.max(1,...S.map(s=>s.n));
-  const el=document.getElementById("gm-genre");
-  /* タップするとそのジャンルの評価ランキングへ */
-  /* その他は11位以下のジャンルを選ぶ欄を開く */
-  el.onclick=e=>{ const r=e.target.closest(".gm-genre[data-g]"); if(!r) return;
-    if(r.dataset.g!==GM_OTHER) return gmSelectTab(r.dataset.g, true);
-    const box=document.getElementById("gm-tabs"), sel=box.querySelector("select"); if(!sel) return;
-    box.closest(".card-section").scrollIntoView({behavior:"smooth", block:"start"});
-    box.scrollTo({left: box.scrollWidth, behavior:"smooth"});
-    setTimeout(()=>{ try{ sel.showPicker(); }catch(_){ sel.focus(); } }, 400); };
-  el.innerHTML=S.map((s,i)=>`
-    <div class="gm-genre${s.g===GM_OTHER?" other":""}" data-g="${escHtml(s.g)}" role="button" tabindex="0">
-      <span class="gm-genre-name">${s.g===GM_OTHER?"":`<b class="gm-genre-rk">${i+1}</b>`}${escHtml(s.g)}${s.kinds?`<small>${s.kinds}ジャンル</small>`:""}</span>
-      <span class="gm-genre-bar"><span style="width:${s.n/max*100}%"></span></span>
-      <span class="gm-genre-n">${s.n}</span>
-    </div>`).join("");
+function esLuRow(l, starter, idx){
+  const g=esFindGrad(l);
+  return `<details class="es-lu-row${starter?"":" bench"}" data-lu="${idx}">
+    <summary>
+      <span class="es-lu-no">${starter?escHtml(l.order==="投"?"先":l.order):"控"}</span>
+      <span class="es-pos ${esPosCls(l.pos, starter?"":"rp")}">${escHtml(l.pos)}</span>
+      <span class="es-lu-main"><span class="es-lu-name">${escHtml(g?g.name:l.name)}${g?esTags(g):""}</span><span class="es-lu-meta">${[l.grade?escHtml(l.grade)+"年":"", l.num?escHtml(esCircled(l.num)):""].filter(Boolean).join(" ")}</span></span>
+      <span class="es-lu-chev" aria-hidden="true"></span>
+    </summary>
+    ${esPlayerCard(l, g)}
+  </details>`;
 }
-
-/* 全国タイル（グルメ版）：都道府県ごとの軒数 */
-function gmRenderNation(){
-  const prefs=Object.keys(GM.byPref).length, munis=Object.keys(GM.byCode).length;
-  document.getElementById("kk-nation-stats").innerHTML=`
-    <div class="stat-chip">お店 <strong>${nf(GM.list.length)}</strong> 軒</div>
-    <div class="stat-chip">都道府県 <strong>${prefs}</strong> / ${KK_PREFS.length}</div>
-    <div class="stat-chip">市区町村 <strong>${munis}</strong></div>`;
-  document.getElementById("kk-nation").innerHTML=KK_REGIONS.map(([rg,a,b])=>`
-    <div class="kk-region">
-      <div class="kk-region-name">${rg}</div>
-      <div class="kk-tiles">${KK_PREFS.slice(a,b).map(([p])=>{
-        const n=(GM.byPref[p]||[]).length, l=kkByLv(gmPrefBucket(n));
-        return `<button type="button" class="kk-tile${p===KK.pref?" active":""}" data-pref="${p}" aria-label="${p}：${n}軒">
-          <span class="kk-sw" style="background:${l.color}"></span><span class="kk-tile-name">${p}</span><span class="kk-tile-n">${n?n+"軒":"-"}</span>
-        </button>`; }).join("")}</div>
-    </div>`).join("")
-    + `<div class="kk-legend gm-pref-legend" aria-hidden="true">${[[1,"1〜4軒"],[2,"5〜19軒"],[3,"20〜49軒"],[4,"50軒〜"]].map(([lv,t])=>
-        `<span class="kk-leg static"><span class="kk-sw" style="background:${kkByLv(lv).color}"></span>${t}</span>`).join("")}</div>`;
-  document.querySelectorAll(".kk-tile").forEach(b=>b.onclick=()=>{
-    kkShowPref(b.dataset.pref);
-    const a=document.getElementById("kk-pref-anchor"), nav=document.querySelector("nav");
-    window.scrollTo({ top:Math.max(0, window.scrollY+a.getBoundingClientRect().top-(nav?nav.offsetHeight:0)-8), behavior:prefersReduced()?"auto":"smooth" });
+/* フィールド上の位置（%）。外野の「外」は空いている左・中・右に順に入れる */
+const ES_FIELD = { "投":[50,60], "捕":[50,88], "一":[71,58], "二":[61,42], "三":[29,58], "遊":[39,42], "左":[19,24], "中":[50,13], "右":[81,24] };
+function esFieldHtml(starters){
+  const used=new Set(), spots=[];
+  starters.forEach((l,i)=>{ let p=l.pos;
+    if(p==="外") p=["左","中","右"].find(x=>!used.has(x))||"中";
+    if(ES_FIELD[p] && !used.has(p)){ used.add(p); spots.push({l,i,p,xy:ES_FIELD[p]}); }
+    else spots.push({l,i,p:l.pos,xy:null});
   });
-  const noteEl=document.getElementById("kk-note");
-  noteEl.hidden=!GM.note; noteEl.textContent=GM.note||"";
+  const dh=spots.filter(x=>!x.xy);
+  const tag=({l,i,p})=>{ const g=esFindGrad(l), nm=g?g.name:l.name, sur=String(nm).split(/[\s　]+/)[0];
+    return `<button type="button" class="t-fp ${esPosCls(p)}" data-lu="${i}" aria-label="${escHtml(nm)}"><span class="t-fp-o">${escHtml(p==="指"?"DH":p)}</span><b>${escHtml(sur)}</b></button>`; };
+  return `<div class="t-fieldw"><div class="t-field">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="t-gr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f7d47"/><stop offset="1" stop-color="#256a3b"/></linearGradient></defs>
+      <path d="M50 98 L2 46 Q50 -14 98 46 Z" fill="url(#t-gr)" stroke="rgba(255,255,255,.35)" stroke-width=".6"/>
+      <path d="M50 92 L26 64 Q50 26 74 64 Z" fill="#c4935e"/>
+      <path d="M50 88 L33 66 L50 46 L67 66 Z" fill="#3a8a52" stroke="#fff" stroke-width=".6"/>
+      <circle cx="50" cy="66" r="3.4" fill="#c4935e"/>
+      <rect x="48.6" y="86.6" width="2.8" height="2.8" fill="#fff" transform="rotate(45 50 88)"/>
+      <rect x="65.8" y="64.8" width="2.4" height="2.4" fill="#fff"/><rect x="48.8" y="44.8" width="2.4" height="2.4" fill="#fff"/><rect x="31.8" y="64.8" width="2.4" height="2.4" fill="#fff"/>
+    </svg>
+    ${spots.filter(x=>x.xy).map(x=>`<div class="t-fpw" style="left:${x.xy[0]}%;top:${x.xy[1]}%">${tag(x)}</div>`).join("")}
+  </div>
+  ${dh.length?`<div class="t-dh">${dh.map(tag).join("")}</div>`:""}</div>`;
 }
-
-/* 市区町村をタップしたとき：その町で食べたお店の一覧 */
-function gmRenderInfo(code, f){
-  const L=(GM.byCode[code]||[]).slice().sort((a,b)=>(b.my||0)-(a.my||0) || (b.ym||0)-(a.ym||0));
-  const l=kkByLv(gmBucket(L.length));
-  document.getElementById("kk-info").innerHTML=`
-    <div class="kk-info-head">
-      <span class="kk-info-name">${escHtml(f.name)}</span>
-      <span class="kk-badge" style="--c:${l.color}">${L.length}軒</span>
-    </div>
-    ${L.length ? gmShopList(L.slice(0,10)) + (L.length>10?`<details class="gm-more"><summary>残り ${L.length-10} 軒を見る</summary>${gmShopList(L.slice(10))}</details>`:"") : `<p class="kk-info-empty">まだこの町のお店の記録はありません。</p>`}`;
-}
-function gmShopList(L){
-  return `<ul class="gm-shops">${L.map(r=>`
-      <li>
-        <div class="gm-shop-top">
-          <span>${escHtml(r.name)}</span>
-          ${r.my!=null?`<span class="gm-my">${gmScore(r.my)}</span>`:""}
-        </div>
-        <div class="gm-shop-sub">${escHtml([r.genres.slice(0,2).join("・"), gmFmtDate(r)].filter(Boolean).join("／"))}</div>
-      </li>`).join("")}</ul>`;
-}
-
-/* =====================================================================
-   自転車
-   列 : No / 日付 / 曜日 / 行き先 / 距離 / 累計（累計はサイト側で計算し直します）
-   ===================================================================== */
-const URL_BIKE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1988798954&single=true&output=csv";
-const BK={ list:[] };
-
-async function loadBike(){
-  let rows=[];
-  try{ rows=cleanRows((await fetchCSV(URL_BIKE)).data); }
-  catch(e){ document.getElementById("bk-hero").innerHTML=errBox("自転車のデータを読み込めませんでした。"); return; }
-  BK.list=rows.map(o=>{
-    const dt=pd(F(o,"日付")), km=num(F(o,"距離"));
-    if(!dt||!km) return null;
-    return { dt, km, dest:F(o,"行き先") };
-  }).filter(Boolean).sort((a,b)=>a.dt-b.dt);
-  BK.list.forEach((r,i)=>r.no=i+1);
-  if(!BK.list.length){ document.getElementById("bk-hero").innerHTML=errBox("まだ記録がありません。"); return; }
-  bkRenderHero(); bkRenderRank(); bkRenderYears();
-}
-const bkDate=d=>`${d.getFullYear()}/${fmtMD(d)}`;
-
-function bkRenderHero(){
-  const L=BK.list, km=L.reduce((a,r)=>a+r.km,0);
-  const latest=L[L.length-1], best=L.reduce((b,r)=>(!b||r.km>b.km)?r:b,null);
-  const rank=L.slice().sort((a,b)=>b.km-a.km).indexOf(latest)+1;
-  const y=new Date().getFullYear(), yKm=L.filter(r=>r.dt.getFullYear()===y).reduce((a,r)=>a+r.km,0);
-  document.getElementById("bk-hero").innerHTML=`
-    <div class="tm-hero-label">これまでの累計距離</div>
-    <div class="tm-big">${nf(km)}<small>km</small></div>
-    ${lead(`最新ライド（${fmtMD(latest.dt)}）${escHtml(latest.dest||"")} <b>${latest.km.toFixed(1)}</b>km${rank===1&&L.length>1?`　${tone(1,"最長記録！")}`:""}`)}
-    ${facts([
-      fact("最長", best.km.toFixed(1), `km（${escHtml(best.dest||fmtMD(best.dt))}）`),
-      fact(`${y}年`, yKm.toFixed(1), "km"),
-      fact("回数", L.length, "回"),
-      fact("1回平均", (km/L.length).toFixed(1), "km")
-    ])}`;
-}
-
-function bkRenderRank(){
-  const L=BK.list.slice().sort((a,b)=>b.km-a.km).slice(0,10), latest=BK.list[BK.list.length-1];
-  const medal=["🥇","🥈","🥉"];
-  document.getElementById("bk-rank").innerHTML=L.map((r,i)=>`
-    <div class="rk rk-c${i<3?" top top"+(i+1):""}">
-      <div class="rk-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:i+1}</div>
-      <div class="rk-body">
-        <div class="rk-date">${escHtml(r.dest||"（行き先なし）")}${r===latest?'<span class="rk-new">NEW</span>':""}</div>
-        <div class="rk-sub">${bkDate(r.dt)}</div>
+function esRenderLineup(){
+  const L=ES.lineup.filter(l=>l.year===ES.sel && l.season===ES.lineupSeason);
+  /* 指名打者（DH）制：先発投手は打順「投」で入力 → 9番の後ろに並べる */
+  const isSt=l=>/^\d+$/.test(l.order)||l.order==="投", ord=l=>l.order==="投"?99:+l.order;
+  const starters=L.filter(isSt).sort((a,b)=>ord(a)-ord(b)), bench=L.filter(l=>!isSt(l));
+  const box=document.getElementById("es-lu");
+  box.innerHTML=`<div class="t-lu">
+      ${esFieldHtml(starters)}
+      <div class="t-lu-list">
+        <div class="t-lu-h">STARTING<small>打順</small></div>
+        <div class="es-lu">${starters.map((l,i)=>esLuRow(l,true,i)).join("")}</div>
+        ${bench.length?`<div class="t-lu-h">BENCH<small>ベンチ</small></div><div class="es-lu">${bench.map((l,i)=>esLuRow(l,false,"b"+i)).join("")}</div>`:""}
       </div>
-      <div class="rk-val">${r.km.toFixed(1)}<small>km</small></div>
-    </div>`).join("");
+    </div>
+    <p class="kk-note-s">フィールドの選手か右の名前をタップすると、この時期の成績・能力が見られます。</p>`;
+  box.querySelectorAll(".t-fp").forEach(b=>b.onclick=()=>{
+    const d=box.querySelector(`.es-lu-row[data-lu="${b.dataset.lu}"]`); if(!d) return;
+    d.open=true; const hd=document.getElementById("hd");
+    window.scrollTo({ top:Math.max(0, window.scrollY+d.getBoundingClientRect().top-(hd?hd.offsetHeight:0)-12), behavior:prefersReduced()?"auto":"smooth" });
+  });
 }
 
-function bkRenderYears(){
-  const m={};
-  BK.list.forEach(r=>{ const y=r.dt.getFullYear(); const s=(m[y]=m[y]||{y,km:0,n:0}); s.km+=r.km; s.n++; });
-  const Y=Object.values(m).sort((a,b)=>b.y-a.y), max=Math.max(...Y.map(s=>s.km));
-  document.getElementById("bk-years").innerHTML=Y.map(s=>`
-    <div class="mlist-row static">
-      <span class="mlist-name"><span class="mlist-m">${s.y}年</span>${s.km===max&&Y.length>1?'<em>ベスト</em>':""}</span>
-      <span class="mlist-bar bk"><span style="width:${s.km/max*100}%"></span></span>
-      <span class="mlist-val">${s.km.toFixed(1)} km<small>${s.n}回</small></span>
-    </div>`).join("");
+/* ---------- ベスト9 ---------- */
+function esRenderB9Tabs(){
+  const tabs=[["star","★"],["stats","成績"],["team","球団別"],["amateur","プロ以外"]];
+  document.getElementById("es-b9-tabs").innerHTML=tabs.map(([k,t])=>`<button type="button" class="day-tab${k===ES.b9?" active":""}" data-k="${k}">${t}</button>`).join("");
+  document.querySelectorAll("#es-b9-tabs .day-tab").forEach(b=>b.onclick=()=>{
+    ES.b9=b.dataset.k;
+    document.querySelectorAll("#es-b9-tabs .day-tab").forEach(x=>x.classList.toggle("active", x===b));
+    esRenderB9();
+  });
+  const teams=[...new Set(ES.grads.filter(g=>g.team).map(g=>g.team))]
+    .sort((a,b)=>ES.grads.filter(g=>g.team===b).length-ES.grads.filter(g=>g.team===a).length);
+  ES.team=teams[0]||"";
+  const sel=document.getElementById("es-team-sel");
+  sel.innerHTML=teams.map(t=>`<option value="${escHtml(t)}">${escHtml(t)}（${ES.grads.filter(g=>g.team===t).length}人）</option>`).join("");
+  sel.onchange=()=>{ ES.team=sel.value; esRenderB9(); };
+}
+function esPick(pool, key, asc){
+  const used=new Set();
+  return ES_B9_SLOTS.map(p=>{
+    const c=pool.filter(g=>g.pos===p && !used.has(g) && key(g)!=null).sort((a,b)=>asc?key(a)-key(b):key(b)-key(a))[0];
+    if(c) used.add(c); return {p, g:c||null};
+  });
+}
+/* 守れる位置（卒業時の守備位置＋守備適性が入っている位置）。順番はメイン→投捕一二三遊外 */
+function esPosList(g){
+  const mp=/^[左中右]$/.test(g.pos)?"外":g.pos, L=mp?[mp]:[];
+  ["投","捕","一","二","三","遊","外"].forEach(p=>{ if(g.def && g.def[p]!=null && !L.includes(p)) L.push(p); });
+  return L;
+}
+/* 複数ポジの選手は、守れる位置の色を並べたバッジにする（例：捕・一・外 → 青・黄・緑） */
+const ES_POS_VAR={"p-pit":"--pos-pit","p-cat":"--pos-cat","p-inf":"--pos-inf","p-of":"--pos-of"};
+function esPosBadge(slot, g){
+  const L=g?esPosList(g):[];
+  if(L.length<2) return `<span class="es-pos lg ${esPosCls(slot)}">${slot}</span>`;
+  const c=[...new Set(L.map(p=>`var(${ES_POS_VAR[esPosCls(p)]||"--pos-etc"})`))];
+  const bg = c.length<2 ? c[0] : `linear-gradient(135deg,${c.map((x,i)=>`${x} ${i*100/c.length}% ${(i+1)*100/c.length}%`).join(",")})`;
+  return `<span class="es-pos lg multi" style="background:${bg}" title="守れる位置：${L.join("・")}">${slot}</span>`;
+}
+/* プロ以外：サブポジの適性も使って9人を埋める。
+   できるだけ多くの位置を埋め、その中で★の合計が一番高くなる組み合わせ（同じならメインの位置を優先）を選ぶ */
+function esPickSub(pool){
+  const P=pool.filter(g=>g.star!=null && esPosList(g).length);
+  const n=ES_B9_SLOTS.length, m=Math.max(P.length, n);
+  const W=ES_B9_SLOTS.map(p=>Array.from({length:m},(_,j)=>{ const g=P[j]; if(!g) return 0;
+    const L=esPosList(g); if(!L.includes(p)) return 0; return 10000 + g.star*10 - (L[0]===p?0:1); }));
+  const col=esHungarianMax(W, n, m);
+  return ES_B9_SLOTS.map((p,i)=>{ const g=col[i]>=0 && W[i][col[i]]>0 ? P[col[i]] : null; return {p, g, sub: !!g && esPosList(g)[0]!==p}; });
+}
+/* 割り当て問題（行＝位置、列＝選手、重みの合計を最大に）。n≦m */
+function esHungarianMax(W, n, m){
+  const INF=1e18, mx=Math.max(0,...W.flat()), u=Array(n+1).fill(0), v=Array(m+1).fill(0), p=Array(m+1).fill(0), way=Array(m+1).fill(0);
+  const C=(i,j)=>mx-W[i-1][j-1];
+  for(let i=1;i<=n;i++){
+    p[0]=i; let j0=0; const minv=Array(m+1).fill(INF), used=Array(m+1).fill(false);
+    do{ used[j0]=true; const i0=p[j0]; let d=INF, j1=0;
+      for(let j=1;j<=m;j++) if(!used[j]){ const cur=C(i0,j)-u[i0]-v[j]; if(cur<minv[j]){ minv[j]=cur; way[j]=j0; } if(minv[j]<d){ d=minv[j]; j1=j; } }
+      for(let j=0;j<=m;j++){ if(used[j]){ u[p[j]]+=d; v[j]-=d; } else minv[j]-=d; }
+      j0=j1; } while(p[j0]!==0);
+    do{ const j1=way[j0]; p[j0]=p[j1]; j0=j1; } while(j0);
+  }
+  const res=Array(n).fill(-1); for(let j=1;j<=m;j++) if(p[j]) res[p[j]-1]=j-1; return res;
+}
+function esRenderB9(){
+  document.getElementById("es-b9-team").hidden = ES.b9!=="team";
+  let picks, note="", val;
+  if(ES.b9==="stats"){
+    const bat=esPick(ES.grads.filter(g=>g.pos!=="投"), g=>g.batScore);
+    const pit=ES.grads.filter(g=>g.pos==="投" && g.pitQual).sort((a,b)=>a.era-b.era)[0]||null;
+    picks=bat.map(x=>x.p==="投"?{p:"投", g:pit}:x);
+    val=(x)=> x.p==="投" ? `<b>${x.g.era.toFixed(2)}</b><small>防御率</small>`
+      : `<b>${esAvgFmt(x.g.avg)}</b><small>${x.g.hr||0}本 ${x.g.rbi||0}点 ${x.g.sb||0}盗</small>`;
+    note=`打者は「打率×100＋本塁打×3＋打点＋盗塁」の点数で守備ごとに1位（${ES_BAT_MIN}打席以上）。投手は防御率1位（投球回${ES_PIT_IP_MIN}以上、投球回が空欄なら登板10以上）。`;
+  } else {
+    const pool = ES.b9==="team" ? ES.grads.filter(g=>g.team===ES.team)
+               : ES.b9==="amateur" ? ES.grads.filter(g=>!g.pro) : ES.grads;
+    picks = ES.b9==="amateur" ? esPickSub(pool) : esPick(pool, g=>g.star);
+    val=x=>`<b>${x.g.star}</b><small>★</small>`;
+    note = ES.b9==="team" ? "その球団に進んだ卒業生の中で、卒業時の★が一番高い選手（守備は卒業時）。"
+         : ES.b9==="amateur" ? "プロ野球選手にならなかった卒業生の中で、サブポジの適性がある位置にも入れて、できるだけ9つの位置を埋め、★の合計が一番高くなる9人を選ぶ。「サブ」はサブポジで入った選手。"
+         : "卒業時の★が一番高い選手（守備は卒業時）。";
+  }
+  /* 1人もいないときは「該当なし」を9行並べず、ひとことだけ */
+  if(!picks.some(x=>x.g)){
+    document.getElementById("es-b9").innerHTML=errBox(ES.b9==="stats" ? "まだ規定の試合数・投球回に届いた選手がいません。" : "まだ卒業時の★が入った卒業生がいません。");
+    document.getElementById("es-b9-note").textContent=note; return;
+  }
+  document.getElementById("es-b9").innerHTML=`<div class="es-b9">${picks.map(x=>{
+    const inner=`
+      ${esPosBadge(x.p, x.g)}
+      <span class="es-b9-main">${x.g?`<span class="es-b9-name">${escHtml(x.g.name)}${x.sub?`<span class="es-tag sub">サブ ${escHtml(esPosList(x.g)[0])}→${x.p}</span>`:""}${esTags(x.g)}</span>
+        <span class="es-b9-meta">${escHtml([esPosList(x.g).length>1?`守備 ${esPosList(x.g).join("・")}`:"", esGradMeta(x.g)].filter(Boolean).join("　"))}</span>`:`<span class="es-b9-meta">該当なし</span>`}</span>
+      <span class="es-b9-val">${x.g?val(x):""}</span>`;
+    return x.g ? esPl("es-b9-row", inner, x.g) : `<div class="es-b9-row empty">${inner}</div>`;
+  }).join("")}</div>`;
+  document.getElementById("es-b9-note").textContent=note+" 選手をタップすると年度ごとの成績と通算が見られます。";
+}
+/* 選手の行をタップで開けるようにする（中身は卒業生カード） */
+function esPl(cls, inner, g){
+  return `<details class="es-pl"><summary class="${cls}">${inner}</summary>${esPlayerCard(null, g)}</details>`;
+}
+function esTags(g){ return (g.tensei?`<span class="es-tag t">転生</span>`:"") + (g.transfer?`<span class="es-tag tr">転校生</span>`:"") + (g.scout?`<span class="es-tag">スカウト</span>`:""); }
+/* ---------- 選手名鑑：入学年度ごとに全選手（在学中も）。タップで成績と能力カード ---------- */
+function esRenderRoster(){
+  const sel=document.getElementById("es-roster-sel"), box=document.getElementById("es-roster"); if(!sel||!box) return;
+  const years=[...new Set(ES.grads.map(g=>g.year).filter(y=>y!=null))].sort((a,b)=>b-a);
+  if(!years.length){ box.innerHTML=errBox("まだ卒業生シートに選手がいません。"); sel.parentElement.hidden=true; return; }
+  if(!years.includes(ES.rosterYear)) ES.rosterYear=years[0];
+  sel.innerHTML=years.map(y=>`<option value="${y}"${y===ES.rosterYear?" selected":""}>${y}年度入学（${ES.grads.filter(g=>g.year===y).length}人）</option>`).join("");
+  const posOrd=p=>"投捕一二三遊左中右外".indexOf(p);
+  const draw=()=>{
+    const L=ES.grads.filter(g=>g.year===ES.rosterYear).sort((a,b)=>posOrd(a.pos)-posOrd(b.pos)||(b.star||b.star0||0)-(a.star||a.star0||0));
+    box.innerHTML=`<div class="mlist">${L.map(g=>esPl("gm-row", `
+      <div class="gm-pos"><span class="es-pos ${esPosCls(g.pos)}">${escHtml(g.pos||"-")}</span></div>
+      <div class="gm-main">
+        <div class="gm-title">${escHtml(g.name)}${esTags(g)}${g.ab?`<span class="es-tag ab">能力</span>`:""}</div>
+        <div class="gm-meta">${escHtml([g.from, g.team?`${g.team}${g.rank?` ${g.rank}位`:""}`:g.course].filter(Boolean).join("・"))}</div>
+      </div>
+      <div class="gm-score es-val">★${g.star!=null?g.star:(g.star0!=null?g.star0:"-")}</div>`, g)).join("")}</div>
+      <p class="kk-note-s">選手をタップすると成績と能力（入学時／卒業時）が見られます。</p>
+      ${ES.abilLoaded?"":`<p class="kk-note-s" style="color:#d9453f">※「能力」シートを読み込めていません（ウェブ公開の設定を確認してください。公開してから反映まで数分かかることがあります）。</p>`}`;
+  };
+  sel.onchange=()=>{ ES.rosterYear=+sel.value; draw(); };
+  draw();
+}
+function esGradMeta(g){
+  const pro = g.team ? `${g.team}${g.rank?` ${g.rank}位`:""}` : g.course;
+  return [g.year?`${g.year}年度入学`:"", g.from, pro].filter(Boolean).join("・");
 }
 
-/* =====================================================================
-   Apex（ランクポイントの推移）
-   列 : 日付 / シーズン / ランク / RP。No・曜日・メモなどほかの列はあってもOK
-   ・シーズン   … 31 など。ランクと同じく、変わった日だけ書けばOK
-   ・スプリット … 1 か 2。変わった日だけ書けばOK（シーズンが変わって空欄なら 1）
-   ページ上部のセレクトボックスで、シーズン・スプリットごとに切り替えて見られます。
-   シーズンやスプリットが変わった日はランクがリセットされるので、前の日との増減は計算しません。
-   ・1行＝1日。その日の終わりの値を入れる
-   ・ランク … 「シルバーIV」「ゴールド2」「プラチナ Ⅰ」など。ランクが変わった日だけ書けばOK
-              （空欄の日は前の日と同じランク。最初の記録より前の空欄は、最初に書いたランク）
-   ・RP     … ゲームに出ている「今のディビジョンの中のRP」（昇格すると0から数え直しになる数字）
-   サイト側で「ルーキーIVの0から数えた通算RP」に直してグラフを描くので、昇格しても線が落ちません。
-   ランクの列が丸ごと空なら、RPをそのまま通算として扱います。
-   ===================================================================== */
-const URL_APEX = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1593393569&single=true&output=csv";
-const AP={ all:[], list:[], cur:[], season:null, seasons:[], range:"30", ranked:false };
-const AP_RP_COLS=["RP","ランクポイント","ランクpt","ポイント","LP"];
-/* ランクと、各ディビジョン（IV→III→II→I の順）で次へ上がるのに必要なRP。
-   通算の境目：ブロンズ1,000／シルバー3,000／ゴールド5,500／プラチナ8,500／ダイヤ12,000／マスター16,000
-   （EA公式ヘルプのスプリットのリセット値から逆算。シルバーの中の区切りは資料で違うので、シーズン31の資料に合わせた）
-   RP の列に「174/500」のようにゲームの表示どおり書くと、その「/500」でディビジョンの大きさを上書きします */
-const AP_TIERS=[
-  {name:"ルーキー",   words:["ルーキー","rookie"],           divs:[250,250,250,250],   color:"#8a8f98"},
-  {name:"ブロンズ",   words:["ブロンズ","bronze"],           divs:[500,500,500,500],   color:"#a8683a"},
-  {name:"シルバー",   words:["シルバー","silver"],           divs:[500,500,750,750],   color:"#8f9bab"},
-  {name:"ゴールド",   words:["ゴールド","gold"],             divs:[750,750,750,750],   color:"#d4a017"},
-  {name:"プラチナ",   words:["プラチナ","plat"],             divs:[750,750,1000,1000], color:"#2f9fa8"},
-  {name:"ダイヤ",     words:["ダイヤ","diamond","dia"],      divs:[1000,1000,1000,1000], color:"#4a7bd6"},
-  {name:"マスター",   words:["マスター","master"],           divs:null,                color:"#8e44c9"},
-  {name:"プレデター", words:["プレデター","predator","pred"], divs:null,                color:"#c0392b"}
+/* ---------- 歴代ランキング ---------- */
+
+const ES_BAT_NOTE = `${ES_BAT_MIN}打席以上の野手`, ES_PIT_NOTE = `投球回${ES_PIT_IP_MIN}以上（投球回が空欄なら登板10以上）`;
+/* 投手の能力ランキングは投手（守備位置が投、または適性が入っている選手）だけ */
+const esIsPit = g => g.pos==="投" || !!g.apt;
+const esCnt = u => v => `${v}<small>${u}</small>`;
+/* g: 総合／打撃／投手 */
+const esFld = g => !esIsPit(g);
+const esRkAb = v => `<span class="es-ab-r rk-${esRankOf(v)} in">${esRankOf(v)}</span>${v}`;
+const esGoldN = g => (esSplitList(g.skills).filter(x=>esSkillClass(x).cls==="gold").length + Object.values(g.rk||{}).filter(v=>/^★/.test(v)).length)||null;
+/* 入学時→卒業時の伸び（能力シートに両方あるときだけ） */
+const esAbGrow = (g, keys) => { const a=(g.ab||{})["入学時"], b=(g.ab||{})["卒業時"]; if(!a||!b) return null;
+  let d=0, n=0; keys.forEach(k=>{ if(a[k]!=null && b[k]!=null){ d+=b[k]-a[k]; n++; } }); return n ? d : null; };
+const ES_FBASE = ["meet","pow","run","arm","fld","catch_"];
+const esFBaseSum = g => { const v=ES_FBASE.map(k=>g[k]).filter(x=>x!=null); return v.length>=5 ? v.reduce((a,b)=>a+b,0) : null; };
+const esBrk = g => (g.pitches||[]).filter(p=>p.dir!=="UP");
+const esSkN = g => (esSplitList(g.skills).filter(x=>esSkillClass(x).cls!=="red").length + Object.values(g.rk||{}).filter(v=>/^★/.test(v)).length)||null;
+const esPlus = v => `${v>0?"+":""}${v}`;
+/* g: 投手／野手、s: そのなかのタブ（総合／投球・打撃／能力） */
+const ES_RK=[
+  {g:"投手", s:"総合", k:"pStar",  t:"卒業時★", get:g=>esIsPit(g)?g.star:null, fmt:v=>v},
+  {g:"投手", s:"総合", k:"pStar0", t:"入学時★", get:g=>esIsPit(g)&&!g.transfer?g.star0:null, fmt:v=>v, note:"新入生として入学した選手だけ（転校生は「転校生★」で別に並べる）"},
+  {g:"投手", s:"総合", k:"pTrans", t:"転校生★", get:g=>esIsPit(g)&&g.transfer?g.star0:null, fmt:v=>v, note:"転校してきた時点の★（卒業生シートの入学時★）"},
+  {g:"投手", s:"総合", k:"pGrow",  t:"★の伸び", get:g=>esIsPit(g)?g.grow:null, fmt:v=>`+${v}`},
+  {g:"投手", s:"投球", k:"mvpP", t:"投手MVP", get:g=>g.mvpP||null, fmt:esCnt("回"), note:"試合ごとの投手MVPに選ばれた回数。平均的な投手と比べて何点防いだかに、奪三振と接戦での勝ち・セーブを足して選ぶ"},
+  {g:"投手", s:"投球", k:"era",  t:"防御率", get:g=>g.pitQual?g.era:null, fmt:v=>v.toFixed(2), asc:true, note:ES_PIT_NOTE},
+  {g:"投手", s:"投球", k:"whip", t:"WHIP", get:g=>g.pitQual?g.whip:null, fmt:v=>v.toFixed(2), asc:true, note:`1イニングあたりに出した走者（被安打＋与四死球）。${ES_PIT_NOTE}`},
+  {g:"投手", s:"投球", k:"k9",   t:"奪三振率", get:g=>g.pitQual?g.k9:null, fmt:v=>v.toFixed(2), note:`9イニングあたりの奪三振。${ES_PIT_NOTE}`},
+  {g:"投手", s:"投球", k:"w",    t:"勝利", get:g=>g.w||null, fmt:esCnt("勝")},
+  {g:"投手", s:"投球", k:"wpct", t:"勝率", get:g=>(g.w||0)+(g.l||0)>=5 ? g.w/((g.w||0)+(g.l||0)) : null, fmt:esAvgFmt, note:"勝ち＋負けが5以上の投手"},
+  {g:"投手", s:"投球", k:"k",    t:"奪三振", get:g=>g.k||null, fmt:esCnt("個")},
+  {g:"投手", s:"投球", k:"ip",   t:"投球回", get:g=>g.ip||null, fmt:v=>esIPfmt(v)},
+  {g:"投手", s:"投球", k:"app",  t:"登板", get:g=>g.app||null, fmt:esCnt("試合")},
+  {g:"投手", s:"投球", k:"gs",   t:"先発", get:g=>g.gs||null, fmt:esCnt("試合")},
+  {g:"投手", s:"投球", k:"cg",   t:"完投", get:g=>g.cg||null, fmt:esCnt("回")},
+  {g:"投手", s:"投球", k:"sho",  t:"完封", get:g=>g.sho||null, fmt:esCnt("回")},
+  {g:"投手", s:"投球", k:"nh",   t:"ノーノー", get:g=>g.nh||null, fmt:esCnt("回")},
+  {g:"投手", s:"投球", k:"hd",   t:"ホールド", get:g=>g.hd||null, fmt:esCnt("H")},
+  {g:"投手", s:"投球", k:"sv",   t:"セーブ", get:g=>g.sv||null, fmt:esCnt("S")},
+  {g:"投手", s:"能力", k:"velo", t:"球速", get:g=>esIsPit(g)&&g.velo||null, fmt:v=>`${v}<small>km/h</small>`},
+  {g:"投手", s:"能力", k:"ctl",  t:"コントロール", get:g=>esIsPit(g)&&g.ctl||null, fmt:esRkAb},
+  {g:"投手", s:"能力", k:"sta",  t:"スタミナ", get:g=>esIsPit(g)&&g.sta||null, fmt:esRkAb},
+  {g:"投手", s:"能力", k:"brk",  t:"総変化量", get:g=>esIsPit(g)?(esBrk(g).reduce((a,p)=>a+(p.lv||0),0)||null):null, fmt:v=>v, note:"変化球の変化量の合計"},
+  {g:"投手", s:"能力", k:"brkN", t:"球種の数", get:g=>esIsPit(g)?((g.pitches||[]).length||null):null, fmt:esCnt("球種"), note:"変化球＋第2ストレート"},
+  {g:"投手", s:"能力", k:"veloG",t:"球速の伸び", get:g=>esIsPit(g)?esAbGrow(g,["velo"]):null, fmt:v=>`${esPlus(v)}<small>km/h</small>`, note:"入学時から卒業時まで（能力シートに両方ある選手）"},
+  {g:"投手", s:"能力", k:"pAbG", t:"コン・スタの伸び", get:g=>esIsPit(g)?esAbGrow(g,["ctl","sta"]):null, fmt:esPlus, note:"コントロールとスタミナの伸びの合計（入学時→卒業時）"},
+  {g:"投手", s:"能力", k:"pGold",t:"金特の数", get:g=>esIsPit(g)?esGoldN(g):null, fmt:esCnt("個")},
+  {g:"投手", s:"能力", k:"pSk",  t:"特殊能力の数", get:g=>esIsPit(g)?esSkN(g):null, fmt:esCnt("個"), note:"金特・青特・緑特の数（赤特と、A〜Gのランクで付く能力は数えない）"},
+  {g:"野手", s:"総合", k:"fStar",  t:"卒業時★", get:g=>esFld(g)?g.star:null, fmt:v=>v},
+  {g:"野手", s:"総合", k:"fStar0", t:"入学時★", get:g=>esFld(g)&&!g.transfer?g.star0:null, fmt:v=>v, note:"新入生として入学した選手だけ（転校生は「転校生★」で別に並べる）"},
+  {g:"野手", s:"総合", k:"fTrans", t:"転校生★", get:g=>esFld(g)&&g.transfer?g.star0:null, fmt:v=>v, note:"転校してきた時点の★（卒業生シートの入学時★）"},
+  {g:"野手", s:"総合", k:"fGrow",  t:"★の伸び", get:g=>esFld(g)?g.grow:null, fmt:v=>`+${v}`},
+  {g:"野手", s:"総合", k:"games",  t:"出場試合", get:g=>esFld(g)&&g.games||null, fmt:esCnt("試合")},
+  {g:"野手", s:"打撃", k:"mvpB", t:"打撃MVP", get:g=>g.mvpB||null, fmt:esCnt("回"), note:"試合ごとの打撃MVPに選ばれた回数。打席の中身を得点の価値で数え、チームの得点に絡んだ割合（接戦ほど重く）を足して選ぶ"},
+  {g:"野手", s:"打撃", k:"pa",   t:"打席", get:g=>esFld(g)&&g.pa||null, fmt:esCnt("打席")},
+  {g:"野手", s:"打撃", k:"avg",  t:"打率", get:g=>esBatQ(g)?g.avg:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
+  {g:"野手", s:"打撃", k:"ops",  t:"OPS", get:g=>esBatQ(g)?g.ops:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
+  {g:"野手", s:"打撃", k:"obp",  t:"出塁率", get:g=>esBatQ(g)?g.obp:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
+  {g:"野手", s:"打撃", k:"slg",  t:"長打率", get:g=>esBatQ(g)?g.slg:null, fmt:esAvgFmt, note:ES_BAT_NOTE},
+  {g:"野手", s:"打撃", k:"h",    t:"安打", get:g=>g.h||null, fmt:esCnt("本")},
+  {g:"野手", s:"打撃", k:"tb",   t:"塁打", get:g=>g.h!=null ? (g.h+(g.d2||0)+(g.d3||0)*2+(g.hr||0)*3)||null : null, fmt:esCnt("塁打")},
+  {g:"野手", s:"打撃", k:"xbh",  t:"長打", get:g=>((g.d2||0)+(g.d3||0)+(g.hr||0))||null, fmt:esCnt("本"), note:"二塁打＋三塁打＋本塁打"},
+  {g:"野手", s:"打撃", k:"hr",   t:"本塁打", get:g=>g.hr||null, fmt:esCnt("本")},
+  {g:"野手", s:"打撃", k:"d2",   t:"二塁打", get:g=>g.d2||null, fmt:esCnt("本")},
+  {g:"野手", s:"打撃", k:"d3",   t:"三塁打", get:g=>g.d3||null, fmt:esCnt("本")},
+  {g:"野手", s:"打撃", k:"rbi",  t:"打点", get:g=>g.rbi||null, fmt:esCnt("点")},
+  {g:"野手", s:"打撃", k:"r",    t:"得点", get:g=>g.r||null, fmt:esCnt("点")},
+  {g:"野手", s:"打撃", k:"sb",   t:"盗塁", get:g=>g.sb||null, fmt:esCnt("個")},
+  {g:"野手", s:"打撃", k:"bbb",  t:"四死球", get:g=>g.bbb||null, fmt:esCnt("個")},
+  {g:"野手", s:"打撃", k:"sh",   t:"犠打", get:g=>g.sh||null, fmt:esCnt("個")},
+  {g:"野手", s:"能力", k:"meet", t:"ミート", get:g=>esFld(g)&&g.meet||null, fmt:esRkAb},
+  {g:"野手", s:"能力", k:"pow",  t:"パワー", get:g=>esFld(g)&&g.pow||null, fmt:esRkAb},
+  {g:"野手", s:"能力", k:"run",  t:"走力", get:g=>esFld(g)&&g.run||null, fmt:esRkAb},
+  {g:"野手", s:"能力", k:"arm",  t:"肩力", get:g=>esFld(g)&&g.arm||null, fmt:esRkAb},
+  {g:"野手", s:"能力", k:"fld",  t:"守備力", get:g=>esFld(g)&&g.fld||null, fmt:esRkAb},
+  {g:"野手", s:"能力", k:"catch",t:"捕球", get:g=>esFld(g)&&g.catch_||null, fmt:esRkAb},
+  {g:"野手", s:"能力", k:"fSum", t:"基礎能力の合計", get:g=>esFld(g)?esFBaseSum(g):null, fmt:v=>v, note:"ミート・パワー・走力・肩力・守備力・捕球の合計"},
+  {g:"野手", s:"能力", k:"fAbG", t:"基礎能力の伸び", get:g=>esFld(g)?esAbGrow(g,ES_FBASE):null, fmt:esPlus, note:"ミート・パワー・走力・肩力・守備力・捕球の伸びの合計（入学時→卒業時）"},
+  {g:"野手", s:"能力", k:"fGold",t:"金特の数", get:g=>esFld(g)?esGoldN(g):null, fmt:esCnt("個")},
+  {g:"野手", s:"能力", k:"fSk",  t:"特殊能力の数", get:g=>esFld(g)?esSkN(g):null, fmt:esCnt("個"), note:"金特・青特・緑特の数（赤特と、A〜Gのランクで付く能力は数えない）"}
 ];
-const AP_ROMAN=["IV","III","II","I"];
-/* 各ディビジョンの始まりの通算RP */
-function apBuildBase(){ let s=0; AP_TIERS.forEach(t=>{ t.start=s; t.base=[]; if(t.divs) t.divs.forEach(n=>{ t.base.push(s); s+=n; }); else t.base=[s,s,s,s]; }); AP_TIERS[7].start=AP_TIERS[6].start; }
-apBuildBase();
-const apSigned=n=>`${n>0?"+":n<0?"−":"±"}${nf(Math.abs(n))}`;
-const apCls=n=>n>0?"up":n<0?"down":"";
-
-/* 「シルバーIV」「ゴールド 2」「Plat Ⅰ」→ {t:段階の番号, d:0〜3（IV〜I）} */
-function apParseRank(s){
-  s=kkZen2Han(String(s||"")).replace(/[\s\u3000]/g,"").toLowerCase();
-  if(!s) return null;
-  const t=AP_TIERS.findIndex(x=>x.words.some(w=>s.includes(w)));
-  if(t<0) return null;
-  if(!AP_TIERS[t].divs) return {t, d:0};
-  /* ランク名を消して、残りから 4/3/2/1 か IV/III/II/I を読む（書いていなければIV） */
-  let r=s; AP_TIERS[t].words.forEach(w=>{ r=r.split(w).join(""); });
-  r=r.replace(/ⅳ|Ⅳ/g,"iv").replace(/ⅲ|Ⅲ/g,"iii").replace(/ⅱ|Ⅱ/g,"ii").replace(/ⅰ|Ⅰ/g,"i");
-  const n=r.match(/[1-4]/), ro=r.match(/iv|iii|ii|i/);
-  const d = n ? 4-Number(n[0]) : ro ? AP_ROMAN.indexOf(ro[0].toUpperCase()) : 0;
-  return {t, d};
-}
-function apRankName(rk){ if(!rk) return ""; const T=AP_TIERS[rk.t]; return T.divs?T.name+AP_ROMAN[rk.d]:T.name; }
-/* 次のディビジョンまで */
-function apNext(rk, rp){
-  const T=AP_TIERS[rk.t]; if(!T.divs) return null;
-  const need=T.divs[rk.d], nx = rk.d<3 ? {t:rk.t, d:rk.d+1} : {t:rk.t+1, d:0};
-  return { need, left:Math.max(0, need-rp), pct:Math.min(100, rp/need*100), name:apRankName(nx) };
-}
-/* 1日の表示名：「シルバーIV 252 RP」 */
-const apLabel=d=>d.rank?`${apRankName(d.rank)} ${nf(d.rp)} RP`:`${nf(d.rp)} RP`;
-/* 通算RP → そのときのランク名（目盛り用） */
-function apTierAt(total){ let i=0; AP_TIERS.slice(0,7).forEach((t,k)=>{ if(total>=t.start) i=k; }); return AP_TIERS[i]; }
-
-async function loadApex(){
-  const hero=document.getElementById("ap-hero");
-  let res;
-  try{ res=await fetchCSV(URL_APEX); }
-  catch(e){ hero.innerHTML=errBox("Apexのデータを読み込めませんでした。"); return; }
-  const rows=cleanRows(res.data);
-  const keys=rows.length?Object.keys(rows[0]):[];
-  const rpKey=AP_RP_COLS.find(k=>keys.includes(k)) || keys.find(k=>/rp|ポイント|ﾎﾟｲﾝﾄ/i.test(k) && !/ランク$/.test(k));
-  if(!rpKey){ hero.innerHTML=errBox("RPの列が見つかりません。見出しを「RP」にしてください。"); return; }
-  const rkKey=["ランク","ティア","Rank","rank"].find(k=>keys.includes(k) && k!==rpKey);
-  const byKey={};
-  rows.forEach(o=>{
-    const dt=pd(F(o,"日付")); if(!dt) return;
-    const rpRaw=kkZen2Han(F(o,rpKey)).replace(/[／]/g,"/"), frac=rpRaw.match(/^\s*([\d,]+)\s*\/\s*([\d,]+)/);
-    const rp=frac?num(frac[1]):num(rpRaw), need=frac?num(frac[2]):null, rank=rkKey?apParseRank(F(o,rkKey)):null, ss=num(F(o,"シーズン")||F(o,"Season")), sp=num(F(o,"スプリット")||F(o,"Split"));
-    const cur=byKey[dt.toDateString()]||{dt};
-    if(rank) cur.rank=rank;
-    if(ss!=null) cur.season=ss;
-    if(sp!=null) cur.split=sp;
-    if(rp!=null){ cur.rp=rp; cur.memo=F(o,"メモ"); if(need) cur.need=need; }
-    byKey[dt.toDateString()]=cur;
+/* 投手／野手 → その中のタブ → 項目ボタン → TOP10 */
+function esRenderRkTabs(){
+  const avail=ES_RK.filter(r=>ES.grads.some(g=>r.get(g)!=null));
+  if(!avail.some(r=>r.k===ES.rk)) ES.rk=(avail[0]||{}).k;
+  const cur=avail.find(r=>r.k===ES.rk)||{g:"投手",s:"総合"};
+  const groups=["投手","野手"].filter(x=>avail.some(r=>r.g===x));
+  const subs=[...new Set(avail.filter(r=>r.g===cur.g).map(r=>r.s))];
+  const box=document.getElementById("es-rk-tabs");
+  box.className="day-tabs es-rk-tabbox";
+  box.innerHTML=`<div class="es-rk-grp">${groups.map(x=>`<button type="button" class="es-rk-g${x===cur.g?" active":""}" data-g="${x}">${x}</button>`).join("")}</div>
+    <div class="es-rk-sub">${subs.map(x=>`<button type="button" class="${x===cur.s?"on":""}" data-s="${x}">${x}</button>`).join("")}</div>
+    <div class="es-rk-items">${avail.filter(r=>r.g===cur.g && r.s===cur.s).map(r=>`<button type="button" class="day-tab${r.k===ES.rk?" active":""}" data-k="${r.k}">${r.t}</button>`).join("")}</div>`;
+  box.querySelectorAll(".es-rk-g").forEach(b=>b.onclick=()=>{
+    ES.rk=avail.find(r=>r.g===b.dataset.g).k; esRenderRkTabs(); esRenderRk();
   });
-  const all=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
-  /* ランクの空欄を埋める：前の日のランクを引き継ぐ。最初のランクより前は最初のランク */
-  const first=all.find(d=>d.rank);
-  AP.ranked=!!first;
-  let cur=first?first.rank:null;
-  all.forEach(d=>{ if(d.rank) cur=d.rank; else d.rank=cur; });
-  /* シーズンも同じように埋める */
-  const fs=all.find(d=>d.season!=null);
-  let cs=fs?fs.season:null;
-  const fp=all.find(d=>d.split!=null);
-  let cp=fp?fp.split:null;
-  all.forEach(d=>{
-    const prevS=cs;
-    if(d.season!=null) cs=d.season; else d.season=cs;
-    if(d.split!=null) cp=d.split;
-    else{ if(prevS!=null && d.season!==prevS && cp!=null) cp=1; d.split=cp; }   // 新しいシーズンはスプリット1から
-    d.pk=`${d.season??""}-${d.split??""}`;   // 期間（シーズン＋スプリット）
+  box.querySelectorAll(".es-rk-sub button").forEach(b=>b.onclick=()=>{
+    ES.rk=avail.find(r=>r.g===cur.g && r.s===b.dataset.s).k; esRenderRkTabs(); esRenderRk();
   });
-  const t0=today0();
-  AP.all=all.filter(d=>d.rp!=null && d.dt<=t0);   // 先の日付は出さない
-  /* 「174/500」の「/500」があれば、そのディビジョンの大きさとして使う */
-  AP.all.forEach(d=>{ if(d.need && d.rank && AP_TIERS[d.rank.t].divs) AP_TIERS[d.rank.t].divs[d.rank.d]=d.need; });
-  apBuildBase();
-  AP.all.forEach((d,i)=>{
-    d.total = d.rank ? AP_TIERS[d.rank.t].base[d.rank.d]+d.rp : d.rp;
-    const p=AP.all[i-1];
-    d.newSeason = !!(p && d.pk!==p.pk);   // シーズンかスプリットが変わった日
-    const q = d.newSeason ? null : p;   // ランクがリセットされるので比べない
-    d.diff = q ? d.total-q.total : null;
-    d.move = q && d.rank && q.rank ? Math.sign((d.rank.t*4+d.rank.d)-(q.rank.t*4+q.rank.d)) : 0;   // 1=昇格 -1=降格
+  box.querySelectorAll(".day-tab").forEach(b=>b.onclick=()=>{
+    ES.rk=b.dataset.k;
+    box.querySelectorAll(".day-tab").forEach(x=>x.classList.toggle("active", x===b));
+    esRenderRk();
   });
-  if(!AP.all.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
-  AP.seasons=[...new Set(AP.all.map(d=>d.pk))];
-  AP.season=AP.all[AP.all.length-1].pk;
-  AP.cur=AP.all.filter(d=>d.pk===AP.season);
-  apShowSeason(AP.season);
 }
-/* 期間の名前：「シーズン31 スプリット1」 */
-/* スプリットは、そのシーズンにスプリット2以降の記録があるときだけ名前に出す */
-const apShowSplit=d=>d.split!=null && (d.split!==1 || AP.all.some(x=>x.season===d.season && x.split!=null && x.split!==1));
-function apPeriodName(d){ if(!d) return ""; return [d.season!=null?`シーズン${d.season}`:"", apShowSplit(d)?`スプリット${d.split}`:""].filter(Boolean).join(" "); }
-const apPkName=pk=>apPeriodName(AP.all.find(d=>d.pk===pk));
-function apShowSeason(pk){
-  AP.season=pk;
-  AP.list = pk==="all" ? AP.all.slice() : AP.all.filter(d=>d.pk===pk);
-  const box=document.getElementById("ap-season-box"), sel=document.getElementById("ap-season-sel");
-  if(AP.seasons.length>1 || AP.seasons[0]!=="-"){
-    box.hidden=false;
-    /* シーズンごとにまとめ、新しい順 */
-    const bySeason={}; AP.seasons.forEach(k=>{ const d=AP.all.find(x=>x.pk===k); const sk=d.season??""; (bySeason[sk]=bySeason[sk]||[]).push(k); });
-    const order=[...new Set(AP.seasons.map(k=>AP.all.find(x=>x.pk===k).season??""))].reverse();
-    const opt=k=>`<option value="${escHtml(k)}"${k===pk?" selected":""}>${escHtml(apPkName(k)||"未記入")}</option>`;
-    sel.innerHTML=order.map(sk=>`<optgroup label="${sk===""?"シーズン未記入":`シーズン${sk}`}">${bySeason[sk].slice().reverse().map(opt).join("")}</optgroup>`).join("")
-      + (AP.seasons.length>1?`<option value="all"${pk==="all"?" selected":""}>全期間</option>`:"");
-    sel.onchange=()=>apShowSeason(sel.value);
-  }else box.hidden=true;
-  apRenderHero(); apRenderChart(); apRenderPeriods();
-}
-const apBest=L=>(L||AP.list).reduce((b,d)=>(!b||d.total>b.total)?d:b,null);
-const apMoveTag=d=>d.newSeason?`<span class="ap-tag ss">${escHtml(apPeriodName(d))}開始</span>`:d.move>0?'<span class="ap-tag up">昇格！</span>':d.move<0?'<span class="ap-tag down">降格</span>':"";
-
-/* ---------- ダイヤまでの計画 ----------
-   ・期限はスプリット1の終わりの見込み（シーズン31は12/13まで週ごとのラダーがあるので 12/15 と仮置き。発表されたら直す）
-   ・上のランクほど参加コストが高く、1試合で残るRPが減る。1試合で稼ぐRP（AP_GROSS）からコストを引いた分で、
-     ランクごとにかかる試合数を出し、「毎日同じくらいの試合数」で期限に届くように日数を割り振る */
-const AP_GOAL = { t:5, d:0, name:"ダイヤ" };      // ダイヤIV
-const AP_GOAL_DEADLINE = new Date(2026, 11, 15);  // 期限（スプリット1の終わりの見込み）
-const AP_GOAL_FROM = new Date(2026, 10, 4);       // 計画の出発点：11/4の終わり（＝11/5の始まり）
-const AP_GOAL_START = { rank:"ブロンズⅠ", rp:380 }; // そのときのランクとRP
-const AP_GROSS = 75;                              // 1試合で稼ぐRPの目安（参加コストを引く前）
-const AP_COST = [0,10,20,38,48,65,90,90];         // ランクごとの参加コスト（EA公式ヘルプ）
-const apGoalTotal=()=>AP_TIERS[AP_GOAL.t].base[AP_GOAL.d];
-const apNet=total=>Math.max(5, AP_GROSS-AP_COST[AP_TIERS.indexOf(apTierAt(total))]);
-/* fromDt の終わりに fromTotal → 期限にダイヤ、の計画。点（日付と通算RP）と、1日あたりの試合数 */
-function apPlan(fromDt, fromTotal){
-  const goal=apGoalTotal(), segs=[]; let cur=fromTotal;
-  while(cur<goal){ const i=AP_TIERS.indexOf(apTierAt(cur)), next=Math.min(goal, AP_TIERS[i+1].start); segs.push({to:next, m:(next-cur)/apNet(cur)}); cur=next; }
-  const days=Math.max(1,(AP_GOAL_DEADLINE-fromDt)/864e5), M=segs.reduce((s,x)=>s+x.m,0), mpd=M/days;
-  const pts=[{dt:fromDt, v:fromTotal}]; let t=+fromDt;
-  segs.forEach(x=>{ t+=x.m/mpd*864e5; pts.push({dt:new Date(t), v:x.to}); });
-  const at=dt=>{ if(dt<=pts[0].dt) return pts[0].v; for(let i=1;i<pts.length;i++) if(dt<=pts[i].dt){ const a=pts[i-1], b=pts[i]; return a.v+(b.v-a.v)*(dt-a.dt)/(b.dt-a.dt); } return goal; };
-  return { pts, mpd, at };
-}
-/* 今のシーズン（スプリット）を見ているときだけ、計画を出す */
-function apGoalCtx(){
-  if(!AP.ranked || AP.season==="all" || AP.season!==AP.cur[0].pk) return null;
-  const t0=today0(); if(t0>AP_GOAL_DEADLINE) return null;
-  const L=AP.cur, last=L[L.length-1];
-  const sr=apParseRank(AP_GOAL_START.rank), startTotal=AP_TIERS[sr.t].base[sr.d]+AP_GOAL_START.rp;
-  const fixed=apPlan(AP_GOAL_FROM, startTotal);
-  /* 今日の目標：きのうまでの記録から、期限に届くように引き直した計画の「今日の分」 */
-  const yest=new Date(t0.getFullYear(), t0.getMonth(), t0.getDate()-1);
-  const base=L.filter(d=>d.dt<t0).pop()||L[0], re=apPlan(yest, base.total);
-  const todayRec=L.find(d=>+d.dt===+t0);
-  const target=Math.max(0, Math.round(re.at(t0)-base.total));
-  return { fixed, re, base, last, todayRec, target, games:Math.max(1,Math.round(re.mpd)), goal:apGoalTotal() };
-}
-
-/* 期間（シーズン・スプリット）ごとのまとめ */
-function apPeriodStats(L){
-  const first=L[0], last=L[L.length-1], best=apBest(L);
-  return { first, last, best, gain:last.total-first.total, days:L.length };
-}
-
-function apRenderHero(){
-  const L=AP.list, last=L[L.length-1], P=apPeriodStats(L), best=P.best, all=AP.season==="all";
-  const isBest=last===best && L.length>1 && last.diff>0;
-  const nx = last.rank ? apNext(last.rank, last.rp) : null;
-  const T = last.rank ? AP_TIERS[last.rank.t] : null;
-  const live = all || AP.season===AP.cur[0].pk;
-  document.getElementById("ap-hero").innerHTML=`
-    <div class="tm-hero-label">${all?"最新のランク":`${escHtml(apPeriodName(last)||"")}の${live?"ランク":"最終ランク"}`}</div>
-    ${T?`<div class="ap-rank-big" style="--c:${T.color}"><span class="ap-emblem"></span>${escHtml(apRankName(last.rank))}</div>`:""}
-    <div class="tm-big">${nf(last.rp)}<small>RP</small></div>
-    ${nx&&live?`<div class="ap-next"><div class="tgt-bar"><span style="width:${nx.pct}%;background:${T.color}"></span></div>
-      <div class="ap-next-t"><span>${nf(last.rp)} / ${nf(nx.need)}</span><span>${escHtml(nx.name)}まで あと <b>${nf(nx.left)}</b> RP</span></div></div>`:""}
-    ${lead(last.diff==null ? `${fmtMD(last.dt)}　${last.newSeason?`${escHtml(apPeriodName(last))}開始`:"最初の記録"}`
-      : `${fmtMD(last.dt)}　${tone(last.diff,`<b>${apSigned(last.diff)}</b> RP`)}${last.move>0?`　${tone(1,`${escHtml(apRankName(last.rank))}に昇格！`)}`:last.move<0?`　${tone(-1,`${escHtml(apRankName(last.rank))}に降格`)}`:isBest?"　最高記録！":""}`)}
-    ${(()=>{ const G=apGoalCtx(); if(!G) return "";
-      const md=d=>`${d.getMonth()+1}/${d.getDate()}`;
-      if(last.total>=G.goal) return facts([`<li>${AP_GOAL.name}到達！</li>`]);
-      const done=G.todayRec?G.todayRec.total-G.base.total:0, vs=Math.round(last.total-G.fixed.at(last.dt));
-      return facts([
-        `<li>今日の目標<b>+${nf(G.target)}</b>RP（約${G.games}試合${G.todayRec?`・今日 <span class="${apCls(done)}">${apSigned(done)}</span>`:""}）</li>`,
-        fact(`${AP_GOAL.name}まで あと`, nf(G.goal-last.total), `RP（${md(AP_GOAL_DEADLINE)}まで）`),
-        last.dt>AP_GOAL_FROM ? (vs ? `<li>計画より<b class="${apCls(vs)}">${nf(Math.abs(vs))}</b>RP ${vs>0?"先":"遅れ"}</li>` : `<li><b>計画どおり</b></li>`) : ""
-      ]); })()}
-    ${facts([
-      all ? "" : `<li>${live?"シーズン開始から":"シーズン通算"}<b class="${apCls(P.gain)}">${apSigned(P.gain)}</b>RP（${escHtml(apLabel(P.first))}から）</li>`,
-      fact("最高", best.rank?escHtml(apRankName(best.rank)):nf(best.rp), best.rank?` ${nf(best.rp)}RP`:"RP"),
-      fact("遊んだ日", L.length, "日")
-    ])}`;
-}
-
-/* 折れ線グラフ（SVG）：選んだシーズン（スプリット）の全期間。背景はランクの色、横線はディビジョンの区切り */
-function apRenderChart(){
-  const L=AP.list, G=apGoalCtx(), x0=L[0].dt, x1=G?AP_GOAL_DEADLINE:L[L.length-1].dt;
-  const W=600, PL=4, PR=4, PT=14, PB=22; let H=220;
-  let lo=Math.min(...L.map(d=>d.total)), hi=Math.max(...L.map(d=>d.total), G?G.goal:0);
-  const pad=Math.max((hi-lo)*0.12, 50); lo=Math.max(0, lo-pad); hi=hi+pad;
-  /* ディビジョンの線が多いときは、1本あたり16pxくらいになるようにグラフを縦に伸ばす */
-  const nDiv=AP.ranked?AP_TIERS.slice(0,6).reduce((s,t)=>s+t.base.filter(b=>b>lo&&b<hi).length,0):0;
-  if(nDiv>6) H=Math.min(440, 60+nDiv*22);
-  const span=Math.max(1, x1-x0);
-  const X=dt=>L.length>1||G ? PL+(dt-x0)/span*(W-PL-PR) : W/2, Y=v=>PT+(1-(v-lo)/(hi-lo))*(H-PT-PB);
-  const planD=G?G.fixed.pts.map((p,i)=>(i?"L":"M")+X(p.dt).toFixed(1)+","+Y(p.v).toFixed(1)).join(""):"";
-  const cy=v=>Math.max(PT, Math.min(H-PB, Y(v)));
-  const pts=L.map(d=>[X(d.dt), Y(d.total)]);
-  /* 期間が変わったところ（ランクのリセット）は線をつなげない */
-  const line=pts.map((p,i)=>(i&&!L[i].newSeason?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join("");
-  let grid=[], bands=[];
-  if(AP.ranked){
-    const divs=[]; AP_TIERS.slice(0,7).forEach(t=>{ (t.divs?t.base:[t.start]).forEach((b,i)=>divs.push({v:b, label:t.divs?t.name+AP_ROMAN[i]:t.name, top:i===0})); });
-    grid=divs.filter(g=>g.v>lo && g.v<hi);
-    /* ディビジョンごとに線を引く（文字がぶつかるところは、あとで間引く） */
-    AP_TIERS.slice(0,7).forEach((t,i)=>{ const end=i<6?AP_TIERS[i+1].start:Infinity;
-      if(end>lo && t.start<hi) bands.push({y1:cy(Math.min(end,hi)), y2:cy(Math.max(t.start,lo)), c:t.color}); });
-  }else{
-    const step=[50,100,200,250,500,1000,2000,2500,5000,10000].find(s=>(hi-lo)/s<=5)||20000;
-    for(let v=Math.ceil(lo/step)*step; v<=hi; v+=step) grid.push({v, label:nf(v)});
-  }
-  const mons=[]; for(let d=new Date(x0.getFullYear(), x0.getMonth()+1, 1); d<=x1; d=new Date(d.getFullYear(), d.getMonth()+1, 1)) mons.push(d);
-  const best=apBest();
-  /* 日付の目盛り：記録が少なければ全部、多ければ最初と最後を含めて6つくらい */
-  const ticks=(()=>{ if(G){ const k=6; return Array.from({length:k},(_,i)=>{ const t=new Date(+x0+(x1-x0)*i/(k-1)); return new Date(t.getFullYear(),t.getMonth(),t.getDate()); }); }
-    const n=L.length, k=Math.min(n,6); if(n<=6) return L.map(d=>d.dt);
-    return [...new Set(Array.from({length:k},(_,i)=>Math.round(i*(n-1)/(k-1))))].map(i=>L[i].dt); })();
-  document.getElementById("ap-chart").innerHTML=`
-    <div class="bc-readout ap-readout" aria-live="polite"></div>
-    ${AP.ranked?`<div class="ap-axis-t"><span>ランク</span><span>通算RP</span></div>`:""}
-    <div class="ap-lc${AP.ranked?" gutter":""}"${H!==220?` style="height:${H}px"`:""}>
-      <div class="ap-plot">
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="日ごとのランクポイントの推移">
-        ${bands.map(b=>`<rect x="0" width="${W}" y="${b.y1.toFixed(1)}" height="${Math.max(0,b.y2-b.y1).toFixed(1)}" fill="${b.c}" opacity=".13"/>`).join("")}
-        ${grid.map(g=>`<line class="ap-grid${g.top?" top":""}" x1="0" x2="${W}" y1="${Y(g.v).toFixed(1)}" y2="${Y(g.v).toFixed(1)}"/>`).join("")}
-        ${mons.map(d=>`<line class="ap-mon" x1="${X(d).toFixed(1)}" x2="${X(d).toFixed(1)}" y1="${PT}" y2="${H-PB}"/>`).join("")}
-        ${planD?`<path class="mh-plan" d="${planD}"/>`:""}
-        <path class="ap-line" d="${line}"/>
-        <line class="ap-cur" x1="0" x2="0" y1="${PT}" y2="${H-PB}" visibility="hidden"/>
-      </svg>
-      ${ticks.map((d,k)=>`<span class="ap-xlbl${k===0&&ticks.length>1?" first":k===ticks.length-1&&ticks.length>1?" last":""}" style="left:${(X(d)/W*100).toFixed(2)}%">${d.getMonth()+1}/${d.getDate()}</span>`).join("")}
-      ${L.map((d,i)=>`<span class="ap-dot${d===best?" best":""}${d.move>0?" promo":""}" data-i="${i}" style="left:${(pts[i][0]/W*100).toFixed(2)}%;top:${(pts[i][1]/H*100).toFixed(2)}%"></span>`).join("")}
+function esRenderRk(){
+  const R=ES_RK.find(r=>r.k===ES.rk), el=document.getElementById("es-rk");
+  el.className="";
+  if(!R){ el.innerHTML=errBox("まだ卒業生の記録がありません。"); return; }
+  const L=ES.grads.filter(g=>R.get(g)!=null).sort((a,b)=>R.asc?R.get(a)-R.get(b):R.get(b)-R.get(a)).slice(0,10);
+  const medal=["🥇","🥈","🥉"];
+  el.innerHTML=L.map((g,i)=>esPl("gm-row", `
+      <div class="gm-pos">${i<3?`<span class="rk-medal" aria-label="${i+1}位">${medal[i]}</span>`:i+1}</div>
+      <div class="gm-main">
+        <div class="gm-title">${escHtml(g.name)}<span class="es-pos sm ${esPosCls(g.pos)}">${escHtml(g.pos)}</span>${esTags(g)}</div>
+        <div class="gm-meta">${escHtml(esGradMeta(g))}</div>
       </div>
-      ${grid.filter(g=>Y(g.v)>PT+6).map(g=>{ const k=g.top?" top":"", cur=L[L.length-1].rank&&g.label===apRankName(L[L.length-1].rank)?" cur":"";
-        return `<span class="ap-ylbl${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${escHtml(g.label)}</span><span class="ap-ylbl r${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${nf(g.v)}</span>`; }).join("")}
-    </div>
-    ${legend([
-      {type:"line", color:"#c2185b", text:"実績"},
-      G?{type:"dash", text:`計画：${AP_GOAL_FROM.getMonth()+1}/${AP_GOAL_FROM.getDate()+1} ${escHtml(apRankName(apParseRank(AP_GOAL_START.rank)))} ${AP_GOAL_START.rp} → ${AP_GOAL_DEADLINE.getMonth()+1}/${AP_GOAL_DEADLINE.getDate()} ${AP_GOAL.name}`}:null,
-      L.some(d=>d.move>0)?{type:"dot", color:"#1f8a4c", text:"昇格"}:null,
-      {type:"dot", color:"#e0a800", text:"最高"}
-    ])}
-    ${apDaysTable()}`;
-  const box=document.querySelector("#ap-chart .ap-lc"), out=document.querySelector("#ap-chart .ap-readout"), cur=box.querySelector(".ap-cur");
-  const pick=i=>{
-    const d=L[i];
-    box.querySelectorAll(".ap-dot").forEach(e=>e.classList.toggle("on", +e.dataset.i===i));
-    cur.setAttribute("x1", pts[i][0]); cur.setAttribute("x2", pts[i][0]); cur.setAttribute("visibility","visible");
-    out.innerHTML=`${fmtMD(d.dt)}　<strong>${escHtml(apLabel(d))}</strong>${d.diff!=null?`　<span class="${apCls(d.diff)}">${apSigned(d.diff)}</span>`:""}${apMoveTag(d)}${d.memo?`　${escHtml(d.memo)}`:""}`;
-  };
-  const near=e=>{
-    const r=box.querySelector(".ap-plot").getBoundingClientRect(), x=(e.clientX-r.left)/r.width*W;
-    let bi=0; pts.forEach((p,i)=>{ if(Math.abs(p[0]-x)<Math.abs(pts[bi][0]-x)) bi=i; }); return bi;
-  };
-  box.addEventListener("pointermove", e=>pick(near(e)));
-  box.addEventListener("pointerdown", e=>pick(near(e)));
-  pick(L.length-1);
+      <div class="gm-score es-val">${R.fmt(R.get(g))}</div>`, g)).join("");
+  document.getElementById("es-rk-note").textContent=[R.note, "選手をタップすると年度ごとの成績と通算が見られます。"].filter(Boolean).join("　");
 }
 
-/* 日別の一覧（トリマと同じく、開いたときだけ見える表。新しい順） */
-/* 通算RP → そのときのランクとRP（例：3,674 → シルバーIII 174） */
-function apFromTotal(total){
-  for(let t=6;t>=0;t--){ const T=AP_TIERS[t]; if(total>=T.start){
-    if(!T.divs) return {rank:{t,d:0}, rp:total-T.start};
-    for(let d=3;d>=0;d--) if(total>=T.base[d]) return {rank:{t,d}, rp:total-T.base[d]}; } }
-  return {rank:{t:0,d:0}, rp:total};
-}
-/* 日別の一覧：実績に、計画の「その日に稼ぐ予定のRP」と「その日の終わりのランク」を並べる。
-   今のシーズンを見ているときは、期限までの先の日も出す */
-function apDaysTable(){
-  const G=apGoalCtx(), byDay={};
-  AP.list.forEach(d=>{ byDay[d.dt.toDateString()]=d; });
-  let days=AP.list.map(d=>d.dt);
-  if(G){ const t0=today0(); for(let d=new Date(t0); d<=AP_GOAL_DEADLINE; d=new Date(d.getFullYear(), d.getMonth(), d.getDate()+1)) days.push(new Date(d)); }
-  days=[...new Map(days.map(d=>[d.toDateString(), d])).values()].sort((x,y)=>x-y);
-  const t0=today0();
-  const plan=dt=>{ if(!G || dt<=AP_GOAL_FROM) return null;
-    const v=G.fixed.at(dt), prev=G.fixed.at(new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()-1)), p=apFromTotal(Math.round(v));
-    return {gain:Math.round(v-prev), label:`${apRankName(p.rank)} ${nf(p.rp)}`}; };
-  const rows=days.map(dt=>{ const d=byDay[dt.toDateString()], p=plan(dt), fut=!d && dt>=t0;
-    return `<tr class="${fut?"ap-fut":""}${+dt===+t0?" ap-today":""}">
-      <td>${fmtMD(dt)}</td>
-      ${G?`<td class="ap-plan-c">${p?`+${nf(p.gain)}<small>${escHtml(p.label)}</small>`:"—"}</td>`:""}
-      <td>${d?`${d.rank?escHtml(apRankName(d.rank))+" ":""}${nf(d.rp)}`:""}</td>
-      <td class="${d&&d.diff!=null?apCls(d.diff):""}">${d?`${d.diff!=null?apSigned(d.diff):""}${d.move>0?" 昇格":d.move<0?" 降格":""}${d.newSeason?"開始":""}`:""}</td>
-    </tr>`; });
-  return `<details class="tm-table ap-days"><summary>日別の一覧を開く</summary>
-    <table><thead><tr><th>日付</th>${G?"<th>予定</th>":""}<th>実績</th><th>前回から</th></tr></thead><tbody>${rows.join("")}</tbody></table>
-    ${G?`<p class="kk-note-s">予定：その日に稼ぐRPと、その日の終わりに届いていたいランク（計画の点線）。</p>`:""}</details>`;
-}
-
-/* シーズン（スプリット）ごとの成績。タップでその期間を表示 */
-function apRenderPeriods(){
-  const rows=AP.seasons.slice().reverse().map(pk=>{ const L=AP.all.filter(d=>d.pk===pk); return {pk, ...apPeriodStats(L)}; });
-  const max=Math.max(1,...rows.map(r=>r.best.total));
-  const el=document.getElementById("ap-periods");
-  el.innerHTML=rows.map(r=>{ const T=r.best.rank?AP_TIERS[r.best.rank.t]:null;
-    return `<button type="button" class="mlist-row ap-prow${r.pk===AP.season?" on":""}" data-pk="${escHtml(r.pk)}">
-      <span class="mlist-name"><span class="mlist-m">${escHtml(apPkName(r.pk)||"記録")}</span></span>
-      <span class="mlist-bar"><span style="width:${r.best.total/max*100}%;background:${T?T.color:"#c2185b"}"></span></span>
-      <span class="mlist-val">${escHtml(r.best.rank?apRankName(r.best.rank):nf(r.best.rp))}<small>最高 ${nf(r.best.rp)}RP・${r.days}日・<span class="${apCls(r.gain)}">${apSigned(r.gain)}</span></small></span>
-    </button>`; }).join("");
-  el.querySelectorAll(".ap-prow").forEach(b=>b.onclick=()=>{
-    apShowSeason(b.dataset.pk);
-    const a=document.getElementById("game"); window.scrollTo({top:a.offsetTop, behavior:prefersReduced()?"auto":"smooth"});
-  });
+/* ---------- 記録 ---------- */
+function esRenderRecords(){
+  const G=ES.games, el=document.getElementById("es-records");
+  if(!G.length){ el.innerHTML=errBox("まだ試合の記録がありません。"); document.getElementById("es-pw").innerHTML=errBox("相手戦力が入った試合がまだありません。"); return; }
+  const st=esStreaks().best;
+  const W=G.filter(g=>g.wl==="勝");
+  const most=G.slice().sort((a,b)=>b.rs-a.rs||a.no-b.no)[0];
+  const big=W.slice().sort((a,b)=>(b.rs-b.ra)-(a.rs-a.ra)||a.no-b.no)[0];
+  const has=(g,w)=>g.note.includes(w);
+  /* 延長・サヨナラは補足の文字に加えて、イニングスコアからも判定する */
+  const num=v=>{ const n=parseInt(String(v).replace(/[^0-9]/g,""),10); return isNaN(n)?0:n; };
+  const lastIdx=r=>{ let i=-1; (r.inns||[]).forEach((v,k)=>{ if(String(v).trim()!=="") i=k; }); return i; };
+  const isExt=g=>has(g,"延長") || (ES.inn[g.no]||[]).some(r=>lastIdx(r)>=9);
+  /* サヨナラ：後攻が最終回（9回以降）の裏に、同点か負けている状態から勝ち越して終わった試合 */
+  const isSayo=g=>{ if(has(g,"サヨナラ")) return true; if(has(g,"コールド")) return false;
+    const L=ES.inn[g.no]||[], home=L.find(r=>r.side==="後攻"), away=L.find(r=>r.side==="先攻"); if(!home||!away) return false;
+    const k=lastIdx(home); if(k<8 || lastIdx(away)>k) return false;
+    const lastV=String(home.inns[k]); if(/[✕×xX]/.test(lastV)) return false;
+    const hr=home.inns.reduce((a,v)=>a+num(v),0), ar=away.inns.reduce((a,v)=>a+num(v),0);
+    return hr>ar && hr-num(lastV)<=ar; };
+  const ext=G.filter(isExt), sayo=G.filter(isSayo);
+  const recs=[
+    {t:"最長連勝", v:`${st.n}<small>連勝</small>`, s: st.from?`${esGameLbl(st.from)}〜${st.to.year}年度 ${st.to.taikai} ${st.to.round}${st.stop?`／止めたのは ${st.stop.opp}`:"／継続中"}`:""},
+    {t:"最多得点", v:`${most.rs}<small>点</small>`, s:`vs ${most.opp}（${esGameLbl(most)}・${most.rs}-${most.ra}）`},
+    big?{t:"最大点差の勝利", v:`${big.rs-big.ra}<small>点差</small>`, s:`vs ${big.opp}（${esGameLbl(big)}・${big.rs}-${big.ra}）`}:null,
+    {t:"完封勝利", v:`${W.filter(g=>g.ra===0).length}<small>試合</small>`, s:"相手を0点に抑えた勝利"},
+    {t:"コールド勝ち", v:`${W.filter(g=>has(g,"コールド")).length}<small>試合</small>`, s:"補足に「コールド」とある試合"},
+    ext.length?{t:"延長戦", v:`${ext.filter(g=>g.wl==="勝").length}<small>勝</small>${ext.filter(g=>g.wl==="負").length}<small>敗</small>`, s:"10回以上まで行った試合"}:null,
+    sayo.length?{t:"サヨナラ", v:`${sayo.filter(g=>g.wl==="勝").length}<small>勝</small>${sayo.filter(g=>g.wl==="負").length}<small>敗</small>`, s:"最終回の裏で決着した試合"}:null,
+    G.some(g=>g.power==="S")?{t:"戦力Sの相手", v:`${W.filter(g=>g.power==="S").length}<small>勝</small>${G.filter(g=>g.power==="S"&&g.wl==="負").length}<small>敗</small>`, s:"格上相手の成績"}:null
+  ].filter(Boolean);
+  el.innerHTML=`<div class="es-recs">${recs.map(r=>`
+    <div class="es-rec"><div class="es-rec-t">${r.t}</div><div class="es-rec-v">${r.v}</div><div class="es-rec-s">${escHtml(r.s)}</div></div>`).join("")}</div>`;
+  document.getElementById("es-pw").innerHTML = esTeamRankHtml() || errBox("相手戦力が入った試合がまだありません。");
 }
 
-/* =====================================================================
-   ゲームのページ：Apex Legends とモンハンを切り替える
-   ===================================================================== */
-const GAME={ tab:"apex" };
-function gameShow(g){
-  GAME.tab = g==="mh" ? "mh" : "apex";
-  document.querySelectorAll(".game-tabs [data-g]").forEach(b=>{ const on=b.dataset.g===GAME.tab; b.classList.toggle("active", on); b.setAttribute("aria-selected", on); });
-  document.getElementById("game-apex").hidden = GAME.tab!=="apex";
-  document.getElementById("game-mh").hidden = GAME.tab!=="mh";
-  /* 非表示の間に描いたグラフは幅が0なので、表示したときに描き直す */
-  if(GAME.tab==="mh" && MH.list.length){ mhRenderChart(); mhRenderMR(); }
-  if(GAME.tab==="apex" && AP.list.length) apRenderChart();
+/* チームの相手戦力別成績：勝敗・勝率・平均得失点・チーム打率・チーム防御率 */
+function esTeamRankHtml(){
+  const ks=ES_PW.filter(k=>ES.games.some(g=>g.power===k)); if(!ks.length) return "";
+  const rows=ks.map(k=>{
+    const G=ES.games.filter(g=>g.power===k), w=G.filter(g=>g.wl==="勝").length, l=G.filter(g=>g.wl==="負").length, d=G.length-w-l;
+    const nos=new Set(G.map(g=>g.no)), B=ES.box.filter(b=>nos.has(b.no)), t=esAgg(B);
+    const rs=G.reduce((a,g)=>a+g.rs,0), ra=G.reduce((a,g)=>a+g.ra,0);
+    return `<tr><th><span class="es-pw pw-${k}">${k}</span></th><td>${G.length}</td><td>${w}-${l}${d?`-${d}`:""}</td>
+      <td>${w+l?esAvgFmt(w/(w+l)):"-"}</td><td class="mh">${(rs/G.length).toFixed(1)}</td><td class="mh">${(ra/G.length).toFixed(1)}</td>
+      <td>${esF(t.avg,esAvgFmt)}</td><td>${esF(t.era,v=>v.toFixed(2))}</td></tr>`;
+  }).join("");
+  return `<div class="es-st-wrap"><table class="es-st-tbl es-pw-tbl es-rank-tbl"><thead><tr><th>戦力</th><th>試合</th><th>勝敗</th><th>勝率</th><th class="mh">平均得点</th><th class="mh">平均失点</th><th>打率</th><th>防御率</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
+    <p class="kk-note-s">打率・防御率は選手成績を入れた試合から計算。</p>`;
 }
-document.querySelectorAll(".game-tabs [data-g]").forEach(b=>b.addEventListener("click", ()=>{
-  gameShow(b.dataset.g);
-  const h="#"+(GAME.tab==="mh"?"mh":"game"); if(location.hash!==h) history.replaceState({page:GAME.tab==="mh"?"mh":"game"}, "", h);
-}));
-
-/* =====================================================================
-   モンハン（ハンターランク）
-   列 : No / 日付 / 曜日 / HR上昇 / 累計HR / MR上昇 / 累計MR（累計はサイト側で計算し直します）
-   ・MR上昇に数字が入ると、マスターランクの記録も自動で表示されます（空欄のあいだは出ません）
-   今日より先の日付の行は、数字が入っていても使いません（まだ遊んでいない日として扱う）
-   999 までのスケジュールはサイト側で計算します：MH_PLAN_FROM の時点のHRから、MH_DEADLINE に MH_GOAL へ
-   日数に比例してまっすぐ上げる計画。月末ごとの目標もここから出します
-   ===================================================================== */
-const URL_MH = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1977306445&single=true&output=csv";
-const MH_GOAL = 999;                       // 目標のHR
-const MH_DEADLINE = new Date(2027, 11, 31); // いつまでに
-const MH_PLAN_FROM = new Date(2026, 10, 5);  // 計画の出発点（この日の終わりのHRから数える。計画を立てた日）
-const MH_MR_GOAL = null;                   // MRの目標（例 999）。決まったら数字を入れる
-const MH_MR_DEADLINE = null;               // MRの期限（例 new Date(2028, 11, 31)）
-const MH={ list:[], plan:[], mr:[] };
-
-async function loadMH(){
-  const hero=document.getElementById("mh-hero");
-  let rows=[];
-  try{ rows=cleanRows((await fetchCSV(URL_MH)).data); }
-  catch(e){ hero.innerHTML=errBox("モンハンのデータを読み込めませんでした。"); return; }
-  const byKey={};
-  rows.forEach(o=>{
-    const dt=pd(F(o,"日付")), g=num(F(o,"HR上昇")||F(o,"上昇")), mg=num(F(o,"MR上昇"));
-    if(dt && (g!=null || mg!=null)) byKey[dt.toDateString()]={dt, gain:g||0, mgain:mg};
-  });
-  const t0=today0();
-  MH.all=Object.values(byKey).filter(d=>d.dt<=t0).sort((a,b)=>a.dt-b.dt);   // 先の日付は使わない
-  let c=0; MH.all.forEach(d=>{ c+=d.gain; d.hr=c; });
-  /* MR：最初に数字が入った日から */
-  let mc=0; MH.mr=[];
-  const mi=MH.all.findIndex(d=>d.mgain!=null);
-  if(mi>=0) MH.all.slice(mi).forEach(d=>{ mc+=d.mgain||0; d.mr=mc; MH.mr.push(d); });
-  MH.list=MH.all;
-  if(!MH.list.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
-  /* スケジュール：出発点のHR → 期限に目標。月末ごとの目標HRを日数で割り振る */
-  const before=MH.all.filter(d=>d.dt<=MH_PLAN_FROM);
-  MH.planStart={dt:MH_PLAN_FROM, hr:before.length?before[before.length-1].hr:0};
-  MH.plan=[]; const total=MH_DEADLINE-MH_PLAN_FROM; let prev=MH.planStart.hr;
-  for(let d=new Date(MH_PLAN_FROM.getFullYear(), MH_PLAN_FROM.getMonth()+1, 0); d<=MH_DEADLINE; d=new Date(d.getFullYear(), d.getMonth()+2, 0)){
-    const hr=Math.round(MH.planStart.hr+(MH_GOAL-MH.planStart.hr)*(d-MH_PLAN_FROM)/total);
-    MH.plan.push({dt:d, hr}); prev=hr;   // その月に上げる数は、前の月末（実績か目標）との差で出す
-  }
-  if(!MH.plan.length || MH.plan[MH.plan.length-1].dt<MH_DEADLINE) MH.plan.push({dt:MH_DEADLINE, hr:MH_GOAL});
-  mhRenderHero(); mhRenderChart(); mhRenderMR(); mhRenderMonths();
+/* 長いリストは最初の10件だけ見せて、残りは折りたたむ */
+function esFoldList(items, render, n, unit){
+  n=n||10;
+  if(items.length<=n) return items.map(render).join("");
+  return items.slice(0,n).map(render).join("") +
+    `<details class="es-more"><summary>残り ${items.length-n} ${unit||"件"}を見る</summary>${items.slice(n).map(render).join("")}</details>`;
 }
-
-/* 計画線の上で、ある日に何HRのはずか（計画の始まる前は null） */
-function mhPlanAt(dt){
-  const P=[MH.planStart, ...MH.plan];
-  if(dt<P[0].dt) return null;
-  if(+dt===+P[0].dt) return P[0].hr;
-  for(let i=1;i<P.length;i++){ if(dt<=P[i].dt){ const a=P[i-1], b=P[i]; return a.hr+(b.hr-a.hr)*(dt-a.dt)/(b.dt-a.dt); } }
-  return P[P.length-1].hr;
-}
-
-/* HR と MR で同じ見た目：大きな数字 → 目標までのバー → 最新の日の1行 → 補足 */
-function mhRankHero(el, o){
-  const L=o.list, last=L[L.length-1], v=last[o.key], g=last[o.gainKey]||0;
-  const ymd=d=>`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
-  const plan=o.planAt?o.planAt(last.dt):null, vs=plan!=null?Math.round(v-plan):null;
-  const left=o.goal?Math.max(0,o.goal-v):null, days=o.deadline?Math.max(1, Math.round((o.deadline-today0())/864e5)):null;
-  el.innerHTML=`
-    <div class="tm-hero-label">${o.title}</div>
-    <div class="tm-big">${nf(v)}<small>${o.unit}</small></div>
-    <div class="ap-next"><div class="tgt-bar"><span style="width:${o.goal?Math.min(100,v/o.goal*100):0}%;background:${o.color}"></span></div>
-      <div class="ap-next-t"><span>${o.goal?`${nf(v)} / ${o.goal}`:nf(v)}</span><span>${o.goal&&o.deadline?`${ymd(o.deadline)}までに ${o.goal}`:"目標は未設定"}</span></div></div>
-    ${lead(`${fmtMD(last.dt)}　${g?tone(1,`<b>+${g}</b> ${o.unit}`):`<b>±0</b> ${o.unit}`}${vs!=null?`　${vs>0?tone(1,`計画より ${vs} ${o.unit} 先`):vs<0?tone(-1,`計画より ${-vs} ${o.unit} 遅れ`):"計画どおり"}`:o.planFrom&&last.dt<=o.planFrom?`　計画は ${ymd(new Date(o.planFrom.getFullYear(),o.planFrom.getMonth(),o.planFrom.getDate()+1))} から`:""}`)}
-    ${facts([
-      o.goal ? fact(`${o.goal}まで あと`, nf(left), o.unit) : fact("目標", "未設定", ""),
-      o.goal && days ? fact("1日の目安", (left/days).toFixed(1), `${o.unit}（残り${days}日）`) : "",
-    ])}`;
-}
-function mhRenderHero(){
-  mhRankHero(document.getElementById("mh-hero"), { title:"ハンターランク", unit:"HR", color:"#8a5a2b", list:MH.list, key:"hr", gainKey:"gain", goal:MH_GOAL, deadline:MH_DEADLINE, planAt:mhPlanAt, planFrom:MH_PLAN_FROM });
-}
-
-/* 累計の折れ線（実線）＋計画線（点線）。HR と MR で共通 */
-function mhChart(el, o){
-  const L=o.list, W=600, H=220, PL=4, PR=4, PT=14, PB=22;
-  const x0=L[0].dt, x1=o.deadline && o.deadline>L[L.length-1].dt ? o.deadline : L[L.length-1].dt;
-  const vmax=Math.max(...L.map(d=>d[o.key]));
-  const hi=(o.goal||Math.max(10, vmax*1.15))*1.04, span=Math.max(864e5, x1-x0);
-  const X=dt=>PL+(dt-x0)/span*(W-PL-PR), Y=v=>PT+(1-v/hi)*(H-PT-PB);
-  const pts=L.map(d=>[X(d.dt), Y(d[o.key])]);
-  const line=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join("");
-  const planD=o.plan&&o.plan.length>1 ? o.plan.map((p,i)=>(i?"L":"M")+X(p.dt).toFixed(1)+","+Y(p.v).toFixed(1)).join("") : "";
-  const top=o.goal||hi/1.04, step=[1,2,5,10,20,25,50,100,200,250,500].find(s=>top/s<=4)||1000;
-  /* 目標があれば、目標の1/4くらいのキリのいい刻み（999なら250・500・750）と目標の線 */
-  const niceQ=v=>{ const e=Math.pow(10,Math.floor(Math.log10(v))); return [1,2,2.5,5,10].map(m=>m*e).reduce((b,x)=>Math.abs(x-v)<Math.abs(b-v)?x:b); };
-  const grid=o.goal ? [1,2,3].map(i=>i*niceQ(o.goal/4)).filter(v=>v<o.goal*0.95).concat(o.goal) : Array.from({length:Math.floor(top/step)},(_,i)=>(i+1)*step);
-  /* 目盛り：期間が長ければ2か月ごと、短ければ毎月の月初め（年が変わるところは年も） */
-  const months=(x1-x0)/864e5/30, every=months>8?2:1, ticks=[];
-  const short=months<2;   // 2か月未満は日付で目盛る（最初と最後を含めて6つくらい）
-  if(short){ const n=L.length, k=Math.min(n,6); [...new Set(Array.from({length:k},(_,i)=>Math.round(i*(n-1)/Math.max(1,k-1))))].forEach(i=>ticks.push(L[i].dt)); }
-  else for(let d=new Date(x0.getFullYear(), x0.getMonth()+1, 1); d<=x1; d=new Date(d.getFullYear(), d.getMonth()+every, 1)) ticks.push(d);
-  el.innerHTML=`
-    <div class="bc-readout ap-readout" aria-live="polite"></div>
-    <div class="ap-lc">
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${o.unit}の推移">
-        ${grid.map(v=>`<line class="ap-grid${v===o.goal?" top":""}" x1="0" x2="${W}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/>`).join("")}
-        ${(short?[]:ticks).map(d=>`<line class="ap-mon" x1="${X(d).toFixed(1)}" x2="${X(d).toFixed(1)}" y1="${PT}" y2="${H-PB}"/>`).join("")}
-        ${planD?`<path class="mh-plan" d="${planD}"/>`:""}
-        <path class="ap-line" style="stroke:${o.color}" d="${line}"/>
-        <line class="ap-cur" x1="0" x2="0" y1="${PT}" y2="${H-PB}" visibility="hidden"/>
-      </svg>
-      ${grid.map(v=>`<span class="ap-ylbl" style="top:${(Y(v)/H*100).toFixed(2)}%">${o.unit} ${v}</span>`).join("")}
-      ${ticks.map((d,k)=>`<span class="ap-xlbl${(short&&ticks.length>1&&k===0)||X(d)/W<0.08?" first":(short&&ticks.length>1&&k===ticks.length-1)||X(d)/W>0.92?" last":""}" style="left:${(X(d)/W*100).toFixed(2)}%">${short?`${d.getMonth()+1}/${d.getDate()}`:`${d.getMonth()===0||(d===ticks[0]&&!ticks.some(t=>t.getMonth()===0))?`${d.getFullYear()}/`:""}${d.getMonth()+1}月`}</span>`).join("")}
-      <span class="ap-dot mh-dot" style="border-color:${o.color}"></span>
-    </div>
-    ${legend([
-      {type:"line", color:o.color, text:"実績"},
-      planD?{type:"dash", text:`計画：${o.deadline.getFullYear()}/${o.deadline.getMonth()+1}/${o.deadline.getDate()} に ${o.unit} ${o.goal}`}:null
-    ])}
-    ${o.table||""}`;
-  const box=el.querySelector(".ap-lc"), out=el.querySelector(".ap-readout"), cur=box.querySelector(".ap-cur"), dot=box.querySelector(".mh-dot");
-  const pick=i=>{
-    const d=L[i], plan=o.planAt?o.planAt(d.dt):null, g=d[o.gainKey];
-    cur.setAttribute("x1", pts[i][0]); cur.setAttribute("x2", pts[i][0]); cur.setAttribute("visibility","visible");
-    dot.style.left=(pts[i][0]/W*100)+"%"; dot.style.top=(pts[i][1]/H*100)+"%";
-    out.innerHTML=`${d.dt.getFullYear()}/${fmtMD(d.dt)}　<strong>${o.unit} ${nf(d[o.key])}</strong>${g?`　<span class="up">+${g}</span>`:""}${plan!=null?`　<span class="${d[o.key]>=plan?"up":"down"}">計画 ${nf(Math.round(plan))}</span>`:""}`;
-  };
-  const near=e=>{ const r=box.getBoundingClientRect(), x=(e.clientX-r.left)/r.width*W;
-    let bi=0; pts.forEach((p,i)=>{ if(Math.abs(p[0]-x)<Math.abs(pts[bi][0]-x)) bi=i; }); return bi; };
-  box.addEventListener("pointermove", e=>pick(near(e)));
-  box.addEventListener("pointerdown", e=>pick(near(e)));
-  pick(L.length-1);
-}
-function mhRenderChart(){
-  mhChart(document.getElementById("mh-chart"), { list:MH.list, key:"hr", gainKey:"gain", unit:"HR", color:"#8a5a2b",
-    goal:MH_GOAL, deadline:MH_DEADLINE, plan:[MH.planStart, ...MH.plan].map(p=>({dt:p.dt, v:p.hr})), planAt:mhPlanAt, table:mhDaysTable() });
-}
-
-/* マスターランク：MR上昇に数字が入ったら表示 */
-function mhMRPlanAt(dt){
-  if(!MH_MR_GOAL || !MH_MR_DEADLINE || !MH.mr.length) return null;
-  const a=MH.mr[0]; if(dt<a.dt) return null;
-  return a.mr+(MH_MR_GOAL-a.mr)*Math.min(1,(dt-a.dt)/(MH_MR_DEADLINE-a.dt));
-}
-function mhRenderMR(){
-  const box=document.getElementById("mh-mr");
-  if(!MH.mr.length){ box.hidden=true; return; }
-  box.hidden=false;
-  const L=MH.mr, goal=MH_MR_GOAL;
-  mhRankHero(document.getElementById("mr-hero"), { title:"マスターランク", unit:"MR", color:"#4a6b8a", list:L, key:"mr", gainKey:"mgain", goal, deadline:MH_MR_DEADLINE, planAt:mhMRPlanAt });
-  const pl = goal&&MH_MR_DEADLINE ? [{dt:L[0].dt, v:L[0].mr}, {dt:MH_MR_DEADLINE, v:goal}] : null;
-  mhChart(document.getElementById("mr-chart"), { list:L, key:"mr", gainKey:"mgain", unit:"MR", color:"#4a6b8a",
-    goal, deadline:MH_MR_DEADLINE, plan:pl, planAt:mhMRPlanAt,
-    table:mhDaysTable("mr") });
-}
-
-/* 日別の記録を月ごとにまとめる（新しい月から。いちばん新しい月だけ開いておく） */
-function mhDaysTable(kind){
-  const mr=kind==="mr", u=mr?"MR":"HR", gk=mr?"mgain":"gain", vk=mr?"mr":"hr";
-  const m={}; (mr?MH.mr:MH.list).forEach(d=>{ const k=ymKey(d.dt); (m[k]=m[k]||{y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, L:[]}).L.push(d); });
-  const M=Object.keys(m).sort().reverse().map(k=>m[k]);
-  return `<div class="mh-days">${M.map((x,i)=>{ const g=x.L.reduce((s,d)=>s+(d[gk]||0),0);
-    return `<details class="tm-table mh-month"${i===0?" open":""}><summary><span>${x.y}年${x.mo}月</span><span class="mh-month-v">+${g} ${u}<small>月末 ${nf(x.L[x.L.length-1][vk])}</small></span></summary>
-      <table><thead><tr><th>日付</th><th>${u}上昇</th><th>累計${u}</th></tr></thead><tbody>${
-        x.L.slice().reverse().map(d=>`<tr><td>${fmtMD(d.dt)}</td><td class="${d[gk]?"up":""}">${d[gk]?"+"+d[gk]:"0"}</td><td>${nf(d[vk])}</td></tr>`).join("")
-      }</tbody></table></details>`; }).join("")}</div>`;
-}
-
-/* 月ごと：実績の月と、計画の月を時系列で1本に並べる */
-function mhRenderMonths(){
+/* ---------- 対戦校 ---------- */
+const ES_PREF_ORDER=["北北海道","南北海道","北海道","青森","岩手","宮城","秋田","山形","福島","茨城","栃木","群馬","埼玉","千葉","東東京","西東京","東京","神奈川",
+  "新潟","富山","石川","福井","山梨","長野","岐阜","静岡","愛知","三重","滋賀","京都","大阪","兵庫","奈良","和歌山","鳥取","島根","岡山","広島","山口",
+  "徳島","香川","愛媛","高知","福岡","佐賀","長崎","熊本","大分","宮崎","鹿児島","沖縄"];
+function esOppStats(){
   const m={};
-  MH.list.forEach(d=>{ const k=ymKey(d.dt); (m[k]=m[k]||{key:k, y:d.dt.getFullYear(), mo:d.dt.getMonth()+1, gain:0, end:0}); m[k].gain+=d.gain; m[k].end=d.hr;
-    if(d.mr!=null){ m[k].mgain=(m[k].mgain||0)+(d.mgain||0); m[k].mend=d.mr; } });
-  MH.plan.forEach(p=>{ const k=ymKey(p.dt); const r=(m[k]=m[k]||{key:k, y:p.dt.getFullYear(), mo:p.dt.getMonth()+1, gain:null, end:null}); r.target=p.hr; r.tgain=p.gain; });
-  const M=Object.values(m).sort((a,b)=>a.key<b.key?-1:1);
-  /* 計画の月の「その月に上げるHR」がなければ、前の月との差 */
-  M.forEach((r,i)=>{ if(r.target!=null && r.tgain==null){ const pv=M[i-1]; r.tgain=r.target-(pv?(pv.target??pv.end??0):0); } });
-  const max=Math.max(1,...M.map(r=>Math.max(r.gain||0, r.tgain||0)));
-  document.getElementById("mh-months").innerHTML=M.map(r=>{
-    const has=r.gain!=null, plan=r.target!=null, done=has&&plan&&r.end>=r.target;
-    return `<div class="mlist-row static mh-mrow${has?"":" future"}">
-      <span class="mlist-name"><span class="mlist-y">${r.y}年</span><span class="mlist-m">${r.mo}月</span></span>
-      <span class="mlist-bar mh">${plan?`<i style="left:${(r.tgain||0)/max*100}%"></i>`:""}<span style="width:${(r.gain||0)/max*100}%"></span></span>
-      <span class="mlist-val">${has?`+${r.gain} HR`:`目標 +${r.tgain} HR`}<small>${[has?`${r.key===ymKey(today0())?"今日":"月末"} ${r.end}`:"", plan?`目標 ${r.target}${done?" 達成":""}`:"", r.mend!=null?`MR ${r.mend}`:""].filter(Boolean).join("・")}</small></span>
-    </div>`; }).join("");
+  ES.games.forEach(g=>{ const k=g.opp+"\u0001"+g.oppPref;
+    const s=(m[k]=m[k]||{opp:g.opp, pref:g.oppPref, n:0, w:0, l:0, rs:0, ra:0, last:0});
+    s.n++; s.rs+=g.rs; s.ra+=g.ra; if(g.wl==="勝") s.w++; if(g.wl==="負") s.l++; if(g.year>s.last) s.last=g.year; });
+  return Object.values(m);
 }
+function esRenderRivals(){
+  const el=document.getElementById("es-rivals"), S=esOppStats();
+  if(!S.length){ el.innerHTML=errBox("まだ試合の記録がありません。"); return; }
+  const G=ES.games, W=G.filter(g=>g.wl==="勝").length, L=G.filter(g=>g.wl==="負").length;
+  const top=S.slice().sort((a,b)=>b.n-a.n||b.l-a.l||b.last-a.last).slice(0,10);
+  const beat=S.filter(s=>s.l>0).sort((a,b)=>b.l-a.l||a.w-b.w||b.last-a.last);
+  const byPref={}; S.forEach(s=>{ (byPref[s.pref||"不明"]=byPref[s.pref||"不明"]||[]).push(s); });
+  const prefs=Object.keys(byPref).sort((a,b)=>{ const ia=ES_PREF_ORDER.indexOf(a), ib=ES_PREF_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); });
+  if(!prefs.includes(ES.oppPref)) ES.oppPref=prefs.slice().sort((a,b)=>byPref[b].reduce((x,s)=>x+s.n,0)-byPref[a].reduce((x,s)=>x+s.n,0))[0];
+  const wlBar = s => `<span class="t-wl"><i class="w" style="width:${s.w/s.n*100}%"></i><i class="l" style="width:${s.l/s.n*100}%"></i></span>`;
+  el.innerHTML=`
+    <div class="t-chips">
+      <div class="t-chip big"><span>対戦した高校</span><b>${S.length}<small>校</small></b><em>${prefs.length}都道府県</em></div>
+      <div class="t-chip"><span>総対戦</span><b>${G.length}<small>試合</small></b></div>
+      <div class="t-chip"><span>勝敗</span><b>${W}<small>勝</small>${L}<small>敗</small></b></div>
+      <div class="t-chip"><span>黒星をつけた高校</span><b>${beat.length}<small>校</small></b></div>
+    </div>
+    <div class="card-section"><div class="sec-title">よく戦った高校 TOP10</div>
+      <ol class="t-riv">${top.map((s,i)=>`<li><span class="t-rank-n">${i+1}</span>
+        <div class="t-riv-m"><b>${escHtml(s.opp)}</b><small>${escHtml(s.pref)}・最後の対戦 ${s.last}年度</small>${wlBar(s)}</div>
+        <div class="t-riv-v"><b>${s.n}<small>戦</small></b><span><em class="t-w">${s.w}勝</em><em class="t-l">${s.l}敗</em></span></div></li>`).join("")}</ol>
+    </div>
+    ${beat.length?`<div class="card-section"><div class="sec-title">黒星をつけられた高校</div>
+      <div class="t-loss">${beat.map(s=>`<div class="t-loss-c"><div class="t-loss-n">${s.l}<small>敗</small></div><div><b>${escHtml(s.opp)}</b><small>${escHtml(s.pref)}・${s.n}戦${s.w}勝${s.l}敗</small></div></div>`).join("")}</div></div>`:""}
+    <div class="card-section"><div class="sec-title">都道府県ごとの対戦校</div>
+      <div class="toolbar"><select class="sel" id="es-opp-sel" aria-label="都道府県を選ぶ">${prefs.map(p=>{
+        const L=byPref[p], n=L.reduce((a,s)=>a+s.n,0);
+        return `<option value="${escHtml(p)}"${p===ES.oppPref?" selected":""}>${escHtml(p)}（${L.length}校・${n}試合）</option>`; }).join("")}</select></div>
+      <div id="es-opp-list"></div></div>`;
+  const draw=()=>{
+    const L=(byPref[ES.oppPref]||[]).slice().sort((a,b)=>b.n-a.n||b.last-a.last);
+    const w=L.reduce((a,s)=>a+s.w,0), l=L.reduce((a,s)=>a+s.l,0);
+    document.getElementById("es-opp-list").innerHTML=`
+      <p class="t-pref-sum"><b>${escHtml(ES.oppPref)}</b> ${L.length}校と対戦・<span class="t-w">${w}勝</span><span class="t-l">${l}敗</span></p>
+      <div class="es-st-wrap"><table class="t-tbl t-opp-tbl"><thead><tr><th>高校</th><th>対戦</th><th>勝敗</th><th class="hide-sm">得点-失点</th><th>最後</th></tr></thead>
+      <tbody>${L.map(s=>`<tr><td><b>${escHtml(s.opp)}</b>${wlBar(s)}</td><td>${s.n}</td><td><span class="t-w">${s.w}</span>-<span class="t-l">${s.l}</span></td><td class="hide-sm">${s.rs}-${s.ra}</td><td>${s.last}</td></tr>`).join("")}</tbody></table></div>`;
+  };
+  document.getElementById("es-opp-sel").onchange=e=>{ ES.oppPref=e.target.value; draw(); };
+  draw();
+}
+function esOppRow(s, max, detail){
+  return `<div class="mlist-row static es-riv">
+    <span class="mlist-name"><span class="es-riv-name">${escHtml(s.opp)}</span><span class="mlist-y">${escHtml(detail?`最後の対戦 ${s.last}年度`:s.pref)}</span></span>
+    <span class="mlist-bar es"><span style="width:${s.n/max*100}%"></span></span>
+    <span class="mlist-val">${s.n}戦<small>${s.w}勝${s.l}敗${detail?`・${s.rs}-${s.ra}`:""}</small></span>
+  </div>`;
+}
+
+/* ---------- ドラフト ---------- */
+/* 球団の色（カードの差し色だけに使う） */
+const ES_TEAM_COL = { "巨人":"#f97709", "読売":"#f97709", "阪神":"#ffd400", "中日":"#002569", "広島":"#e50012", "ヤクルト":"#00a650", "DeNA":"#0055a5", "横浜":"#0055a5",
+  "ソフトバンク":"#f5c700", "日本ハム":"#006298", "ロッテ":"#111111", "楽天":"#860010", "西武":"#102961", "オリックス":"#b08e3a" };
+const esTeamCol = t => { const k=Object.keys(ES_TEAM_COL).find(k=>String(t).includes(k)); return k?ES_TEAM_COL[k]:"#1f3d80"; };
+function esRenderDraft(){
+  const el=document.getElementById("es-draft");
+  const P=ES.grads.filter(g=>g.team);
+  if(!P.length){ el.innerHTML=errBox("まだプロ入りした卒業生の記録がありません。"); return; }
+  const m={}; P.forEach(g=>{ const s=(m[g.team]=m[g.team]||{t:g.team, n:0, first:0, last:0}); s.n++; if(g.rank==="1") s.first++; if((g.year||0)+2>s.last) s.last=(g.year||0)+2; });
+  const S=Object.values(m).sort((a,b)=>b.n-a.n||b.first-a.first||a.t.localeCompare(b.t,"ja"));
+  const first=P.filter(g=>g.rank==="1").length, done=ES.grads.filter(g=>g.star!=null||g.course||g.team).length;
+  if(!ES.draftTeam) ES.draftTeam="すべて";
+  el.innerHTML=`
+    <div class="t-chips">
+      <div class="t-chip big"><span>プロ入りした卒業生</span><b>${P.length}<small>人</small></b><em>${done?`卒業生の${Math.round(P.length/done*100)}%`:""}</em></div>
+      <div class="t-chip"><span>ドラフト1位</span><b>${first}<small>人</small></b></div>
+      <div class="t-chip"><span>指名した球団</span><b>${S.length}<small>球団</small></b></div>
+      <div class="t-chip"><span>卒業生</span><b>${done}<small>人</small></b></div>
+    </div>
+    <div class="card-section"><div class="sec-title">球団別</div>
+      <div class="t-teams">${S.map(s=>`<button type="button" class="t-team" data-team="${escHtml(s.t)}" style="--tc:${esTeamCol(s.t)}">
+        <span class="t-team-n">${escHtml(s.t)}</span><span class="t-team-v">${s.n}<small>人</small></span><span class="t-team-s">1位 ${s.first}人・最後 ${s.last}年度</span></button>`).join("")}</div>
+    </div>
+    <div class="card-section" id="es-draft-anchor"><div class="sec-title">指名された選手</div>
+      <div class="pill-tabs" id="es-dr-pills"><button class="pill" data-team="すべて">すべて（${P.length}）</button><button class="pill" data-team="1位">1位だけ（${first}）</button>${S.map(s=>`<button class="pill" data-team="${escHtml(s.t)}">${escHtml(s.t)}（${s.n}）</button>`).join("")}</div>
+      <div id="es-draft-list"></div></div>`;
+  const draw=()=>{
+    el.querySelectorAll("[data-team]").forEach(b=>b.classList.toggle(b.classList.contains("pill")?"on":"sel", b.dataset.team===ES.draftTeam));
+    const L=P.filter(g=>ES.draftTeam==="すべて" || (ES.draftTeam==="1位" ? g.rank==="1" : g.team===ES.draftTeam))
+      .sort((a,b)=>(b.year||0)-(a.year||0) || (+a.rank||99)-(+b.rank||99));
+    const by={}; L.forEach(g=>(by[(g.year||0)+2]=by[(g.year||0)+2]||[]).push(g));
+    document.getElementById("es-draft-list").innerHTML = L.length ? Object.keys(by).map(Number).sort((a,b)=>b-a).map(y=>`
+      <div class="t-dr-y"><b class="en">${y}</b><span>年度 ドラフト</span><small>${by[y].length}人</small></div>
+      <div class="t-drs">${by[y].map(g=>{ const sur=String(g.name).split(/[\s　]+/)[0]; return `<a class="t-dr" href="#pl/${g.year||""}/${encodeURIComponent(g.name)}" style="--tc:${esTeamCol(g.team)}">
+        <span class="t-dr-r">${g.rank?`${escHtml(g.rank)}<small>位</small>`:"-"}</span>
+        <span class="face ph t-dr-f">${escHtml(sur)}</span>
+        <span class="t-dr-m"><b>${escHtml(g.name)}</b><span>${g.pos?`<span class="es-pos sm ${esPosCls(g.pos)}">${escHtml(g.pos)}</span>`:""}${escHtml(g.from||"")}</span></span>
+        <span class="t-dr-t">${escHtml(g.team)}</span></a>`; }).join("")}</div>`).join("") : errBox("該当する選手がいません。");
+  };
+  el.querySelectorAll("[data-team]").forEach(b=>b.onclick=()=>{
+    ES.draftTeam = (b.classList.contains("t-team") && ES.draftTeam===b.dataset.team) ? "すべて" : b.dataset.team; draw();
+    if(b.classList.contains("t-team")){ const a=document.getElementById("es-draft-anchor"), nav=document.getElementById("hd");
+      window.scrollTo({ top:Math.max(0, window.scrollY+a.getBoundingClientRect().top-(nav?nav.offsetHeight:0)-12), behavior:prefersReduced()?"auto":"smooth" }); }
+  });
+  draw();
+}
+
 
 /* =====================================================================
-   ホーム（各タブの記録をまとめて表示）
-   各タブの読み込みが終わるたびに描き直すので、遅いタブがあっても先に出せるものから出る
+   サイトの骨組み（Principale と同じ作り）
+   ページ切り替え・ニュース（試合結果／入学式／ドラフト／卒業式／記録）・ホーム・誕生日・勝利数の記録
    ===================================================================== */
-const HM = { done:{} };
-const HM_CAT = {
-  torima:{ t:"トリマ",     c:"#7a5cc8" },
-  run:   { t:"ランニング", c:"#2e8b57" },
-  bike:  { t:"自転車",     c:"#1a4db0" },
-  keiken:{ t:"経県値",     c:"#d9453f" },
-  gourmet:{t:"グルメ",     c:"#ea7a3b" },
-  apex:  { t:"Apex",       c:"#c2185b" },
-  mh:    { t:"モンハン",   c:"#8a5a2b" }
-};
-const hmYMD = d => `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
-const hmWait = k => `<div class="hm-wait">${HM.done[k]?"記録なし":"読み込み中…"}</div>`;
-/* 今日から見た「○日前」 */
-function hmAgo(d){
-  const n=Math.round((today0()-d)/864e5);
-  return n<=0?"今日" : n===1?"昨日" : n<7?`${n}日前` : n<31?`${Math.floor(n/7)}週間前` : n<365?`${Math.floor(n/30)}か月前` : `${Math.floor(n/365)}年前`;
-}
+const TY = { loaded:false, news:[], cat:"すべて", ny:"", page:1, bdM:new Date().getMonth()+1 };
+const TY_PAGES = { home:"ホーム", news:"ニュース", pl:"選手", year:"年度", player:"選手", rec:"記録", draft:"ドラフト", opp:"対戦校" };
+const $id = id => document.getElementById(id);
+const tyNavOf = p => p==="pl" ? "player" : p;
 
-/* ---- 日付のある記録を1つの一覧にする（最近の記録・○年前の今日・今年のまとめで共通） ---- */
-function hmEvents(){
-  const E=[];
-  RUN.list.forEach(r=>E.push({ k:"run", dt:r.dt, main:`${r.km.toFixed(2)}km 走った`, sub:`${fmtPace(r.pace)}/km・${fmtDur(r.sec)}` }));
-  BK.list.forEach(r=>E.push({ k:"bike", dt:r.dt, main:`${r.dest||"行き先なし"}へ`, sub:`${r.km.toFixed(1)}km` }));
-  AP.all.forEach(d=>E.push({ k:"apex", dt:d.dt, main:apLabel(d)+(d.move>0?"（昇格！）":d.move<0?"（降格）":""), sub:d.diff!=null?`前回から ${apSigned(d.diff)} RP`:d.newSeason?`${apPeriodName(d)}開始`:"最初の記録" }));
-  MH.list.forEach(d=>{ if(d.gain>0||d.mgain>0) E.push({ k:"mh", dt:d.dt, main:[d.gain>0?`HR +${d.gain}`:"", d.mgain>0?`MR +${d.mgain}`:""].filter(Boolean).join("・"), sub:[`HR ${nf(d.hr)}`, d.mr!=null?`MR ${nf(d.mr)}`:""].filter(Boolean).join("・") }); });
-  GM.list.forEach(r=>{ if(r.dt) E.push({ k:"gourmet", dt:r.dt, main:r.name, sub:[r.pref+(r.muni||""), r.genre, r.my!=null?`評価 ${r.my.toFixed(1)}`:""].filter(Boolean).join("・") }); });
-  const t=today0();
-  return E.filter(e=>e.dt<=t).sort((a,b)=>b.dt-a.dt);   // 先の日付の記録は出さない
+/* ---------- 年度と月（ニュースの並び） ---------- */
+/* 4月はじまりの年度。月の並びは 4→…→12→1→3 */
+const TY_MONTH = { "入学式":4, "夏の都道府県大会":7, "夏の甲子園":8, "秋の都道府県大会":9, "秋の地区大会":10, "ドラフト":10, "神宮大会":11, "卒業式":3, "春の甲子園":3 };
+const TY_ORD = { "入学式":4, "夏の都道府県大会":7, "夏の甲子園":8, "秋の都道府県大会":9, "秋の地区大会":10, "ドラフト":10.5, "神宮大会":11, "卒業式":15, "春の甲子園":15.2 };
+const tyOrd = k => TY_ORD[k] ?? 12;
+const TY_DAY = { "入学式":8, "ドラフト":23, "卒業式":1 };
+const p2 = n => String(n).padStart(2,"0");
+/* 日付が入っていない試合は、大会の時期（月）の中ごろとして扱う */
+const tyWhen = (y,k,g) => (g && g.date) ? g.date : (()=>{ const m=TY_MONTH[k]||12; return new Date(m<4?y+1:y, m-1, TY_DAY[k]||15); })();
+const tyDate = (y,k,g) => { const d=tyWhen(y,k,g); return (g&&g.date) ? `${d.getFullYear()}.${p2(d.getMonth()+1)}.${p2(d.getDate())}` : `${d.getFullYear()}.${p2(d.getMonth()+1)}`; };
+function tyCurYear(){
+  const ys=[...ES.games.map(g=>g.year), ...ES.lineup.map(l=>l.year), ...ES.grads.map(g=>g.year).filter(Boolean)];
+  return ys.length ? Math.max(...ys) : new Date().getFullYear();
 }
-function hmEventRow(e, showAgo){
-  const C=HM_CAT[e.k];
-  return `<button type="button" class="hm-ev" data-go="${e.k}">
-    <span class="hm-ev-d">${fmtMD(e.dt)}${showAgo?`<small>${hmAgo(e.dt)}</small>`:`<small>${e.dt.getFullYear()}</small>`}</span>
-    <span class="hm-ev-tag" style="--c:${C.c}">${C.t}</span>
-    <span class="hm-ev-main">${escHtml(e.main)}${e.sub?`<small>${escHtml(e.sub)}</small>`:""}</span>
-  </button>`;
-}
+/* 卒業した＝卒業時★が入っている（ドラフトの球団や進路が先に入っても、卒業式まではまだ在校生）。
+   ★が空欄でも、入学から3年以上たった年度なら卒業扱い */
+const tyDone = g => g.star!=null || (g.year!=null && tyCurYear()-g.year>=3);
+const tyGrade = g => { const n=tyCurYear()-g.year+1; return (!tyDone(g) && g.year!=null && n>=1 && n<=3) ? n : null; };
 
-/* ---- カード ---- */
-function hmCard(k, label, value, unit, sub, bar){
-  const C=HM_CAT[k];
-  return `<button type="button" class="hm-card" data-go="${k}" style="--c:${C.c}">
-    <span class="hm-card-k">${C.t}<em>${label}</em></span>
-    <span class="hm-card-v">${value}<small>${unit||""}</small></span>
-    ${bar!=null?`<span class="hm-bar"><span style="width:${Math.min(100,Math.max(0,bar))}%"></span></span>`:""}
-    ${sub?`<span class="hm-card-s">${sub}</span>`:""}
-  </button>`;
+/* ---------- 選手へのリンク ---------- */
+const tyPHref = g => `#pl/${g.year||""}/${encodeURIComponent(g.name)}`;
+const tyPLink = g => g ? `<a class="t-plink" href="${tyPHref(g)}">${escHtml(g.name)}</a>` : "";
+/* 試合の記録に出てくる名前（名字だけのこともある）から卒業生を探す */
+function tyGradAt(name, year){
+  return ES.grads.find(g=>esSameName(g.name,name) && g.year!=null && year>=g.year && year<=g.year+2) || ES.grads.find(g=>g.name===name) || null;
 }
-function hmEmptyCard(k, label){
-  const C=HM_CAT[k];
-  return `<div class="hm-card off" style="--c:${C.c}"><span class="hm-card-k">${C.t}<em>${label}</em></span>${hmWait(k)}</div>`;
-}
+const tyNameLink = (name, year) => { const g=tyGradAt(name, year); return g ? tyPLink(g) : escHtml(name); };
 
-/* 今月 */
-function hmMonthHtml(){
-  const t=today0(), key=ymKey(t), out=[];
-  /* トリマ */
-  const mo=TM.months.find(m=>m.isCur);
-  if(mo){
-    const rem=tmRemaining(mo), fc=mo.total+mo.avg*rem, T=TM_TARGETS.find(x=>mo.total<x);
-    const sub = T ? `次の目標 ${nf(T)}P まであと ${nf(T-mo.total)}P` + (rem?`<br>月末予測 ${nf(ceil10(fc))}P${fc>=T?"（届く）":""}`:"") : "全部の目標を達成！";
-    out.push(hmCard("torima","今月", nf(mo.total), "P", sub, T?mo.total/T*100:100));
-  } else out.push(hmEmptyCard("torima","今月"));
-  /* ランニング */
-  if(HM.done.run && RUN.list.length){
-    const R=RUN.list.filter(r=>ymKey(r.dt)===key), km=R.reduce((s,r)=>s+r.km,0), G=RUN_MONTH_GOAL;
-    const last=RUN.list[RUN.list.length-1];
-    out.push(hmCard("run","今月", km.toFixed(1), "km",
-      `${R.length}本・目標 ${G}km ${km>=G?"達成！":`まであと ${(G-km).toFixed(1)}km`}<br>最後に走ったのは${hmAgo(last.dt)}`, km/G*100));
-  } else out.push(hmEmptyCard("run","今月"));
-  /* 自転車 */
-  if(HM.done.bike && BK.list.length){
-    const R=BK.list.filter(r=>ymKey(r.dt)===key), km=R.reduce((s,r)=>s+r.km,0), last=BK.list[BK.list.length-1];
-    out.push(hmCard("bike","今月", km.toFixed(1), "km", `${R.length}回<br>最後：${escHtml(last.dest||"行き先なし")}（${hmAgo(last.dt)}）`));
-  } else out.push(hmEmptyCard("bike","今月"));
-  /* グルメ（訪問月しかないお店も今月に数える） */
-  if(HM.done.gourmet && GM.list.length){
-    const R=GM.list.filter(r=>r.ym && ymKey(r.ym)===key), rated=R.filter(r=>r.my!=null);
-    const best=rated.slice().sort((a,b)=>b.my-a.my)[0];
-    out.push(hmCard("gourmet","今月", nf(R.length), "軒",
-      best?`いちばん良かった店<br>${escHtml(best.name)}（${best.my.toFixed(1)}）`:(R.length?"":"今月はまだ投稿なし")));
-  } else out.push(hmEmptyCard("gourmet","今月"));
-  /* Apex */
-  if(HM.done.apex && AP.cur.length){
-    const last=AP.cur[AP.cur.length-1], P=apPeriodStats(AP.cur), nx=last.rank?apNext(last.rank,last.rp):null;
-    out.push(hmCard("apex", last.rank?apRankName(last.rank):"RP", nf(last.rp), "RP",
-      `${escHtml(apPeriodName(last)||"シーズン")} ${apSigned(P.gain)} RP${nx?`<br>${escHtml(nx.name)}まで あと ${nf(nx.left)}`:""}`, nx?nx.pct:null));
-  } else out.push(hmEmptyCard("apex","今月"));
-  /* モンハン */
-  if(HM.done.mh && MH.list.length){
-    const R=MH.list.filter(d=>ymKey(d.dt)===key && d.dt<=t), g=R.reduce((s,d)=>s+d.gain,0);
-    const cur=MH.list.filter(d=>d.dt<=t), hr=cur.length?cur[cur.length-1].hr:0, pl=MH.plan.find(p=>ymKey(p.dt)===key);
-    const mrNow=MH.mr.filter(d=>d.dt<=t), mg=R.reduce((s,d)=>s+(d.mgain||0),0);
-    out.push(hmCard("mh","今月", `+${g}`, "HR", `HR ${nf(hr)}${pl?`<br>今月の目標 HR ${pl.hr}`:`<br>${MH_GOAL}まで あと ${nf(MH_GOAL-hr)}`}${mrNow.length?`<br>MR ${nf(mrNow[mrNow.length-1].mr)}（今月 +${mg}）`:""}`, hr/MH_GOAL*100));
-  } else out.push(hmEmptyCard("mh","今月"));
-  return out.join("");
+/* ---------- 勝利数・連勝 ---------- */
+function tyRuns(){
+  const runs=[]; let run=[];
+  ES.games.forEach((g,i)=>{
+    if(g.wl==="勝") run.push(g);
+    else { if(run.length) runs.push({G:run, stop:g}); run=[]; }
+  });
+  if(run.length) runs.push({G:run, stop:null, live:true});
+  return runs.map(r=>({...r, n:r.G.length, from:r.G[0], to:r.G[r.G.length-1]}));
 }
-
-/* これまで */
-function hmTotalHtml(){
-  const out=[];
-  /* グルメ */
-  if(HM.done.gourmet && GM.list.length){
-    const rated=GM.list.filter(r=>r.my!=null), avg=rated.length?rated.reduce((a,r)=>a+r.my,0)/rated.length:null;
-    const top=gmGenreStats()[0];
-    out.push(hmCard("gourmet","投稿したお店", nf(GM.list.length), "軒",
-      `${Object.keys(GM.byPref).length}都道府県${avg!=null?`・評価の平均 ${avg.toFixed(2)}`:""}${top?`<br>一番多いジャンル：${escHtml(top.g)}（${top.n}軒）`:""}`));
-  } else out.push(hmEmptyCard("gourmet","投稿したお店"));
-  /* ランニング */
-  if(HM.done.run && RUN.list.length){
-    const km=RUN.list.reduce((s,r)=>s+r.km,0), best=RUN.list.reduce((b,r)=>(!b||r.pace<b.pace)?r:b,null);
-    out.push(hmCard("run","累計", nf(km), "km", `${RUN.list.length}本<br>自己ベスト ${fmtPace(best.pace)}/km（${hmYMD(best.dt)}）`));
-  } else out.push(hmEmptyCard("run","累計"));
-  /* 自転車 */
-  if(HM.done.bike && BK.list.length){
-    const km=BK.list.reduce((s,r)=>s+r.km,0), best=BK.list.reduce((b,r)=>(!b||r.km>b.km)?r:b,null);
-    out.push(hmCard("bike","累計", nf(km), "km", `${BK.list.length}回<br>最長 ${best.km.toFixed(1)}km（${escHtml(best.dest||"")}）`));
-  } else out.push(hmEmptyCard("bike","累計"));
-  /* トリマ */
-  if(TM.months.length){
-    const tot=TM.months.reduce((s,m)=>s+m.total,0), bestM=TM.months.reduce((b,m)=>(!b||m.total>b.total)?m:b,null);
-    out.push(hmCard("torima","累計", nf(tot), "P", `ベストの月：${bestM.label}（${nf(bestM.total)}P）`));
-  } else out.push(hmEmptyCard("torima","累計"));
-  /* Apex */
-  if(HM.done.apex && AP.cur.length){
-    const best=apBest(AP.cur);
-    out.push(hmCard("apex", best.season!=null?`S${best.season}${apShowSplit(best)?`-${best.split}`:""}の最高`:"最高記録", best.rank?apRankName(best.rank):nf(best.rp), best.rank?`${nf(best.rp)}RP`:"RP", `${hmYMD(best.dt)}<br>記録 ${AP.cur.length}日`));
-  } else out.push(hmEmptyCard("apex","最高記録"));
-  /* モンハン */
-  if(HM.done.mh && MH.list.length){
-    const t=today0(), cur=MH.list.filter(d=>d.dt<=t), hr=cur.length?cur[cur.length-1].hr:0;
-    out.push(hmCard("mh","ハンターランク", nf(hr), "HR", `${MH_GOAL}まで あと ${nf(MH_GOAL-hr)}<br>期限 ${MH_DEADLINE.getFullYear()}/${MH_DEADLINE.getMonth()+1}/${MH_DEADLINE.getDate()}`, hr/MH_GOAL*100));
-  } else out.push(hmEmptyCard("mh","ハンターランク"));
-  return out.join("");
+function tyCurStreak(){
+  const G=ES.games; if(!G.length) return {n:0, wl:""};
+  const last=G[G.length-1].wl; let n=0;
+  for(let i=G.length-1;i>=0 && G[i].wl===last;i--) n++;
+  return {n, wl:last};
 }
-
-/* 今年のまとめ：去年の同じ日までと比べる */
-function hmYearHtml(E){
-  const t=today0(), y=t.getFullYear();
-  const upto=(d,yy)=>d.getFullYear()===yy && (d.getMonth()<t.getMonth() || (d.getMonth()===t.getMonth() && d.getDate()<=t.getDate()));
-  const rows=[];
-  const add=(k, label, f, unit, fmt)=>{ const a=f(y), b=f(y-1); rows.push({k,label,a,b,unit,fmt}); };
-  if(RUN.list.length) add("run","ランニング", yy=>RUN.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
-  if(BK.list.length)  add("bike","自転車", yy=>BK.list.filter(r=>upto(r.dt,yy)).reduce((s,r)=>s+r.km,0), "km", v=>v.toFixed(1));
-  if(TM.days.length)  add("torima","トリマ", yy=>TM.days.filter(d=>d.p!=null && upto(d.dt,yy)).reduce((s,d)=>s+d.p,0), "P", nf);
-  if(GM.list.length)  add("gourmet","グルメ", yy=>GM.list.filter(r=>r.dt ? upto(r.dt,yy) : (r.ym && r.ym.getFullYear()===yy && r.ym.getMonth()<=t.getMonth())).length, "軒", nf);
-  if(MH.list.length)   add("mh","モンハン", yy=>MH.list.filter(d=>upto(d.dt,yy)).reduce((s,d)=>s+d.gain,0), "HR", nf);
-  if(!rows.length) return `<div class="hm-wait">読み込み中…</div>`;
-  return `<div class="hm-yr">${rows.map(r=>{
-    const d=r.a-r.b, cls=r.b===0?"":d>0?"up":d<0?"down":"";
-    return `<button type="button" class="hm-yr-row" data-go="${r.k}" style="--c:${HM_CAT[r.k].c}">
-      <span class="hm-yr-k">${r.label}</span>
-      <span class="hm-yr-v">${r.fmt(r.a)}<small>${r.unit}</small></span>
-      <span class="hm-yr-c ${cls}">${r.b===0?"去年の記録なし":`去年の同じ時期 ${r.fmt(r.b)}${r.unit}<b>${d>0?"+":d<0?"−":"±"}${r.fmt(Math.abs(d))}</b>`}</span>
-    </button>`; }).join("")}</div>
-    <p class="kk-note-s">${y}年1月1日〜今日まで。右は${y-1}年の同じ日までとの比較。</p>`;
+/* 通算勝利の節目：10・25・50勝、以降50勝ごと */
+function tyMilestones(){
+  const marks=new Set([1,10,25]); const W=ES.games.filter(g=>g.wl==="勝");
+  for(let k=50;k<=W.length;k+=50) marks.add(k);
+  return W.map((g,i)=>({k:i+1, g})).filter(x=>marks.has(x.k));
 }
+const tyKoshien = t => /甲子園/.test(t);
+const tyGameTxt = g => `${g.year}年度 ${g.taikai} ${g.round} vs ${g.opp}（${g.rs}-${g.ra}）`;
 
-/* ○年前の今日（ぴったりの日がなければ前後3日） */
-function hmOtdHtml(E){
-  const t=today0();
-  const md=d=>d.getMonth()*100+d.getDate();
-  let L=E.filter(e=>e.dt.getFullYear()<t.getFullYear() && md(e.dt)===md(t)), wide=false;
-  if(!L.length){
-    wide=true;
-    L=E.filter(e=>{ if(e.dt.getFullYear()>=t.getFullYear()) return false;
-      const same=new Date(t.getFullYear(), e.dt.getMonth(), e.dt.getDate()); return Math.abs(same-t)<=3*864e5; });
+/* ---------- ニュースを作る ---------- */
+const TY_CAT = { GAME:"試合結果", ENTRY:"入学式", DRAFT:"ドラフト", GRAD:"卒業式", RECORD:"記録" };
+const tyResEN = r => r==="優勝"?"CHAMPION" : r==="準優勝"?"RUNNER-UP" : /^ベスト(\d+)/.test(r)?`BEST ${r.match(/\d+/)[0]}` : r==="勝ち上がり中"?"WIN" : "RESULT";
+function tyGameTitle(y, t, res, G){
+  const last=G[G.length-1], pref=(G.find(g=>g.myPref)||{}).myPref;
+  if(res==="優勝"){
+    if(t==="夏の都道府県大会") return `夏の${pref||"県"}大会を制覇！ 夏の甲子園へ`;
+    if(t==="秋の都道府県大会") return `秋の${pref||"県"}大会優勝！ 地区大会へ`;
+    if(tyKoshien(t)) return `${t}優勝！ 全国の頂点に立つ`;
+    return `${t}で優勝！`;
   }
-  if(!L.length) return `<p class="kk-info-empty">去年までの、この時期の記録はまだありません。</p>`;
-  const byY={}; L.forEach(e=>(byY[e.dt.getFullYear()]=byY[e.dt.getFullYear()]||[]).push(e));
-  return (wide?`<p class="kk-note-s hm-otd-note">今日ぴったりの記録はないので、前後3日の記録です。</p>`:"") +
-    Object.keys(byY).sort((a,b)=>b-a).map(yy=>`<div class="hm-otd-y">${t.getFullYear()-yy}年前（${yy}年）</div>
-      <div class="hm-tl">${byY[yy].map(e=>hmEventRow(e,false)).join("")}</div>`).join("");
+  if(res==="準優勝") return `${t}は準優勝`;
+  if(res==="勝ち上がり中") return `${t} ${last.round}突破！ ${last.opp}に${last.rs}-${last.ra}`;
+  if(/敗退$/.test(res)) return `${t}は${res}`;
+  return `${t}は${res}${G.length>1?`（${G.filter(g=>g.wl==="勝").length}勝）`:""}`;
 }
-
-/* お知らせ：入力忘れなど */
-function hmAlertsHtml(){
-  const t=today0(), A=[];
-  const ent=TM.days.filter(d=>d.p!=null);
-  if(ent.length){
-    let miss=0; const have=new Set(ent.map(d=>d.dt.toDateString()));
-    for(let d=new Date(ent[0].dt); d<t; d.setDate(d.getDate()+1)) if(!have.has(d.toDateString())) miss++;
-    if(miss) A.push({k:"torima", m:`トリマの未入力が <strong>${miss}</strong> 日あります`});
+function tyGameTitle1(t, g, res){
+  const vs=`${g.opp}に${g.rs}-${g.ra}`, pref=g.myPref||"県", tag=/サヨナラ/.test(g.note)?"サヨナラ":/コールド/.test(g.note)?"コールド":/延長/.test(g.note)?"延長戦を制し":"";
+  if(res==="優勝"){
+    if(t==="夏の都道府県大会") return `夏の${pref}大会優勝！ ${vs}で甲子園へ`;
+    if(t==="秋の都道府県大会") return `秋の${pref}大会優勝！ 決勝で${vs}`;
+    if(tyKoshien(t)) return `${t}優勝！ 決勝で${vs}、全国の頂点に`;
+    return `${t}優勝！ 決勝で${vs}`;
   }
-  if(RUN.list.length){
-    const n=Math.round((t-RUN.list[RUN.list.length-1].dt)/864e5);
-    if(n>=7) A.push({k:"run", m:`ランニングは <strong>${n}</strong> 日走っていません`});
+  if(g.wl==="勝") return `${t} ${g.round} ${vs}で${tag==="コールド"?"コールド勝ち":tag==="サヨナラ"?"サヨナラ勝ち":tag?"延長戦を制す":"勝利"}`;
+  if(g.wl==="負"){
+    if(res==="準優勝") return `${t}は準優勝 決勝で${vs}`;
+    return `${t} ${g.round}で敗退 ${vs}${res && !/敗退$/.test(res) && res!=="勝ち上がり中"?`（${res}）`:""}`;
   }
-  return A.length ? `<div class="hm-alerts">${A.map(a=>`<button type="button" class="hm-alert" data-go="${a.k}" style="--c:${HM_CAT[a.k].c}"><span>${a.m}</span><span class="hm-alert-go">›</span></button>`).join("")}</div>` : "";
+  return `${t} ${g.round} ${vs}で引き分け`;
+}
+function tyBuildNews(){
+  const N=[];
+  /* 試合結果：1試合ごとに1本。大会の最後の試合は大会の結果（優勝・ベスト8など）も見出しに入れる */
+  ES.years.forEach(Y=>{
+    const by={}; Y.games.forEach(g=>(by[g.taikai]=by[g.taikai]||[]).push(g));
+    Object.keys(by).forEach(t=>{ const G=by[t].sort((a,b)=>a.no-b.no), res=ES_TAIKAI.some(x=>x.k===t)?esResult(G,t):"";
+      G.forEach((g,i)=>{ const isLast=i===G.length-1, r=isLast?res:"";
+        N.push({cat:"GAME", y:Y.y, k:t, ord:tyOrd(t)+g.no/1e5, g, G:G.slice(0,i+1), all:G, isLast, res:r, title:tyGameTitle1(t, g, r)}); });
+    });
+  });
+  /* 入学式・卒業式・ドラフト：入学年度ごと */
+  const cls={}; ES.grads.forEach(g=>{ if(g.year!=null) (cls[g.year]=cls[g.year]||[]).push(g); });
+  const cur=tyCurYear();
+  Object.keys(cls).map(Number).forEach(y=>{
+    const L=cls[y], fresh=L.filter(g=>!g.transfer);
+    if(fresh.length && y<=cur) N.push({cat:"ENTRY", y, k:"入学式", ord:tyOrd("入学式"), L:fresh, title:`${y}年度 入学式 新入生${fresh.length}名が入部`});
+    const pro=L.filter(g=>g.team).sort((a,b)=>(+a.rank||99)-(+b.rank||99));
+    if(pro.length) N.push({cat:"DRAFT", y:y+2, k:"ドラフト", ord:tyOrd("ドラフト"), L:pro, title:tyDraftTitle(pro)});
+    const done=L.filter(g=>g.star!=null);   // 卒業式のニュースは卒業時★が入ってから
+    if(done.length) N.push({cat:"GRAD", y:y+2, k:"卒業式", ord:tyOrd("卒業式"), L:done, title:`${y+2}年度 卒業式 ${done.length}名が巣立つ`});
+  });
+  /* 記録：通算勝利の節目、10連勝以上 */
+  tyMilestones().filter(m=>m.k>1).forEach(m=>N.push({cat:"RECORD", y:m.g.year, k:m.g.taikai, ord:tyOrd(m.g.taikai)+m.g.no/1e5+1e-6, big:m.k, unit:"勝", g:m.g, title:`通算${m.k}勝を達成！`}));
+  tyRuns().filter(r=>r.n>=10).forEach(r=>N.push({cat:"RECORD", y:r.to.year, k:r.to.taikai, ord:tyOrd(r.to.taikai)+r.to.no/1e5+2e-6, big:r.n, unit:"連勝", run:r,
+    title: r.live ? `${r.n}連勝！ 連勝が止まらない` : `連勝は${r.n}でストップ`}));
+  N.forEach(n=>{ const g = n.cat==="GAME" ? n.G[n.G.length-1] : n.cat==="RECORD" ? (n.g||n.run.to) : null;
+    n.when=tyWhen(n.y, n.k, g); n.date=tyDate(n.y, n.k, g); });
+  N.sort((a,b)=>b.when-a.when || b.y-a.y || b.ord-a.ord);
+  N.forEach((n,i)=>{ n.id=`n${N.length-i}`; });
+  TY.news=N;
 }
 
-function hmRender(){
-  const t=today0(), E=hmEvents();
-  const todayE=E.filter(e=>sameDay(e.dt,t));
-  document.getElementById("hm-hero").innerHTML=`
-    <div class="tm-hero-label">${t.getFullYear()}年</div>
-    <div class="tm-big hm-date">${t.getMonth()+1}月${t.getDate()}日<small>（${WD[t.getDay()]}）</small></div>
-    <div class="gm-hero-sub">${todayE.length?`今日の記録 ${todayE.length}件`:"今日の記録はまだありません"}${E.length?`・最後の記録は${hmAgo(E[0].dt)}（${HM_CAT[E[0].k].t}）`:""}</div>
-    ${hmAlertsHtml()}`;
-  document.getElementById("hm-month").innerHTML=hmMonthHtml();
-  document.getElementById("hm-year").innerHTML=hmYearHtml(E);
-  document.getElementById("hm-recent").innerHTML=E.length?`<div class="hm-tl">${foldRows(E.slice(0,15).map(e=>hmEventRow(e,true)), 6)}</div>`:`<div class="hm-wait">読み込み中…</div>`;
-  document.getElementById("hm-otd").innerHTML=E.length?hmOtdHtml(E):`<div class="hm-wait">読み込み中…</div>`;
-  document.getElementById("hm-total").innerHTML=hmTotalHtml();
-  document.querySelectorAll("#home [data-go]").forEach(b=>b.onclick=()=>goto(b.dataset.go));
-}
-/* 読み込みが終わったら（失敗しても）ホームを描き直す */
-function hmTrack(k, p){
-  return Promise.resolve(p).catch(e=>console.error(k, e)).finally(()=>{ HM.done[k]=true; try{ hmRender(); }catch(e){ console.error("home", e); } });
+/* ---------- ニュースの画像（16:9。文字だけで作る） ---------- */
+const tyCrest = () => `<img class="t-crest" src="icon-192.png" alt="">`;
+const tyOppMark = name => `<span class="ph t-oppmark">${escHtml(String(name||"").replace(/高(校|等学校)?$/,"").slice(0,2))}</span>`;
+function tyVisual(n){
+  const mark=`<div class="nv-mark">${tyCrest()}TOYO HIMEJI</div>`;
+  if(n.cat==="GAME"){
+    const g=n.g, en = n.res==="優勝" ? "CHAMPION" : g.wl==="勝" ? "WIN" : g.wl==="負" ? (n.res==="準優勝"?"RUNNER-UP":"LOSE") : "DRAW";
+    return `<div class="nv m ${n.res==="優勝"?"V":g.wl==="勝"?"W":g.wl==="負"?"L":""}"><div class="nv-comp">${n.y}年度 ${escHtml(n.k)}</div><div class="nv-res">${en}</div>
+      <div class="nv-board"><div class="nv-team">${tyCrest()}東洋大姫路</div><div class="nv-score">${g.rs}-${g.ra}<small>${escHtml(g.round)}</small></div><div class="nv-team">${tyOppMark(g.opp)}${escHtml(g.opp)}</div></div>
+      <div class="nv-date">${n.date}</div>${mark}</div>`;
+  }
+  if(n.cat==="RECORD") return `<div class="nv s"><div class="nv-sn">RECORD</div><div class="nv-sbig">${n.big}<small>${n.unit}</small></div>
+      <div class="nv-stt"><span>${escHtml(n.unit==="勝"?"通算勝利":"連勝記録")}</span></div><div class="nv-date">${n.date}</div>${mark}</div>`;
+  if(n.cat==="GRAD"){
+    /* 卒業証書のようなカード：★の高い順に4人まで（ドラフトの球団・順位はドラフトのニュースで出す） */
+    const L=n.L.slice().sort((a,b)=>(b.star||0)-(a.star||0)).slice(0,4);
+    return `<div class="nv gd"><div class="nv-kind">GRADUATION<small>${n.y}年度 卒業式</small></div>
+      <div class="nv-gbig">${n.L.length}<small>名が卒業</small></div>
+      <div class="nv-gsub">それぞれの道へ</div>
+      <div class="nv-paper"><div class="nv-paper-h">卒業生</div>${L.map(g=>`<div class="nv-paper-r"><b>${escHtml(g.name)}</b><span>${g.star!=null?`★${g.star}`:""}</span></div>`).join("")}${n.L.length>L.length?`<div class="nv-paper-m">ほか${n.L.length-L.length}名</div>`:""}</div>
+      <div class="nv-date">${n.date}</div>${mark}</div>`;
+  }
+  if(n.cat==="DRAFT"){
+    /* 指名された選手を全員リストで（6人まで。7人以上は5人＋ほか） */
+    const L=n.L.length>6 ? n.L.slice(0,5) : n.L;
+    const r=n.L[0].rank, same=n.L.filter(g=>g.rank===r).length;
+    return `<div class="nv t dr dr2"><div class="nv-kind">DRAFT<small>${n.y}年度 ドラフト会議</small></div>
+      <div class="nv-gbig">${n.L.length}<small>名が指名</small></div>
+      ${r?`<div class="nv-gsub">${r}位指名 ${same}名</div>`:""}
+      <div class="nv-dlist"><div class="nv-dlist-h">指名選手</div>${L.map(g=>`<div class="nv-dlist-r"><span class="nvr">${g.rank?`${escHtml(g.rank)}位`:"－"}</span><b${(()=>{ const n=String(g.name).replace(/\s/g,"").length; return n>=8?' class="xs"':n>=6?' class="sm"':""; })()}>${escHtml(g.name)}</b><span class="nvt">${escHtml(g.team)}</span></div>`).join("")}${n.L.length>L.length?`<div class="nv-dlist-m">ほか${n.L.length-L.length}名</div>`:""}</div>
+      <div class="nv-date">${n.date}</div>${mark}</div>`;
+  }
+  /* 入学式・ドラフトは明るいカード */
+  const top = n.cat==="DRAFT" ? n.L[0] : n.L.slice().sort((a,b)=>(b.star0||0)-(a.star0||0))[0];
+  const kind = n.cat==="DRAFT" ? `DRAFT<small>ドラフト会議</small>` : `WELCOME<small>${n.y}年度 入学式</small>`;
+  const dl = n.cat==="DRAFT"
+    ? [["TEAM", top.team], ["RANK", top.rank?`${top.rank}位`:"-"], ["POS", top.pos]]
+    : [["新入生", `${n.L.length}名`], ["注目", `${top.name}（${top.pos0||top.pos||""}）`], ["スカウト", `${n.L.filter(g=>g.scout).length}名`]];
+  const sur=String(top.name).split(/[\s　]+/)[0];
+  return `<div class="nv t ${n.cat==="DRAFT"?"dr":""}"><div class="nv-kind">${kind}</div>
+    ${(()=>{ const t=n.cat==="DRAFT"&&n.L.length>1?`${n.L.length}名が指名`:top.name, len=String(t).replace(/[\s　]/g,"").length+0.5*(String(t).match(/[\s　]/g)||[]).length;
+      return `<div class="nv-name" style="font-size:${Math.min(6, 50/len).toFixed(2)}cqw">${escHtml(t)}</div>`; })()}
+    <dl class="nv-dl">${dl.map(([k,v])=>`<dt>${k}</dt><dd>${escHtml(v||"-")}</dd>`).join("")}</dl>
+    <div class="nv-photo"><div class="face ph" style="font-size:${Math.min(9, 25/Math.max(1,sur.length)).toFixed(2)}cqw">${escHtml(sur)}</div></div><div class="nv-date">${n.date}</div>${mark}</div>`;
 }
 
+/* ---------- ニュースの本文 ---------- */
+function tyGameLi(g){
+  const M=(ES.mvp&&ES.mvp[g.no])||{};
+  const mv=[M.bat?`打撃MVP ${tyNameLink(M.bat.name, g.year)}`:"", M.pit?`投手MVP ${tyNameLink(M.pit.name, g.year)}`:""].filter(Boolean).join("・");
+  return `<li><span class="t-gl-r">${escHtml(g.round)}${g.date?`<small>${fmtMD(g.date)}</small>`:""}</span><span class="t-gl-o">vs ${escHtml(g.opp)}${g.oppPref?`<small>${escHtml(g.oppPref)}${g.power?`・戦力${escHtml(g.power)}`:""}</small>`:""}</span>
+    <span class="t-gl-s ${g.wl==="勝"?"w":g.wl==="負"?"l":""}">${g.wl} ${g.rs}-${g.ra}</span>${mv?`<span class="t-gl-m">${mv}</span>`:""}</li>`;
+}
+function tyNewsBody(n){
+  const P=[];
+  if(n.cat==="GAME"){
+    const g=n.g, L=ES.inn[g.no], box=esBoxScore(g.no), mvp=esMvpHtml(g.no);
+    const when=g.date?`${g.date.getMonth()+1}月${g.date.getDate()}日、`:"";
+    const how = g.wl==="勝" ? `${g.rs}-${g.ra}で勝利しました` : g.wl==="負" ? `${g.rs}-${g.ra}で敗れました` : `${g.rs}-${g.ra}で引き分けました`;
+    P.push(`<p>${when}${n.y}年度 ${escHtml(n.k)} ${escHtml(g.round)}で、東洋大姫路は${escHtml(g.opp)}${g.oppPref?`（${escHtml(g.oppPref)}）`:""}と対戦し、${how}。${g.note?`（${escHtml(g.note)}）`:""}</p>`);
+    if(n.isLast && n.res){
+      if(n.res==="優勝") P.push(`<p>この勝利で<b>${escHtml(n.k)}優勝</b>を果たしました。大会成績は${n.all.filter(x=>x.wl==="勝").length}勝${n.all.filter(x=>x.wl==="負").length}敗です。</p>`);
+      else if(n.res!=="勝ち上がり中") P.push(`<p>${escHtml(n.k)}は<b>${escHtml(n.res)}</b>で終わりました。</p>`);
+    }
+    if(L && L.length) P.push(`<h2>スコア</h2>${esLineScore(L)}`);
+    if(mvp) P.push(`<h2>MVP</h2>${mvp}`);
+    if(box) P.push(`<h2>選手成績</h2>${box}`);
+    if(n.all.length>1) P.push(`<h2>${escHtml(n.k)}の戦い</h2><ul class="t-gl">${n.all.map(x=>tyGameLi(x).replace("<li>", x===g?'<li class="cur">':"<li>")).join("")}</ul>`);
+  }
+  if(n.cat==="ENTRY"){
+    const scout=n.L.filter(g=>g.scout), tr=ES.grads.filter(g=>g.transfer && g.year===n.y);
+    P.push(`<p>${n.y}年度の入学式が行われ、新入生${n.L.length}名が野球部に入部しました。${scout.length?`そのうち${scout.length}名はスカウトで入部した選手です。`:""}</p>`);
+    P.push(`<h2>新入生</h2>${tyPlayerTable(n.L.slice().sort((a,b)=>(b.star0||0)-(a.star0||0)), "entry")}`);
+    if(tr.length) P.push(`<h2>転校生</h2>${tyPlayerTable(tr, "entry")}`);
+  }
+  if(n.cat==="DRAFT"){
+    P.push(`<p>${n.y}年度のプロ野球ドラフト会議で、東洋大姫路から${n.L.length}名が指名されました。</p>`);
+    P.push(`<h2>指名された選手</h2>${tyPlayerTable(n.L, "draft")}`);
+  }
+  if(n.cat==="GRAD"){
+    /* 進路の内訳（プロ／大学／社会人…）。指名の球団・順位はドラフトのニュースへ */
+    const cnt={}; n.L.forEach(g=>{ const c=tyCourse(g); if(c) cnt[c]=(cnt[c]||0)+1; });
+    const top=n.L.slice().sort((a,b)=>(b.star||0)-(a.star||0))[0];
+    const dn=TY.news && TY.news.find(x=>x.cat==="DRAFT" && x.y===n.y);
+    P.push(`<p>${n.y}年度の卒業式が行われ、${n.y-2}年度に入学した${n.L.length}名が卒業しました。${top&&top.star!=null?`卒業時の★がいちばん高かったのは${tyPLink(top)}（★${top.star}）です。`:""}</p>`);
+    if(Object.keys(cnt).length) P.push(`<div class="t-chips t-chips-c">${Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="t-chip"><span>${escHtml(k)}</span><b>${v}<small>名</small></b></div>`).join("")}</div>`);
+    P.push(`<h2>卒業生</h2>${tyPlayerTable(n.L.slice().sort((a,b)=>(b.star||0)-(a.star||0)), "grad")}`);
+    if(dn) P.push(`<p class="nd-link"><a class="btn" href="#news/${dn.id}">この年のドラフト ›</a></p>`);
+  }
+  if(n.cat==="RECORD"){
+    if(n.g) P.push(`<p>${escHtml(tyGameTxt(n.g))}の勝利で、通算<b>${n.big}勝</b>を達成しました。</p>`);
+    if(n.run){ const r=n.run;
+      P.push(`<p>${escHtml(`${r.from.year}年度 ${r.from.taikai} ${r.from.round}`)}から${r.live?`<b>${r.n}連勝</b>を続けています。`:`<b>${r.n}連勝</b>を記録しましたが、${escHtml(`${r.stop.year}年度 ${r.stop.taikai} ${r.stop.round}`)}で${escHtml(r.stop.opp)}に${r.stop.rs}-${r.stop.ra}で敗れ、連勝が止まりました。`}</p>`); }
+    P.push(`<p class="nd-link"><a class="btn" href="#rec">RECORDS ›</a></p>`);
+  }
+  return P.join("");
+}
+/* ドラフトのタイトル。いちばん上の順位（ふつうは1位）が何人いても全員が分かるように */
+function tyDraftTitle(pro){
+  const r=pro[0].rank, same=pro.filter(g=>g.rank===r), rk=r?`${r}位`:"";
+  if(pro.length===1) return `${pro[0].name}が${pro[0].team}から${rk}指名`;
+  if(same.length===1) return `ドラフト会議で${pro.length}名が指名！ ${pro[0].name}は${pro[0].team}${rk}`;
+  const who = same.length<=3 ? same.map(g=>g.name).join("・") : `${same.length}名`;
+  return same.length===pro.length ? `${who}がドラフト${rk}指名！` : `ドラフト会議で${pro.length}名が指名！ ${who}が${rk}指名`;
+}
+/* 進路の呼び方（卒業式用。球団・順位はドラフトで出すので「プロ野球」にまとめる） */
+const tyCourse = g => g.team || g.course==="プロ野球選手" ? "プロ野球" : (g.course||"");
+/* 選手の表（入学式・ドラフト・卒業式） */
+function tyPlayerTable(L, mode){
+  const head = mode==="entry" ? ["守備","名前","出身","入学時★"] : mode==="draft" ? ["球団","順位","名前","守備"] : ["守備","名前","卒業時★","進路"];
+  const row = g => mode==="entry" ? [esPosTag(g.pos0||g.pos), `${tyPLink(g)}${g.scout?`<span class="es-tag">スカウト</span>`:""}`, escHtml(g.from||""), g.star0??"-"]
+    : mode==="draft" ? [escHtml(g.team), g.rank?`${escHtml(g.rank)}位`:"-", tyPLink(g), esPosTag(g.pos)]
+    : [esPosTag(g.pos), tyPLink(g), g.star??"-", escHtml(tyCourse(g))];
+  return `<div class="es-st-wrap"><table class="t-tbl"><thead><tr>${head.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${L.map(g=>`<tr>${row(g).map(v=>`<td>${v}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+const esPosTag = p => p ? `<span class="es-pos sm ${esPosCls(p)}">${escHtml(p)}</span>` : "";
 
-/* ---------- 初期化 ---------- */
-hmRender();
-hmTrack("torima", loadTorima());
-hmTrack("run", loadRun());
-hmTrack("bike", loadBike());
-hmTrack("apex", loadApex());
-hmTrack("mh", loadMH());
-const pKeiken=loadKeiken();
-hmTrack("gourmet", pKeiken.then(loadGourmet));
-(function initRouting(){
-  const st=parseHash();
-  history.replaceState({page:st.page}, "", location.hash||"#"+PAGES[0]);
-  applyPage(st.page);
-})();
+/* ---------- 共通パーツ ---------- */
+const tyBand = (en, jp) => `<div class="ph-band" data-bg="${en}"><div class="ph-in"><h1><b>${en}</b><small>${jp}</small></h1></div></div>`;
+const tySecH = (en, jp, href) => `<div class="sec-h"><h2><b>${en}</b><small>${jp}</small></h2>${href?`<a class="more" href="${href}">VIEW MORE</a>`:""}</div>`;
+const tyCatTag = c => `<span class="cat ${c}">${c}</span>`;
+const tyNCard = n => `<a class="ncard" href="#news/${n.id}"><div class="thumb">${tyVisual(n)}</div><div class="meta"><span>${n.date}</span>${tyCatTag(n.cat)}</div><h3>${escHtml(n.title)}</h3></a>`;
+const tyNRow = n => `<a class="nrow" href="#news/${n.id}"><div class="thumb">${tyVisual(n)}</div><div><div class="meta"><span>${n.date}</span>${tyCatTag(n.cat)}</div><h3>${escHtml(n.title)}</h3></div></a>`;
+
+/* ---------- 誕生日 ---------- */
+function tyMD(v){
+  const t=esHalf(v);
+  let m=t.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/); if(m) return {m:+m[2], d:+m[3]};
+  m=t.match(/(\d{1,2})\D+(\d{1,2})/); return m ? {m:+m[1], d:+m[2]} : null;
+}
+function tyBirthdays(month){
+  return ES.grads.map(g=>({g, md:tyMD(g.birth)})).filter(x=>x.md && x.md.m===month)
+    .sort((a,b)=>a.md.d-b.md.d || (tyGrade(b.g)?1:0)-(tyGrade(a.g)?1:0));
+}
+const tyWho = g => { const gr=tyGrade(g); return gr ? `${gr}年` : tyDone(g) ? `OB・${g.year!=null?g.year+2+"年度卒":""}` : (g.year!=null?`${g.year}年度入学`:""); };
+function tyBdayCard(x, today){
+  const g=x.g, sur=String(g.name).split(/[\s　]+/)[0];
+  return `<a class="t-bd${today?" today":""}" href="${tyPHref(g)}"><div class="t-bd-d"><b>${x.md.m}/${x.md.d}</b>${today?`<small>TODAY</small>`:""}</div>
+    <div class="face ph t-bd-f">${escHtml(sur)}</div><div class="t-bd-m"><b>${escHtml(g.name)}</b><span>${esPosTag(g.pos)}${escHtml(tyWho(g))}</span></div></a>`;
+}
+function tyBdayHtml(month, onlyStudents){
+  const t=new Date(), L=tyBirthdays(month).filter(x=>!onlyStudents || tyGrade(x.g));
+  if(!L.length) return `<div class="t-empty">${month}月が誕生日の${onlyStudents?"在校生":"選手"}はいません。</div>`;
+  return `<div class="t-bds">${L.map(x=>tyBdayCard(x, x.md.m===t.getMonth()+1 && x.md.d===t.getDate())).join("")}</div>`;
+}
+
+/* ---------- 勝利数・連勝の記録（RECORDSページ上部） ---------- */
+function tyWinsHtml(){
+  const G=ES.games; if(!G.length) return "";
+  const W=G.filter(g=>g.wl==="勝").length, L=G.filter(g=>g.wl==="負").length, D=G.length-W-L;
+  const K=G.filter(g=>tyKoshien(g.taikai)), KW=K.filter(g=>g.wl==="勝").length, KL=K.filter(g=>g.wl==="負").length;
+  const titles=ES.years.reduce((a,Y)=>a+ES_TAIKAI.filter(t=>Y.res[t.k]==="優勝").length,0);
+  const runs=tyRuns().sort((a,b)=>b.n-a.n || a.from.no-b.from.no).slice(0,5), cs=tyCurStreak();
+  const yw=ES.years.slice().sort((a,b)=>b.w-a.w || a.l-b.l || b.y-a.y).slice(0,5), ymax=Math.max(1,...yw.map(Y=>Y.w));
+  const ms=tyMilestones();
+  const tk=ES_TAIKAI.map(t=>{ const T=G.filter(g=>g.taikai===t.k), w=T.filter(g=>g.wl==="勝").length, l=T.filter(g=>g.wl==="負").length;
+    return {t, n:T.length, w, l, v:ES.years.filter(Y=>Y.res[t.k]==="優勝").length}; }).filter(x=>x.n);
+  return `
+    <div class="t-chips">
+      <div class="t-chip big"><span>通算成績</span><b>${nf(W)}<small>勝</small>${nf(L)}<small>敗</small>${D?`${D}<small>分</small>`:""}</b><em>勝率 ${W+L?esAvgFmt(W/(W+L)):"-"}</em></div>
+      <div class="t-chip"><span>甲子園 通算</span><b>${KW}<small>勝</small>${KL}<small>敗</small></b></div>
+      <div class="t-chip"><span>優勝</span><b>${titles}<small>回</small></b></div>
+      <div class="t-chip"><span>${cs.wl==="負"?"現在の連敗":"現在の連勝"}</span><b>${cs.wl==="勝"||cs.wl==="負"?cs.n:0}<small>${cs.wl==="負"?"連敗":"連勝"}</small></b></div>
+    </div>
+    <div class="t-grid2">
+      <div class="card-section"><div class="sec-title">連勝記録 TOP5</div>
+        ${runs.length?`<ol class="t-rank">${runs.map((r,i)=>`<li><span class="t-rank-n">${i+1}</span><div class="t-rank-m"><b>${escHtml(`${r.from.year}年度 ${r.from.taikai} ${r.from.round}`)}〜${r.to.year!==r.from.year?`${r.to.year}年度 `:""}${escHtml(`${r.to.taikai} ${r.to.round}`)}</b>
+          <small>${r.live?"継続中":`止めたのは ${escHtml(r.stop.opp)}（${r.stop.rs}-${r.stop.ra}）`}</small></div><span class="t-rank-v">${r.n}<small>連勝</small></span></li>`).join("")}</ol>`:`<div class="t-empty">まだ勝利がありません。</div>`}
+      </div>
+      <div class="card-section"><div class="sec-title">年度別 勝利数 TOP5</div>
+        <ol class="t-rank">${yw.map((Y,i)=>`<li><span class="t-rank-n">${i+1}</span><div class="t-rank-m"><b>${Y.y}年度</b><span class="t-bar"><i style="width:${Y.w/ymax*100}%"></i></span></div><span class="t-rank-v">${Y.w}<small>勝${Y.l}敗</small></span></li>`).join("")}</ol>
+      </div>
+    </div>
+    <div class="card-section"><div class="sec-title">通算勝利の節目</div>
+      <div class="es-st-wrap"><table class="t-tbl"><thead><tr><th>勝利</th><th>年度</th><th>大会</th><th>相手</th><th>スコア</th></tr></thead><tbody>
+      ${ms.map(m=>`<tr><td><b>${m.k}</b>勝目</td><td>${m.g.year}</td><td>${escHtml(m.g.taikai)} ${escHtml(m.g.round)}</td><td>${escHtml(m.g.opp)}</td><td>${m.g.rs}-${m.g.ra}</td></tr>`).join("")}</tbody></table></div>
+      <p class="kk-note-s">1・10・25勝目と、50勝ごとの節目。</p>
+    </div>
+    <div class="card-section"><div class="sec-title">大会別の成績</div>
+      <div class="es-st-wrap"><table class="t-tbl"><thead><tr><th>大会</th><th>試合</th><th>勝</th><th>敗</th><th>勝率</th><th>優勝</th></tr></thead><tbody>
+      ${tk.map(x=>`<tr><td>${escHtml(x.t.k)}</td><td>${x.n}</td><td>${x.w}</td><td>${x.l}</td><td>${x.w+x.l?esAvgFmt(x.w/(x.w+x.l)):"-"}</td><td>${x.v?`<b>${x.v}</b>回`:"-"}</td></tr>`).join("")}</tbody></table></div>
+    </div>`;
+}
+
+/* ---------- HOME ---------- */
+let tySliderTimer=null;
+function tyHome(){
+  const el=$id("pg-home");
+  if(!TY.loaded){ el.innerHTML=`<div class="t-loading">読み込み中…</div>`; return; }
+  const N=TY.news, slides=N.slice(0,5);
+  const last=ES.games[ES.games.length-1], cur=tyCurYear(), Y=ES.years.find(v=>v.y===cur) || ES.years[0];
+  const W=ES.games.filter(g=>g.wl==="勝").length, L=ES.games.filter(g=>g.wl==="負").length;
+  const kv=ES.years.reduce((a,Y)=>a+["夏の甲子園","春の甲子園"].filter(k=>Y.res[k]==="優勝").length,0);
+  const best=tyRuns().sort((a,b)=>b.n-a.n)[0], cs=tyCurStreak();
+  const t=new Date(), bdToday=tyBirthdays(t.getMonth()+1).filter(x=>x.md.d===t.getDate());
+  const lastBox = last ? (()=>{ const M=(ES.mvp&&ES.mvp[last.no])||{};
+    return `<div class="mbox"><div class="mbox-h"><b>LATEST RESULT</b><span>${last.year}年度</span></div><div class="mbox-b">
+      ${last.date?`<div class="mdate"><b>${last.date.getMonth()+1}.${p2(last.date.getDate())}<small>${WD[last.date.getDay()]}</small></b></div>`:""}<div class="mcomp">${escHtml(last.taikai)} ${escHtml(last.round)}</div>
+      <div class="mboard"><div class="mteam">${tyCrest()}東洋大姫路</div><div class="mscore">${last.rs}-${last.ra}</div><div class="mteam">${tyOppMark(last.opp)}${escHtml(last.opp)}<small>${escHtml(last.oppPref||"")}</small></div></div>
+      <div class="mres"><span class="res ${last.wl==="勝"?"W":last.wl==="負"?"L":"D"}">${last.wl==="勝"?"WIN":last.wl==="負"?"LOSE":"DRAW"}</span></div>
+      ${M.bat||M.pit?`<div class="t-mvpline">${M.bat?`<span>打撃MVP ${tyNameLink(M.bat.name,last.year)}</span>`:""}${M.pit?`<span>投手MVP ${tyNameLink(M.pit.name,last.year)}</span>`:""}</div>`:""}
+    </div><div class="mlinks"><a href="#year/detail">年度の記録</a><a href="#rec">記録</a></div></div>`; })() : "";
+  const yBox = Y ? `<div class="mbox"><div class="mbox-h"><b>SEASON ${Y.y}</b><span>${Y.w}勝${Y.l}敗</span></div><div class="mbox-b t-ylist">
+      ${ES_TAIKAI.map(x=>{ const r=Y.res[x.k]; return `<div class="t-yrow"><span>${escHtml(x.k)}</span>${r?`<span class="es-res ${esBadgeCls(r)}">${escHtml(r)}</span>`:`<span class="es-none">－</span>`}</div>`; }).join("")}
+    </div><div class="mlinks"><a href="#year">年度別成績</a></div></div>` : "";
+  el.innerHTML=`
+    <section class="top-hero"><div class="hero-in">
+      <div class="slider"><div class="slides" id="slides">${slides.map(n=>`<a class="slide" href="#news/${n.id}">${tyVisual(n)}<div class="slide-cap"><div class="meta"><span class="en">${n.date}</span>${tyCatTag(n.cat)}</div><h3>${escHtml(n.title)}</h3></div></a>`).join("")}</div>
+        ${slides.length>1?`<div class="dots" id="dots">${slides.map((_,i)=>`<button aria-label="${i+1}枚目"${i?"":' class="on"'}></button>`).join("")}</div>`:""}</div>
+      <div class="hero-side"><h2>NEWS<small>最新ニュース</small></h2>${N.slice(0,6).map(n=>`<a class="hlink" href="#news/${n.id}"><div class="meta"><span class="en">${n.date}</span>${tyCatTag(n.cat)}</div><p>${escHtml(n.title)}</p></a>`).join("")}</div>
+    </div></section>
+    ${bdToday.length?`<section class="t-hbd"><div class="t-hbd-in"><b class="en">HAPPY BIRTHDAY</b><span>今日は ${bdToday.map(x=>`${tyPLink(x.g)}（${escHtml(tyWho(x.g))}）`).join("・")} の誕生日！</span></div></section>`:""}
+    <section class="match-band"><div class="wrap">
+      ${tySecH("RESULT","試合結果","#year/detail")}
+      <div class="mgrid">${lastBox}${yBox}</div>
+      <div class="season-strip">
+        <div><span>通算成績</span><b>${nf(W)}<small>勝</small>${nf(L)}<small>敗</small></b></div>
+        <div><span>甲子園優勝</span><b>${kv}<small>回</small></b></div>
+        <div><span>最長連勝</span><b>${best?best.n:0}<small>連勝</small></b></div>
+        <div><span>${cs.wl==="負"?"現在の連敗":"現在の連勝"}</span><b>${cs.wl==="勝"||cs.wl==="負"?cs.n:0}<small>${cs.wl==="負"?"連敗":"連勝"}</small></b></div>
+      </div>
+    </div></section>
+    <div class="wrap">
+      <section class="sec">${tySecH("NEWS","ニュース","#news")}<div class="ngrid">${N.slice(0,8).map(tyNCard).join("")||`<div class="t-empty">まだニュースはありません。</div>`}</div></section>
+      <section class="sec">${tySecH("BIRTHDAY",`${t.getMonth()+1}月の誕生日`,"#player/bday")}${tyBdayHtml(t.getMonth()+1, false)}</section>
+    </div>`;
+  tySlider();
+}
+function tySlider(){
+  const box=$id("slides"), dots=$id("dots"); if(!box) return;
+  const btns=dots?[...dots.children]:[], kids=[...box.children];
+  const cur=()=>{ let b=0,d=1e9; kids.forEach((k,i)=>{ const x=Math.abs(k.offsetLeft-kids[0].offsetLeft-box.scrollLeft); if(x<d){d=x;b=i;} }); return b; };
+  const go=i=>box.scrollTo({left:kids[i].offsetLeft-kids[0].offsetLeft});
+  btns.forEach((b,i)=>b.onclick=e=>{ e.preventDefault(); go(i); restart(); });
+  box.addEventListener("scroll",()=>{ const i=cur(); btns.forEach((b,k)=>b.classList.toggle("on",k===i)); },{passive:true});
+  const restart=()=>{ clearInterval(tySliderTimer); if(kids.length>1 && !prefersReduced())
+    tySliderTimer=setInterval(()=>{ if(!document.body.contains(box)||box.offsetParent===null){ clearInterval(tySliderTimer); return; } const i=cur(); go(i>=kids.length-1 || box.scrollLeft+box.clientWidth>=box.scrollWidth-4 ? 0 : i+1); },6000); };
+  restart();
+}
+
+/* ---------- NEWS ---------- */
+function tyNewsPage(arg){
+  const el=$id("pg-news");
+  if(!TY.loaded){ el.innerHTML=`${tyBand("NEWS","ニュース")}<div class="t-loading">読み込み中…</div>`; return; }
+  if(arg){
+    const i=TY.news.findIndex(n=>n.id===arg), n=TY.news[i];
+    if(!n){ el.innerHTML=`${tyBand("NEWS","ニュース")}<div class="wrap narrow"><div class="t-empty">ニュースが見つかりません。</div></div>`; return; }
+    const nx=TY.news[i-1], pv=TY.news[i+1];
+    el.innerHTML=`${tyBand("NEWS","ニュース")}<div class="wrap narrow">
+      <div class="crumb"><a href="#home">HOME</a> › <a href="#news">NEWS</a></div>
+      <article><div class="nd-head"><div class="meta"><span>${n.date}</span>${tyCatTag(n.cat)}<span class="t-catjp">${TY_CAT[n.cat]}</span></div><h1>${escHtml(n.title)}</h1></div>
+      ${tyVisual(n)}<div class="nd-body">${tyNewsBody(n)}</div></article>
+      <div class="pager">${pv?`<a href="#news/${pv.id}"><small>‹ PREV</small>${escHtml(pv.title)}</a>`:"<span></span>"}${nx?`<a class="nx" href="#news/${nx.id}"><small>NEXT ›</small>${escHtml(nx.title)}</a>`:""}</div>
+    </div>`;
+    return;
+  }
+  const years=[...new Set(TY.news.map(n=>n.y))].sort((a,b)=>b-a);
+  const L=TY.news.filter(n=>(TY.cat==="すべて"||n.cat===TY.cat) && (!TY.ny || n.y===+TY.ny));
+  const PER=10, pages=Math.max(1, Math.ceil(L.length/PER)); TY.page=Math.min(Math.max(1,TY.page), pages);
+  const P=TY.page, list=L.slice((P-1)*PER, P*PER);
+  /* ページ番号：最初・最後・今のページの前後2つ。間は「…」 */
+  const nums=[...new Set([1, pages, P-2, P-1, P, P+1, P+2].filter(x=>x>=1&&x<=pages))].sort((a,b)=>a-b);
+  let prev=0; const btns=[]; nums.forEach(x=>{ if(x-prev>1) btns.push(`<span class="t-pg-gap">…</span>`); btns.push(`<button class="t-pg-n${x===P?" on":""}" data-p="${x}"${x===P?' aria-current="page"':""}>${x}</button>`); prev=x; });
+  el.innerHTML=`${tyBand("NEWS","ニュース")}<div class="wrap narrow">
+    <div class="pill-tabs" id="ty-cat">${["すべて",...Object.keys(TY_CAT)].map(c=>`<button class="pill${c===TY.cat?" on":""}" data-c="${c}">${c==="すべて"?c:TY_CAT[c]}</button>`).join("")}</div>
+    <div class="toolbar"><select class="sel" id="ty-ny" aria-label="年度を選ぶ"><option value="">すべての年度</option>${years.map(y=>`<option value="${y}"${String(y)===String(TY.ny)?" selected":""}>${y}年度</option>`).join("")}</select><span class="t-pg-info">${L.length}件中 ${L.length?(P-1)*PER+1:0}〜${Math.min(P*PER,L.length)}件</span></div>
+    ${list.length?`<div class="nlist">${list.map(tyNRow).join("")}</div>`:`<div class="t-empty">該当するニュースはありません。</div>`}
+    ${pages>1?`<nav class="t-pg" aria-label="ページ"><button class="t-pg-a" data-p="${P-1}"${P===1?" disabled":""}>‹ PREV</button><div class="t-pg-ns">${btns.join("")}</div><button class="t-pg-a" data-p="${P+1}"${P===pages?" disabled":""}>NEXT ›</button></nav>`:""}
+  </div>`;
+  el.querySelectorAll("#ty-cat .pill").forEach(b=>b.onclick=()=>{ TY.cat=b.dataset.c; TY.page=1; tyNewsPage(""); });
+  $id("ty-ny").onchange=e=>{ TY.ny=e.target.value; TY.page=1; tyNewsPage(""); };
+  el.querySelectorAll(".t-pg [data-p]").forEach(b=>b.onclick=()=>{ if(b.disabled) return; TY.page=+b.dataset.p; tyNewsPage("");
+    const go=()=>window.scrollTo(0,0); go(); requestAnimationFrame(go); });
+}
+
+/* ---------- 選手ページ（#pl/入学年度/名前） ---------- */
+function tyPlayerPage(arg){
+  const el=$id("pg-pl");
+  if(!TY.loaded){ el.innerHTML=`${tyBand("PLAYER","選手")}<div class="t-loading">読み込み中…</div>`; return; }
+  const [y, ...rest]=arg.split("/"); const name=rest.join("/");
+  const g=ES.grads.find(x=>x.name===name && String(x.year||"")===y) || ES.grads.find(x=>x.name===name);
+  if(!g){ el.innerHTML=`${tyBand("PLAYER","選手")}<div class="wrap narrow"><div class="t-empty">選手が見つかりません。</div></div>`; return; }
+  const gr=tyGrade(g), pro=g.team?`${g.team}${g.rank?` ${g.rank}位`:""}`:g.course;
+  el.innerHTML=`<section class="t-pd"><div class="t-pd-in">
+      <div class="t-pd-pos">${esPosTag(g.pos)}${gr?`${gr}年生`:tyDone(g)?"卒業生":""}</div>
+      <h1>${escHtml(g.name)}</h1>
+      <p>${escHtml([g.year!=null?`${g.year}年度入学`:"", g.from?`${g.from}出身`:"", pro].filter(Boolean).join("　"))}</p>
+      ${esTags(g)}
+    </div></section>
+    <div class="wrap narrow"><div class="crumb"><a href="#home">HOME</a> › <a href="#player">PLAYERS</a></div>${esPlayerCard(null, g)}</div>`;
+}
+
+/* ---------- PLAYERSページに誕生日の欄を足す ---------- */
+function tyBdaySection(){
+  let sec=$id("ty-bday");
+  if(!sec){ sec=document.createElement("div"); sec.className="card-section"; sec.id="ty-bday"; sec.dataset.sub="bday"; sec.dataset.subT="誕生日"; }
+  const host=document.querySelector('.es-pane[data-pane="player"] .wrap');
+  if(host.lastElementChild!==sec) host.appendChild(sec); /* 誕生日はページの一番下 */
+  const now=new Date().getMonth()+1;
+  sec.innerHTML=`<div class="sec-title">誕生日</div>
+    <div class="day-tabs t-mtabs">${Array.from({length:12},(_,i)=>i+1).map(m=>`<button type="button" class="day-tab${m===TY.bdM?" active":""}" data-m="${m}">${m}月${m===now?"<span class='tab-sub'>今月</span>":""}</button>`).join("")}</div>
+    ${tyBdayHtml(TY.bdM, false)}`;
+  sec.querySelectorAll(".t-mtabs .day-tab").forEach(b=>b.onclick=()=>{ TY.bdM=+b.dataset.m; tyBdaySection(); });
+}
+
+/* ---------- ページ内のタブ（SEASON・PLAYERS・RECORDS は中身ごとに分けて1つずつ見せる） ---------- */
+function tySubnav(page, arg){
+  const pane=document.querySelector(`.es-pane[data-pane="${page}"]`); if(!pane) return;
+  const nav=pane.querySelector(".t-subnav"); if(!nav) return;
+  const S=[...pane.querySelectorAll("[data-sub]")];
+  const keys=S.map(x=>x.dataset.sub), cur=keys.includes(arg)?arg:keys[0];
+  nav.innerHTML=`<div class="t-subnav-in">${S.map(x=>`<a href="#${page}/${x.dataset.sub}"${x.dataset.sub===cur?' class="on" aria-current="page"':""}>${x.dataset.subT}</a>`).join("")}</div>`;
+  S.forEach(x=>x.hidden = x.dataset.sub!==cur);
+}
+/* ---------- ページの切り替え ---------- */
+function tyRoute(){
+  const h=decodeURIComponent(location.hash.replace(/^#/,"")), [p, ...rest]=h.split("/");
+  const page=TY_PAGES[p] ? p : "home", arg=rest.join("/");
+  document.querySelectorAll("#eikan .es-pane").forEach(x=>x.hidden = x.dataset.pane!==page);
+  document.querySelectorAll(".hd-nav a, .drawer-nav a").forEach(a=>a.classList.toggle("on", a.dataset.nav===tyNavOf(page)));
+  document.title = page==="home" ? "東洋大姫路 | 栄冠ナイン" : `東洋大姫路 | ${TY_PAGES[page]}`;
+  if(page==="home") tyHome();
+  if(page==="news") tyNewsPage(arg);
+  if(page==="pl") tyPlayerPage(arg);
+  tySubnav(page, arg);
+  tySetMenu(false);
+  const go=()=>{ window.scrollTo(0,0); document.documentElement.scrollTop=0; };
+  go(); requestAnimationFrame(go); setTimeout(go,60);
+}
+function tySetMenu(open){
+  const btn=$id("menu-btn"), dr=$id("drawer"); if(!btn) return;
+  btn.setAttribute("aria-expanded", open?"true":"false"); btn.setAttribute("aria-label", open?"メニューを閉じる":"メニューを開く");
+  dr.hidden=!open; document.body.classList.toggle("lock", open);
+}
+function tyAfterLoad(){
+  TY.loaded=true;
+  tyBuildNews();
+  $id("es-wins").innerHTML=tyWinsHtml();
+  tyBdaySection();
+  tyRoute();
+}
+if("scrollRestoration" in history) history.scrollRestoration="manual";
+$id("menu-btn").onclick=()=>tySetMenu($id("drawer").hidden);
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") tySetMenu(false); });
+matchMedia("(min-width:961px)").addEventListener("change", e=>{ if(e.matches) tySetMenu(false); });
+window.addEventListener("hashchange", tyRoute);
+tyRoute();
+
+/* ---------- 読み込み ---------- */
+loadEikan().catch(e=>{ console.error("eikan", e); $id("pg-home").innerHTML=errBox("読み込み中にエラーが発生しました。"); });
