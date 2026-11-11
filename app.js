@@ -149,13 +149,18 @@ function applyPage(page){
   const nb=document.querySelector(`.nav-btn[data-nav="${page}"]`);
   document.title = nb ? `西川記録 | ${nb.textContent.trim()}` : "西川記録";
   if(page==="keiken"||page==="gourmet") kkSetMode(page);
-  if(page==="game") gameShow(sub||GAME.tab);
+  if(page==="game"){
+    gameShow(sub||GAME.tab);
+    /* URL は中で開いているゲームの名前にそろえる（#game → #apex / #mh） */
+    if(location.hash==="#game") history.replaceState({page:GAME.tab}, "", "#"+GAME.tab);
+  }
   setTimeout(declutterAll, 0);   // 隠れていたページは幅0で計れないので、表示してから整える
   window.scrollTo(0,0);
 }
 function goto(page, push){
   if(push===undefined) push=true;
   applyPage(page);
+  if(page==="game") page=GAME.tab;   // ゲームは中で開いているゲームの名前（#apex / #mh）
   if(push){ const h="#"+page; if(location.hash!==h) history.pushState({page}, "", h); }
 }
 function parseHash(){ const h=(location.hash||"").replace(/^#/,""); return {page:h||PAGES[0]}; }
@@ -1751,7 +1756,7 @@ function gameShow(g){
 }
 document.querySelectorAll(".game-tabs [data-g]").forEach(b=>b.addEventListener("click", ()=>{
   gameShow(b.dataset.g);
-  const h="#"+(GAME.tab==="mh"?"mh":"game"); if(location.hash!==h) history.replaceState({page:GAME.tab==="mh"?"mh":"game"}, "", h);
+  const h="#"+GAME.tab; if(location.hash!==h) history.replaceState({page:GAME.tab}, "", h);   // #apex / #mh
 }));
 
 /* =====================================================================
