@@ -1489,6 +1489,7 @@ async function loadApex(){
   AP.ranked=!!first;
   let cur=first?first.rank:null;
   all.forEach(d=>{ if(d.rank) cur=d.rank; else d.rank=cur; });
+  all.forEach(d=>{ d.ssx = d.season!=null; });   // シートにシーズンが書いてある行（先の日付も含む）
   /* シーズンも同じように埋める */
   const fs=all.find(d=>d.season!=null);
   let cs=fs?fs.season:null;
@@ -1515,6 +1516,8 @@ async function loadApex(){
     d.move = q && d.rank && q.rank ? Math.sign((d.rank.t*4+d.rank.d)-(q.rank.t*4+q.rank.d)) : 0;   // 1=昇格 -1=降格
   });
   if(!AP.all.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
+  /* 期間の終わり：そのシーズン・スプリットがシートに書いてある最後の日 */
+  AP.periodEnd={}; all.forEach(d=>{ if(d.ssx && (!AP.periodEnd[d.pk] || d.dt>AP.periodEnd[d.pk])) AP.periodEnd[d.pk]=d.dt; });
   AP.seasons=[...new Set(AP.all.map(d=>d.pk))];
   AP.season=AP.all[AP.all.length-1].pk;
   AP.cur=AP.all.filter(d=>d.pk===AP.season);
@@ -1549,7 +1552,9 @@ const apMoveTag=d=>d.newSeason?`<span class="ap-tag ss">${escHtml(apPeriodName(d
    ・上のランクほど参加コストが高く、1試合で残るRPが減る。1試合で稼ぐRP（AP_GROSS）からコストを引いた分で、
      ランクごとにかかる試合数を出し、「毎日同じくらいの試合数」で期限に届くように日数を割り振る */
 const AP_GOAL = { t:5, d:0, name:"ダイヤ" };      // ダイヤIV
-const AP_GOAL_DEADLINE = new Date(2026, 11, 15);  // 期限（スプリット1の終わりの見込み）
+const AP_GOAL_DEADLINE = new Date(2026, 11, 15);  // 期限の予備。ふだんはシートから読む（下の apDeadline）
+/* 期限：今のシーズン・スプリットが、シートの「シーズン」「スプリット」の列に書いてある最後の日 */
+const apDeadline=()=>(AP.periodEnd && AP.cur.length && AP.periodEnd[AP.cur[0].pk]) || AP_GOAL_DEADLINE;
 const AP_GOAL_FROM = new Date(2026, 10, 4);       // 計画の出発点：11/4の終わり（＝11/5の始まり）
 const AP_GOAL_START = { rank:"ブロンズⅠ", rp:380 }; // そのときのランクとRP
 const AP_GROSS = 75;                              // 1試合で稼ぐRPの目安（参加コストを引く前）
@@ -1560,7 +1565,7 @@ const apNet=total=>Math.max(5, AP_GROSS-AP_COST[AP_TIERS.indexOf(apTierAt(total)
 function apPlan(fromDt, fromTotal){
   const goal=apGoalTotal(), segs=[]; let cur=fromTotal;
   while(cur<goal){ const i=AP_TIERS.indexOf(apTierAt(cur)), next=Math.min(goal, AP_TIERS[i+1].start); segs.push({to:next, m:(next-cur)/apNet(cur)}); cur=next; }
-  const days=Math.max(1,(AP_GOAL_DEADLINE-fromDt)/864e5), M=segs.reduce((s,x)=>s+x.m,0), mpd=M/days;
+  const days=Math.max(1,(apDeadline()-fromDt)/864e5), M=segs.reduce((s,x)=>s+x.m,0), mpd=M/days;
   const pts=[{dt:fromDt, v:fromTotal}]; let t=+fromDt;
   segs.forEach(x=>{ t+=x.m/mpd*864e5; pts.push({dt:new Date(t), v:x.to}); });
   const at=dt=>{ if(dt<=pts[0].dt) return pts[0].v; for(let i=1;i<pts.length;i++) if(dt<=pts[i].dt){ const a=pts[i-1], b=pts[i]; return a.v+(b.v-a.v)*(dt-a.dt)/(b.dt-a.dt); } return goal; };
@@ -1569,7 +1574,7 @@ function apPlan(fromDt, fromTotal){
 /* 今のシーズン（スプリット）を見ているときだけ、計画を出す */
 function apGoalCtx(){
   if(!AP.ranked || AP.season==="all" || AP.season!==AP.cur[0].pk) return null;
-  const t0=today0(); if(t0>AP_GOAL_DEADLINE) return null;
+  const t0=today0(); if(t0>apDeadline()) return null;
   const L=AP.cur, last=L[L.length-1];
   const sr=apParseRank(AP_GOAL_START.rank), startTotal=AP_TIERS[sr.t].base[sr.d]+AP_GOAL_START.rp;
   const fixed=apPlan(AP_GOAL_FROM, startTotal);
@@ -1607,7 +1612,7 @@ function apRenderHero(){
       const done=G.todayRec?G.todayRec.total-G.base.total:0, vs=Math.round(last.total-G.fixed.at(last.dt));
       return facts([
         `<li>今日の目標<b>+${nf(G.target)}</b>RP（約${G.games}試合${G.todayRec?`・今日 <span class="${apCls(done)}">${apSigned(done)}</span>`:""}）</li>`,
-        fact(`${AP_GOAL.name}まで あと`, nf(G.goal-last.total), `RP（${md(AP_GOAL_DEADLINE)}まで）`),
+        fact(`${AP_GOAL.name}まで あと`, nf(G.goal-last.total), `RP（${md(apDeadline())}まで）`),
         last.dt>AP_GOAL_FROM ? (vs ? `<li>計画より<b class="${apCls(vs)}">${nf(Math.abs(vs))}</b>RP ${vs>0?"先":"遅れ"}</li>` : `<li><b>計画どおり</b></li>`) : ""
       ]); })()}
     ${facts([
@@ -1619,7 +1624,7 @@ function apRenderHero(){
 
 /* 折れ線グラフ（SVG）：選んだシーズン（スプリット）の全期間。背景はランクの色、横線はディビジョンの区切り */
 function apRenderChart(){
-  const L=AP.list, G=apGoalCtx(), x0=L[0].dt, x1=G?AP_GOAL_DEADLINE:L[L.length-1].dt;
+  const L=AP.list, G=apGoalCtx(), x0=L[0].dt, x1=G?apDeadline():L[L.length-1].dt;
   const W=600, PL=4, PR=4, PT=14, PB=22; let H=220;
   let lo=Math.min(...L.map(d=>d.total)), hi=Math.max(...L.map(d=>d.total), G?G.goal:0);
   const pad=Math.max((hi-lo)*0.12, 50); lo=Math.max(0, lo-pad); hi=hi+pad;
@@ -1671,7 +1676,7 @@ function apRenderChart(){
     </div>
     ${legend([
       {type:"line", color:"#c2185b", text:"実績"},
-      G?{type:"dash", text:`計画：${AP_GOAL_FROM.getMonth()+1}/${AP_GOAL_FROM.getDate()+1} ${escHtml(apRankName(apParseRank(AP_GOAL_START.rank)))} ${AP_GOAL_START.rp} → ${AP_GOAL_DEADLINE.getMonth()+1}/${AP_GOAL_DEADLINE.getDate()} ${AP_GOAL.name}`}:null,
+      G?{type:"dash", text:`計画：${AP_GOAL_FROM.getMonth()+1}/${AP_GOAL_FROM.getDate()+1} ${escHtml(apRankName(apParseRank(AP_GOAL_START.rank)))} ${AP_GOAL_START.rp} → ${apDeadline().getMonth()+1}/${apDeadline().getDate()} ${AP_GOAL.name}`}:null,
       L.some(d=>d.move>0)?{type:"dot", color:"#1f8a4c", text:"昇格"}:null,
       {type:"dot", color:"#e0a800", text:"最高"}
     ])}
@@ -1706,7 +1711,7 @@ function apDaysTable(){
   const G=apGoalCtx(), byDay={};
   AP.list.forEach(d=>{ byDay[d.dt.toDateString()]=d; });
   let days=AP.list.map(d=>d.dt);
-  if(G){ const t0=today0(); for(let d=new Date(t0); d<=AP_GOAL_DEADLINE; d=new Date(d.getFullYear(), d.getMonth(), d.getDate()+1)) days.push(new Date(d)); }
+  if(G){ const t0=today0(); for(let d=new Date(t0); d<=apDeadline(); d=new Date(d.getFullYear(), d.getMonth(), d.getDate()+1)) days.push(new Date(d)); }
   days=[...new Map(days.map(d=>[d.toDateString(), d])).values()].sort((x,y)=>x-y);
   const t0=today0();
   const plan=dt=>{ if(!G || dt<=AP_GOAL_FROM) return null;
