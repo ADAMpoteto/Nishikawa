@@ -1772,29 +1772,58 @@ const apShortName=r=>`S${r.season??"?"}${r.split2&&r.split!=null?`-${r.split}`:"
 function apRenderPeriods(){
   const P=apPeriodRows(), el=document.getElementById("ap-periods");
   if(!P.length){ el.innerHTML=""; return; }
-  const top=Math.max(24, ...P.map(r=>apLevel(r.best)));
-  /* 推移のグラフ：最高ランクの棒（2期間以上あるとき） */
-  const ranked=P.filter(r=>r.best);
-  const chart = ranked.length>=2 ? `<div class="ap-hist" role="img" aria-label="シーズンごとの最後のランク">${ranked.map(r=>{ const T=AP_TIERS[r.best.t];
-      return `<div class="ap-hist-c${r.pk&&r.pk===AP.season?" on":""}"><span class="ap-hist-v">${escHtml(apRankName(r.best))}</span>
-        <span class="ap-hist-b" style="height:${(apLevel(r.best)+1)/(top+1)*82}%;background:${T.color}"></span>
-        <span class="ap-hist-x">${escHtml(apShortName(r))}</span></div>`; }).join("")}</div>` : "";
-  const rows=P.slice().reverse().map(r=>{ const T=r.best?AP_TIERS[r.best.t]:null, st=r.st;
-    const name=[`シーズン${r.season}`, r.split2&&r.split!=null?`スプリット${r.split}`:""].filter(Boolean).join(" ");
-    const sub=[ r.name,
-      st?`${st.days}日・<span class="${apCls(st.gain)}">${apSigned(st.gain)}</span>`:"" ].filter(Boolean).join("・");
-    const tag=r.pk?"button":"div";
-    return `<${tag}${r.pk?' type="button"':""} class="mlist-row ap-prow${r.pk?"":" static"}${r.pk&&r.pk===AP.season?" on":""}"${r.pk?` data-pk="${escHtml(r.pk)}"`:""}>
-      <span class="mlist-name"><span class="mlist-m">${escHtml(name)}</span></span>
-      <span class="mlist-bar"><span style="width:${r.best?(apLevel(r.best)+1)/(top+1)*100:0}%;background:${T?T.color:"#c2185b"}"></span></span>
-      <span class="mlist-val">${escHtml(r.best?apRankName(r.best):"—")}<small>${sub}</small></span>
-    </${tag}>`; });
-  el.innerHTML=chart+foldRows(rows, 8, "期間");
-  el.querySelectorAll(".ap-prow[data-pk]").forEach(b=>b.onclick=()=>{
+  const R=P.filter(r=>r.best);
+  /* ---- 推移の折れ線（画面の幅に収める。横スクロールなし） ---- */
+  let chart="";
+  if(R.length>=2){
+    const lvs=R.map(r=>apLevel(r.best));
+    const lo=Math.floor(Math.min(...lvs)/4)*4, hi=Math.min(25, Math.max(...lvs)>=24?25:Math.floor(Math.max(...lvs)/4)*4+4);
+    const Y=lv=>(1-(lv-lo+0.5)/(hi-lo))*100, X=i=>R.length===1?50:2+i/(R.length-1)*96;
+    const bands=[]; for(let t=lo/4; t*4<hi; t++){ const T=AP_TIERS[t], top=t*4+(t>=6?1:4);
+      bands.push(`<div class="ap-sc-band" style="top:${(1-(Math.min(top,hi)-lo)/(hi-lo))*100}%;height:${(Math.min(top,hi)-t*4)/(hi-lo)*100}%;--c:${T.color}"><span>${escHtml(T.name)}</span></div>`); }
+    const pts=R.map((r,i)=>`${X(i).toFixed(2)},${Y(apLevel(r.best)).toFixed(2)}`).join(" ");
+    const dots=R.map((r,i)=>`<i class="ap-sc-dot" data-i="${i}" style="left:${X(i)}%;top:${Y(apLevel(r.best))}%;background:${AP_TIERS[r.best.t].color}"></i>`).join("");
+    /* 目盛り：シーズンの最初の点に、5の倍数と最初・最後のシーズンだけ */
+    const seen=new Set(), first=R[0].season, last=R[R.length-1].season;
+    const xl=R.map((r,i)=>{ if(seen.has(r.season)) return ""; seen.add(r.season);
+      const mid=r.season%5===0 && r.season-first>=4 && last-r.season>=4;   // 端の目盛りと重ならないように
+      if(!(mid || r.season===first || r.season===last)) return "";
+      return `<span class="ap-sc-x${r.season===first?" first":r.season===last?" last":""}" style="left:${X(i)}%">S${r.season}</span>`; }).join("");
+    chart=`<div class="ap-sc-read" id="ap-sc-read"></div>
+      <div class="ap-sc" role="img" aria-label="シーズンごとの最後のランクの推移">
+        <div class="ap-sc-plot">${bands.join("")}
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}"/></svg>
+          ${dots}<i class="ap-sc-cur" hidden></i></div>
+        <div class="ap-sc-xs">${xl}</div>
+      </div>`;
+  }
+  /* ---- 一覧：1シーズン1行（スプリット1・2を横に並べる）。新しい順 ---- */
+  const bySeason=[]; P.forEach(r=>{ let g=bySeason.find(x=>x.season===r.season); if(!g){ g={season:r.season, name:r.name, list:[]}; bySeason.push(g); } g.list.push(r); });
+  const cell=r=>{ if(!r) return `<span class="ap-st-c none">—</span>`;
+    const T=r.best?AP_TIERS[r.best.t]:null, tag=r.pk?"button":"span";
+    return `<${tag}${r.pk?` type="button" data-pk="${escHtml(r.pk)}"`:""} class="ap-st-c${r.pk&&r.pk===AP.season?" on":""}">${T?`<i style="background:${T.color}"></i>${escHtml(apRankName(r.best))}`:"—"}</${tag}>`; };
+  const rows=bySeason.slice().reverse().map(g=>{ const one=g.list.length===1 && g.list[0].split==null;
+    const s1=g.list.find(r=>(r.split??1)===1), s2=g.list.find(r=>r.split===2);
+    return `<div class="ap-st-r"><span class="ap-st-s">S${g.season}<small>${escHtml(g.name||"")}</small></span>${one?`<span class="ap-st-wide">${cell(g.list[0])}</span>`:cell(s1)+cell(s2)}</div>`; });
+  const head=`<div class="ap-st-r ap-st-h"><span></span><span>スプリット1</span><span>スプリット2</span></div>`;
+  el.innerHTML=chart+`<div class="ap-st">${head}${foldRows(rows, 8, "シーズン")}</div>`;
+  el.querySelectorAll(".ap-st-c[data-pk]").forEach(b=>b.onclick=()=>{
     apShowSeason(b.dataset.pk); apTab("cur");
     window.scrollTo({top:0, behavior:prefersReduced()?"auto":"smooth"});
   });
-  const h=el.querySelector(".ap-hist"); if(h) h.scrollLeft=h.scrollWidth;
+  /* タップ／なぞった点の読み出し */
+  const box=el.querySelector(".ap-sc-plot"), read=el.querySelector("#ap-sc-read");
+  if(box){
+    const cur=box.querySelector(".ap-sc-cur");
+    const pick=i=>{ const r=R[i], T=AP_TIERS[r.best.t];
+      read.innerHTML=`<b>シーズン${r.season}${r.split2&&r.split!=null?` スプリット${r.split}`:""}</b><span style="color:${T.color}">${escHtml(apRankName(r.best))}</span>${r.name?`<small>${escHtml(r.name)}</small>`:""}`;
+      cur.hidden=false; cur.style.left=(R.length===1?50:2+i/(R.length-1)*96)+"%";
+      box.querySelectorAll(".ap-sc-dot").forEach(d=>d.classList.toggle("on", +d.dataset.i===i)); };
+    const near=e=>{ const b=box.getBoundingClientRect(); return Math.max(0, Math.min(R.length-1, Math.round((e.clientX-b.left)/b.width*(R.length-1)))); };
+    box.addEventListener("pointermove", e=>pick(near(e)));
+    box.addEventListener("pointerdown", e=>pick(near(e)));
+    pick(R.length-1);
+  }
 }
 
 /* =====================================================================
@@ -1807,7 +1836,6 @@ function apTab(t){
   document.getElementById("ap-pane-cur").hidden = APTAB.tab!=="cur";
   document.getElementById("ap-pane-hist").hidden = APTAB.tab!=="hist";
   if(APTAB.tab==="cur" && AP.list.length) apRenderChart();
-  if(APTAB.tab==="hist"){ const h=document.querySelector("#ap-periods .ap-hist"); if(h) h.scrollLeft=h.scrollWidth; }
 }
 document.querySelectorAll("#apex .game-tabs [data-a]").forEach(b=>b.addEventListener("click", ()=>apTab(b.dataset.a)));
 apTab("cur");
