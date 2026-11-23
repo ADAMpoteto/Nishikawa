@@ -137,9 +137,9 @@ let _dcT=0; window.addEventListener("resize", ()=>{ clearTimeout(_dcT); _dcT=set
 new MutationObserver(()=>{ clearTimeout(_dcT); _dcT=setTimeout(declutterAll, 30); }).observe(document.body, {childList:true, subtree:true});
 
 /* ---------- ルーティング（戻る/進む・直リンク対応） ---------- */
-const PAGES=["home","torima","run","bike","gourmet","keiken","apex","mh"];
+const PAGES=["home","torima","run","bike","gourmet","keiken","mh"];
 function applyPage(page){
-  if(page==="game") page="apex";   // 前の #game のリンクは Apex へ
+  if(page==="game"||page==="apex") page="mh";   // 前の #game / #apex のリンクはモンハンへ
   if(!PAGES.includes(page)) page=PAGES[0];
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
   document.getElementById(page).classList.add("active");
@@ -149,14 +149,13 @@ function applyPage(page){
   document.title = nb ? `西川記録 | ${nb.textContent.trim()}` : "西川記録";
   if(page==="keiken"||page==="gourmet") kkSetMode(page);
   /* 非表示の間に描いたグラフは幅が0なので、表示したときに描き直す */
-  if(page==="apex" && AP.list.length) apRenderChart();
   if(page==="mh" && MH.list.length){ mhRenderChart(); mhRenderMR(); }
   setTimeout(declutterAll, 0);   // 隠れていたページは幅0で計れないので、表示してから整える
   window.scrollTo(0,0);
 }
 function goto(page, push){
   if(push===undefined) push=true;
-  if(page==="game") page="apex";
+  if(page==="game"||page==="apex") page="mh";
   applyPage(page);
   if(push){ const h="#"+page; if(location.hash!==h) history.pushState({page}, "", h); }
 }
@@ -1395,452 +1394,6 @@ function bkRenderYears(){
 }
 
 /* =====================================================================
-   Apex（ランクポイントの推移）
-   列 : 日付 / シーズン / ランク / RP。No・曜日・メモなどほかの列はあってもOK
-   ・シーズン   … 31 など。ランクと同じく、変わった日だけ書けばOK
-   ・スプリット … 1 か 2。変わった日だけ書けばOK（シーズンが変わって空欄なら 1）
-   ページ上部のセレクトボックスで、シーズン・スプリットごとに切り替えて見られます。
-   シーズンやスプリットが変わった日はランクがリセットされるので、前の日との増減は計算しません。
-   ・1行＝1日。その日の終わりの値を入れる
-   ・ランク … 「シルバーIV」「ゴールド2」「プラチナ Ⅰ」など。ランクが変わった日だけ書けばOK
-              （空欄の日は前の日と同じランク。最初の記録より前の空欄は、最初に書いたランク）
-   ・RP     … ゲームに出ている「今のディビジョンの中のRP」（昇格すると0から数え直しになる数字）
-   サイト側で「ルーキーIVの0から数えた通算RP」に直してグラフを描くので、昇格しても線が落ちません。
-   ランクの列が丸ごと空なら、RPをそのまま通算として扱います。
-   ===================================================================== */
-const URL_APEX = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=1593393569&single=true&output=csv";
-const URL_APEX_SS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5OcNhfxyK5x1xC4LOilrV-JQNIWHgmywi7kBWrOnOKubY_PApnTDUlVuNZA7h9qcKNjMP06Z4LlF0/pub?gid=762212034&single=true&output=csv";   // Apex_シーズン別
-const AP={ all:[], list:[], cur:[], season:null, seasons:[], range:"30", ranked:false, ss:[] };
-const AP_RP_COLS=["RP","ランクポイント","ランクpt","ポイント","LP"];
-/* ランクと、各ディビジョン（IV→III→II→I の順）で次へ上がるのに必要なRP。
-   通算の境目：ブロンズ1,000／シルバー3,000／ゴールド5,500／プラチナ8,500／ダイヤ12,000／マスター16,000
-   （EA公式ヘルプのスプリットのリセット値から逆算。シルバーの中の区切りは資料で違うので、シーズン31の資料に合わせた）
-   RP の列に「174/500」のようにゲームの表示どおり書くと、その「/500」でディビジョンの大きさを上書きします */
-const AP_TIERS=[
-  {name:"ルーキー",   words:["ルーキー","rookie"],           divs:[250,250,250,250],   color:"#8a8f98"},
-  {name:"ブロンズ",   words:["ブロンズ","bronze"],           divs:[500,500,500,500],   color:"#a8683a"},
-  {name:"シルバー",   words:["シルバー","silver"],           divs:[500,500,750,750],   color:"#8f9bab"},
-  {name:"ゴールド",   words:["ゴールド","gold"],             divs:[750,750,750,750],   color:"#d4a017"},
-  {name:"プラチナ",   words:["プラチナ","plat"],             divs:[750,750,1000,1000], color:"#2f9fa8"},
-  {name:"ダイヤ",     words:["ダイヤ","diamond","dia"],      divs:[1000,1000,1000,1000], color:"#4a7bd6"},
-  {name:"マスター",   words:["マスター","master"],           divs:null,                color:"#8e44c9"},
-  {name:"プレデター", words:["プレデター","predator","pred"], divs:null,                color:"#c0392b"}
-];
-const AP_ROMAN=["IV","III","II","I"];
-/* 各ディビジョンの始まりの通算RP */
-function apBuildBase(){ let s=0; AP_TIERS.forEach(t=>{ t.start=s; t.base=[]; if(t.divs) t.divs.forEach(n=>{ t.base.push(s); s+=n; }); else t.base=[s,s,s,s]; }); AP_TIERS[7].start=AP_TIERS[6].start; }
-apBuildBase();
-const apSigned=n=>`${n>0?"+":n<0?"−":"±"}${nf(Math.abs(n))}`;
-const apCls=n=>n>0?"up":n<0?"down":"";
-
-/* 「シルバーIV」「ゴールド 2」「Plat Ⅰ」→ {t:段階の番号, d:0〜3（IV〜I）} */
-function apParseRank(s){
-  s=kkZen2Han(String(s||"")).replace(/[\s\u3000]/g,"").toLowerCase();
-  if(!s) return null;
-  const t=AP_TIERS.findIndex(x=>x.words.some(w=>s.includes(w)));
-  if(t<0) return null;
-  if(!AP_TIERS[t].divs) return {t, d:0};
-  /* ランク名を消して、残りから 4/3/2/1 か IV/III/II/I を読む（書いていなければIV） */
-  let r=s; AP_TIERS[t].words.forEach(w=>{ r=r.split(w).join(""); });
-  r=r.replace(/ⅳ|Ⅳ/g,"iv").replace(/ⅲ|Ⅲ/g,"iii").replace(/ⅱ|Ⅱ/g,"ii").replace(/ⅰ|Ⅰ/g,"i");
-  const n=r.match(/[1-4]/), ro=r.match(/iv|iii|ii|i/);
-  const d = n ? 4-Number(n[0]) : ro ? AP_ROMAN.indexOf(ro[0].toUpperCase()) : 0;
-  return {t, d};
-}
-function apRankName(rk){ if(!rk) return ""; const T=AP_TIERS[rk.t]; return T.divs?T.name+AP_ROMAN[rk.d]:T.name; }
-/* 次のディビジョンまで */
-function apNext(rk, rp){
-  const T=AP_TIERS[rk.t]; if(!T.divs) return null;
-  const need=T.divs[rk.d], nx = rk.d<3 ? {t:rk.t, d:rk.d+1} : {t:rk.t+1, d:0};
-  return { need, left:Math.max(0, need-rp), pct:Math.min(100, rp/need*100), name:apRankName(nx) };
-}
-/* 1日の表示名：「シルバーIV 252 RP」 */
-const apLabel=d=>d.rank?`${apRankName(d.rank)} ${nf(d.rp)} RP`:`${nf(d.rp)} RP`;
-/* 通算RP → そのときのランク名（目盛り用） */
-function apTierAt(total){ let i=0; AP_TIERS.slice(0,7).forEach((t,k)=>{ if(total>=t.start) i=k; }); return AP_TIERS[i]; }
-
-async function loadApex(){
-  const hero=document.getElementById("ap-hero");
-  let res;
-  const ssP=fetchCSV(URL_APEX_SS).then(r=>apParseSS(cleanRows(r.data))).catch(()=>[]);
-  try{ res=await fetchCSV(URL_APEX); }
-  catch(e){ hero.innerHTML=errBox("Apexのデータを読み込めませんでした。"); return; }
-  AP.ss=await ssP;
-  const rows=cleanRows(res.data);
-  const keys=rows.length?Object.keys(rows[0]):[];
-  const rpKey=AP_RP_COLS.find(k=>keys.includes(k)) || keys.find(k=>/rp|ポイント|ﾎﾟｲﾝﾄ/i.test(k) && !/ランク$/.test(k));
-  if(!rpKey){ hero.innerHTML=errBox("RPの列が見つかりません。見出しを「RP」にしてください。"); return; }
-  const rkKey=["ランク","ティア","Rank","rank"].find(k=>keys.includes(k) && k!==rpKey);
-  const byKey={};
-  rows.forEach(o=>{
-    const dt=pd(F(o,"日付")); if(!dt) return;
-    const rpRaw=kkZen2Han(F(o,rpKey)).replace(/[／]/g,"/"), frac=rpRaw.match(/^\s*([\d,]+)\s*\/\s*([\d,]+)/);
-    const rp=frac?num(frac[1]):num(rpRaw), need=frac?num(frac[2]):null, rank=rkKey?apParseRank(F(o,rkKey)):null, ss=num(F(o,"シーズン")||F(o,"Season")), sp=num(F(o,"スプリット")||F(o,"Split"));
-    const cur=byKey[dt.toDateString()]||{dt};
-    if(rank) cur.rank=rank;
-    if(ss!=null) cur.season=ss;
-    if(sp!=null) cur.split=sp;
-    if(rp!=null){ cur.rp=rp; cur.memo=F(o,"メモ"); if(need) cur.need=need; }
-    byKey[dt.toDateString()]=cur;
-  });
-  const all=Object.values(byKey).sort((a,b)=>a.dt-b.dt);
-  /* ランクの空欄を埋める：前の日のランクを引き継ぐ。最初のランクより前は最初のランク */
-  const first=all.find(d=>d.rank);
-  AP.ranked=!!first;
-  let cur=first?first.rank:null;
-  all.forEach(d=>{ if(d.rank) cur=d.rank; else d.rank=cur; });
-  all.forEach(d=>{ d.ssx = d.season!=null; });   // シートにシーズンが書いてある行（先の日付も含む）
-  /* シーズンも同じように埋める */
-  const fs=all.find(d=>d.season!=null);
-  let cs=fs?fs.season:null;
-  const fp=all.find(d=>d.split!=null);
-  let cp=fp?fp.split:null;
-  all.forEach(d=>{
-    const prevS=cs;
-    if(d.season!=null) cs=d.season; else d.season=cs;
-    if(d.split!=null) cp=d.split;
-    else{ if(prevS!=null && d.season!==prevS && cp!=null) cp=1; d.split=cp; }   // 新しいシーズンはスプリット1から
-    d.pk=`${d.season??""}-${d.split??""}`;   // 期間（シーズン＋スプリット）
-  });
-  const t0=today0();
-  AP.all=all.filter(d=>d.rp!=null && d.dt<=t0);   // 先の日付は出さない
-  /* 今のシーズンの昇格条件（Apex_シーズン別の「○○へ」の列）でディビジョンの大きさを決める */
-  const lastD=AP.all[AP.all.length-1];
-  const ssRow=lastD && apSSRow(lastD.season, lastD.split);
-  if(ssRow) ssRow.steps.forEach(x=>{ const T=AP_TIERS[x.t]; if(T.divs && x.v>0) T.divs[x.d]=x.v; });
-  /* 「174/500」の「/500」があれば、そのディビジョンの大きさとして使う */
-  AP.all.forEach(d=>{ if(d.need && d.rank && AP_TIERS[d.rank.t].divs) AP_TIERS[d.rank.t].divs[d.rank.d]=d.need; });
-  apBuildBase();
-  AP.all.forEach((d,i)=>{
-    d.total = d.rank ? AP_TIERS[d.rank.t].base[d.rank.d]+d.rp : d.rp;
-    const p=AP.all[i-1];
-    d.newSeason = !!(p && d.pk!==p.pk);   // シーズンかスプリットが変わった日
-    const q = d.newSeason ? null : p;   // ランクがリセットされるので比べない
-    d.diff = q ? d.total-q.total : null;
-    d.move = q && d.rank && q.rank ? Math.sign((d.rank.t*4+d.rank.d)-(q.rank.t*4+q.rank.d)) : 0;   // 1=昇格 -1=降格
-  });
-  if(!AP.all.length){ hero.innerHTML=errBox("まだ記録がありません。"); return; }
-  /* 期間の終わり：そのシーズン・スプリットがシートに書いてある最後の日 */
-  AP.periodEnd={}; all.forEach(d=>{ if(d.ssx && (!AP.periodEnd[d.pk] || d.dt>AP.periodEnd[d.pk])) AP.periodEnd[d.pk]=d.dt; });
-  AP.seasons=[...new Set(AP.all.map(d=>d.pk))];
-  AP.season=AP.all[AP.all.length-1].pk;
-  AP.cur=AP.all.filter(d=>d.pk===AP.season);
-  apShowSeason(AP.season);
-}
-/* ---------- Apex_シーズン別 ----------
-   列：シーズン／スプリット／名前／開始日／終了日／最高ランク／最終ランク／メモ／単位／「ルーキーIIIへ」〜「マスターへ」
-   「○○へ」は、一つ下のディビジョンから○○に上がるのに必要なポイント */
-function apParseSS(rows){
-  return rows.map(o=>{
-    const season=num(F(o,"シーズン")); if(season==null) return null;
-    const steps=[];
-    Object.keys(o).forEach(k=>{ if(!/へ$/.test(k)) return;
-      const v=num(F(o,k)), to=apParseRank(k.replace(/へ$/,"")); if(v==null || !to) return;
-      const from = AP_TIERS[to.t].divs ? (to.d>0 ? {t:to.t, d:to.d-1} : {t:to.t-1, d:3}) : {t:to.t-1, d:3};
-      if(from.t>=0) steps.push({t:from.t, d:from.d, v}); });
-    return { season, split:num(F(o,"スプリット")), name:F(o,"名前"), start:pd(F(o,"開始日")), end:pd(F(o,"終了日")),
-      best:apParseRank(F(o,"最高ランク")), final:apParseRank(F(o,"最終ランク")), unit:F(o,"単位")||"RP", steps };
-  }).filter(Boolean);
-}
-const apSSRow=(season, split)=>AP.ss.find(r=>r.season===season && (r.split??1)===(split??1)) || AP.ss.find(r=>r.season===season && r.split==null);
-const apLevel=rk=>rk ? (AP_TIERS[rk.t].divs ? rk.t*4+rk.d : rk.t*4) : -1;   // ルーキーIV=0 … ダイヤI=23、マスター=24、プレデター=28
-/* 期間の名前：「シーズン31 スプリット1」 */
-/* スプリットは、そのシーズンにスプリット2以降の記録があるときだけ名前に出す */
-const apShowSplit=d=>d.split!=null && (d.split!==1 || AP.all.some(x=>x.season===d.season && x.split!=null && x.split!==1));
-function apPeriodName(d){ if(!d) return ""; return [d.season!=null?`シーズン${d.season}`:"", apShowSplit(d)?`スプリット${d.split}`:""].filter(Boolean).join(" "); }
-const apPkName=pk=>apPeriodName(AP.all.find(d=>d.pk===pk));
-function apShowSeason(pk){
-  AP.season=pk;
-  AP.list = pk==="all" ? AP.all.slice() : AP.all.filter(d=>d.pk===pk);
-  const box=document.getElementById("ap-season-box"), sel=document.getElementById("ap-season-sel");
-  if(AP.seasons.length>1 || AP.seasons[0]!=="-"){
-    box.hidden=false;
-    /* シーズンごとにまとめ、新しい順 */
-    const bySeason={}; AP.seasons.forEach(k=>{ const d=AP.all.find(x=>x.pk===k); const sk=d.season??""; (bySeason[sk]=bySeason[sk]||[]).push(k); });
-    const order=[...new Set(AP.seasons.map(k=>AP.all.find(x=>x.pk===k).season??""))].reverse();
-    const opt=k=>`<option value="${escHtml(k)}"${k===pk?" selected":""}>${escHtml(apPkName(k)||"未記入")}</option>`;
-    sel.innerHTML=order.map(sk=>`<optgroup label="${sk===""?"シーズン未記入":`シーズン${sk}`}">${bySeason[sk].slice().reverse().map(opt).join("")}</optgroup>`).join("")
-      + (AP.seasons.length>1?`<option value="all"${pk==="all"?" selected":""}>全期間</option>`:"");
-    sel.onchange=()=>apShowSeason(sel.value);
-  }else box.hidden=true;
-  apRenderHero(); apRenderChart(); apRenderPeriods();
-}
-const apBest=L=>(L||AP.list).reduce((b,d)=>(!b||d.total>b.total)?d:b,null);
-const apMoveTag=d=>d.newSeason?`<span class="ap-tag ss">${escHtml(apPeriodName(d))}開始</span>`:d.move>0?'<span class="ap-tag up">昇格！</span>':d.move<0?'<span class="ap-tag down">降格</span>':"";
-
-/* ---------- ダイヤまでの計画 ----------
-   ・期限はスプリット1の終わりの見込み（シーズン31は12/13まで週ごとのラダーがあるので 12/15 と仮置き。発表されたら直す）
-   ・上のランクほど参加コストが高く、1試合で残るRPが減る。1試合で稼ぐRP（AP_GROSS）からコストを引いた分で、
-     ランクごとにかかる試合数を出し、「毎日同じくらいの試合数」で期限に届くように日数を割り振る */
-const AP_GOAL = { t:5, d:0, name:"ダイヤ" };      // ダイヤIV
-const AP_GOAL_DEADLINE = new Date(2026, 11, 15);  // 期限の予備。ふだんはシートから読む（下の apDeadline）
-/* 期限：今のシーズン・スプリットが、シートの「シーズン」「スプリット」の列に書いてある最後の日 */
-const apDeadline=()=>(AP.periodEnd && AP.cur.length && AP.periodEnd[AP.cur[0].pk]) || AP_GOAL_DEADLINE;
-const AP_GOAL_FROM = new Date(2026, 10, 4);       // 計画の出発点：11/4の終わり（＝11/5の始まり）
-const AP_GOAL_START = { rank:"ブロンズⅠ", rp:380 }; // そのときのランクとRP
-const AP_GROSS = 75;                              // 1試合で稼ぐRPの目安（参加コストを引く前）
-const AP_COST = [0,10,20,38,48,65,90,90];         // ランクごとの参加コスト（EA公式ヘルプ）
-const apGoalTotal=()=>AP_TIERS[AP_GOAL.t].base[AP_GOAL.d];
-const apNet=total=>Math.max(5, AP_GROSS-AP_COST[AP_TIERS.indexOf(apTierAt(total))]);
-/* fromDt の終わりに fromTotal → 期限にダイヤ、の計画。点（日付と通算RP）と、1日あたりの試合数 */
-function apPlan(fromDt, fromTotal){
-  const goal=apGoalTotal(), segs=[]; let cur=fromTotal;
-  while(cur<goal){ const i=AP_TIERS.indexOf(apTierAt(cur)), next=Math.min(goal, AP_TIERS[i+1].start); segs.push({to:next, m:(next-cur)/apNet(cur)}); cur=next; }
-  const days=Math.max(1,(apDeadline()-fromDt)/864e5), M=segs.reduce((s,x)=>s+x.m,0), mpd=M/days;
-  const pts=[{dt:fromDt, v:fromTotal}]; let t=+fromDt;
-  segs.forEach(x=>{ t+=x.m/mpd*864e5; pts.push({dt:new Date(t), v:x.to}); });
-  const at=dt=>{ if(dt<=pts[0].dt) return pts[0].v; for(let i=1;i<pts.length;i++) if(dt<=pts[i].dt){ const a=pts[i-1], b=pts[i]; return a.v+(b.v-a.v)*(dt-a.dt)/(b.dt-a.dt); } return goal; };
-  return { pts, mpd, at };
-}
-/* 今のシーズン（スプリット）を見ているときだけ、計画を出す */
-function apGoalCtx(){
-  if(!AP.ranked || AP.season==="all" || AP.season!==AP.cur[0].pk) return null;
-  const t0=today0(); if(t0>apDeadline()) return null;
-  const L=AP.cur, last=L[L.length-1];
-  const sr=apParseRank(AP_GOAL_START.rank), startTotal=AP_TIERS[sr.t].base[sr.d]+AP_GOAL_START.rp;
-  const fixed=apPlan(AP_GOAL_FROM, startTotal);
-  /* 今日の目標：きのうまでの記録から、期限に届くように引き直した計画の「今日の分」 */
-  const yest=new Date(t0.getFullYear(), t0.getMonth(), t0.getDate()-1);
-  const base=L.filter(d=>d.dt<t0).pop()||L[0], re=apPlan(yest, base.total);
-  const todayRec=L.find(d=>+d.dt===+t0);
-  const target=Math.max(0, Math.round(re.at(t0)-base.total));
-  return { fixed, re, base, last, todayRec, target, games:Math.max(1,Math.round(re.mpd)), goal:apGoalTotal() };
-}
-
-/* 期間（シーズン・スプリット）ごとのまとめ */
-function apPeriodStats(L){
-  const first=L[0], last=L[L.length-1], best=apBest(L);
-  return { first, last, best, gain:last.total-first.total, days:L.length };
-}
-
-function apRenderHero(){
-  const L=AP.list, last=L[L.length-1], P=apPeriodStats(L), best=P.best, all=AP.season==="all";
-  const isBest=last===best && L.length>1 && last.diff>0;
-  const nx = last.rank ? apNext(last.rank, last.rp) : null;
-  const T = last.rank ? AP_TIERS[last.rank.t] : null;
-  const live = all || AP.season===AP.cur[0].pk;
-  document.getElementById("ap-hero").innerHTML=`
-    <div class="tm-hero-label">${all?"最新のランク":`${escHtml(apPeriodName(last)||"")}の${live?"ランク":"最終ランク"}`}</div>
-    ${T?`<div class="ap-rank-big" style="--c:${T.color}"><span class="ap-emblem"></span>${escHtml(apRankName(last.rank))}</div>`:""}
-    <div class="tm-big">${nf(last.rp)}<small>RP</small></div>
-    ${nx&&live?`<div class="ap-next"><div class="tgt-bar"><span style="width:${nx.pct}%;background:${T.color}"></span></div>
-      <div class="ap-next-t"><span>${nf(last.rp)} / ${nf(nx.need)}</span><span>${escHtml(nx.name)}まで あと <b>${nf(nx.left)}</b> RP</span></div></div>`:""}
-    ${lead(last.diff==null ? `${fmtMD(last.dt)}　${last.newSeason?`${escHtml(apPeriodName(last))}開始`:"最初の記録"}`
-      : `${fmtMD(last.dt)}　${tone(last.diff,`<b>${apSigned(last.diff)}</b> RP`)}${last.move>0?`　${tone(1,`${escHtml(apRankName(last.rank))}に昇格！`)}`:last.move<0?`　${tone(-1,`${escHtml(apRankName(last.rank))}に降格`)}`:isBest?"　最高記録！":""}`)}
-    ${(()=>{ const G=apGoalCtx(); if(!G) return "";
-      const md=d=>`${d.getMonth()+1}/${d.getDate()}`;
-      if(last.total>=G.goal) return facts([`<li>${AP_GOAL.name}到達！</li>`]);
-      const done=G.todayRec?G.todayRec.total-G.base.total:0, vs=Math.round(last.total-G.fixed.at(last.dt));
-      return facts([
-        `<li>今日の目標<b>+${nf(G.target)}</b>RP（約${G.games}試合${G.todayRec?`・今日 <span class="${apCls(done)}">${apSigned(done)}</span>`:""}）</li>`,
-        fact(`${AP_GOAL.name}まで あと`, nf(G.goal-last.total), `RP（${md(apDeadline())}まで）`),
-        last.dt>AP_GOAL_FROM ? (vs ? `<li>計画より<b class="${apCls(vs)}">${nf(Math.abs(vs))}</b>RP ${vs>0?"先":"遅れ"}</li>` : `<li><b>計画どおり</b></li>`) : ""
-      ]); })()}
-    ${facts([
-      all ? "" : `<li>${live?"シーズン開始から":"シーズン通算"}<b class="${apCls(P.gain)}">${apSigned(P.gain)}</b>RP（${escHtml(apLabel(P.first))}から）</li>`,
-      fact("最高", best.rank?escHtml(apRankName(best.rank)):nf(best.rp), best.rank?` ${nf(best.rp)}RP`:"RP"),
-      fact("遊んだ日", L.length, "日")
-    ])}`;
-}
-
-/* 折れ線グラフ（SVG）：選んだシーズン（スプリット）の全期間。背景はランクの色、横線はディビジョンの区切り */
-function apRenderChart(){
-  const L=AP.list, G=apGoalCtx(), x0=L[0].dt, x1=G?apDeadline():L[L.length-1].dt;
-  const W=600, PL=4, PR=4, PT=14, PB=22; let H=220;
-  let lo=Math.min(...L.map(d=>d.total)), hi=Math.max(...L.map(d=>d.total), G?G.goal:0);
-  const pad=Math.max((hi-lo)*0.12, 50); lo=Math.max(0, lo-pad); hi=hi+pad;
-  /* ディビジョンの線が多いときは、1本あたり16pxくらいになるようにグラフを縦に伸ばす */
-  const nDiv=AP.ranked?AP_TIERS.slice(0,6).reduce((s,t)=>s+t.base.filter(b=>b>lo&&b<hi).length,0):0;
-  if(nDiv>6) H=Math.min(440, 60+nDiv*22);
-  const span=Math.max(1, x1-x0);
-  const X=dt=>L.length>1||G ? PL+(dt-x0)/span*(W-PL-PR) : W/2, Y=v=>PT+(1-(v-lo)/(hi-lo))*(H-PT-PB);
-  const planD=G?G.fixed.pts.map((p,i)=>(i?"L":"M")+X(p.dt).toFixed(1)+","+Y(p.v).toFixed(1)).join(""):"";
-  const cy=v=>Math.max(PT, Math.min(H-PB, Y(v)));
-  const pts=L.map(d=>[X(d.dt), Y(d.total)]);
-  /* 期間が変わったところ（ランクのリセット）は線をつなげない */
-  const line=pts.map((p,i)=>(i&&!L[i].newSeason?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join("");
-  let grid=[], bands=[];
-  if(AP.ranked){
-    const divs=[]; AP_TIERS.slice(0,7).forEach(t=>{ (t.divs?t.base:[t.start]).forEach((b,i)=>divs.push({v:b, label:t.divs?t.name+AP_ROMAN[i]:t.name, top:i===0})); });
-    grid=divs.filter(g=>g.v>lo && g.v<hi);
-    /* ディビジョンごとに線を引く（文字がぶつかるところは、あとで間引く） */
-    AP_TIERS.slice(0,7).forEach((t,i)=>{ const end=i<6?AP_TIERS[i+1].start:Infinity;
-      if(end>lo && t.start<hi) bands.push({y1:cy(Math.min(end,hi)), y2:cy(Math.max(t.start,lo)), c:t.color}); });
-  }else{
-    const step=[50,100,200,250,500,1000,2000,2500,5000,10000].find(s=>(hi-lo)/s<=5)||20000;
-    for(let v=Math.ceil(lo/step)*step; v<=hi; v+=step) grid.push({v, label:nf(v)});
-  }
-  const mons=[]; for(let d=new Date(x0.getFullYear(), x0.getMonth()+1, 1); d<=x1; d=new Date(d.getFullYear(), d.getMonth()+1, 1)) mons.push(d);
-  const best=apBest();
-  /* 日付の目盛り：記録が少なければ全部、多ければ最初と最後を含めて6つくらい */
-  const ticks=(()=>{ if(G){ const k=6; return Array.from({length:k},(_,i)=>{ const t=new Date(+x0+(x1-x0)*i/(k-1)); return new Date(t.getFullYear(),t.getMonth(),t.getDate()); }); }
-    const n=L.length, k=Math.min(n,6); if(n<=6) return L.map(d=>d.dt);
-    return [...new Set(Array.from({length:k},(_,i)=>Math.round(i*(n-1)/(k-1))))].map(i=>L[i].dt); })();
-  document.getElementById("ap-chart").innerHTML=`
-    <div class="bc-readout ap-readout" aria-live="polite"></div>
-    ${AP.ranked?`<div class="ap-axis-t"><span>ランク</span><span>通算RP</span></div>`:""}
-    <div class="ap-lc${AP.ranked?" gutter":""}"${H!==220?` style="height:${H}px"`:""}>
-      <div class="ap-plot">
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="日ごとのランクポイントの推移">
-        ${bands.map(b=>`<rect x="0" width="${W}" y="${b.y1.toFixed(1)}" height="${Math.max(0,b.y2-b.y1).toFixed(1)}" fill="${b.c}" opacity=".13"/>`).join("")}
-        ${grid.map(g=>`<line class="ap-grid${g.top?" top":""}" x1="0" x2="${W}" y1="${Y(g.v).toFixed(1)}" y2="${Y(g.v).toFixed(1)}"/>`).join("")}
-        ${mons.map(d=>`<line class="ap-mon" x1="${X(d).toFixed(1)}" x2="${X(d).toFixed(1)}" y1="${PT}" y2="${H-PB}"/>`).join("")}
-        ${planD?`<path class="mh-plan" d="${planD}"/>`:""}
-        <path class="ap-line" d="${line}"/>
-        <line class="ap-cur" x1="0" x2="0" y1="${PT}" y2="${H-PB}" visibility="hidden"/>
-      </svg>
-      ${ticks.map((d,k)=>`<span class="ap-xlbl${k===0&&ticks.length>1?" first":k===ticks.length-1&&ticks.length>1?" last":""}" style="left:${(X(d)/W*100).toFixed(2)}%">${d.getMonth()+1}/${d.getDate()}</span>`).join("")}
-      ${L.map((d,i)=>`<span class="ap-dot${d===best?" best":""}${d.move>0?" promo":""}" data-i="${i}" style="left:${(pts[i][0]/W*100).toFixed(2)}%;top:${(pts[i][1]/H*100).toFixed(2)}%"></span>`).join("")}
-      </div>
-      ${grid.filter(g=>Y(g.v)>PT+6).map(g=>{ const k=g.top?" top":"", cur=L[L.length-1].rank&&g.label===apRankName(L[L.length-1].rank)?" cur":"";
-        return `<span class="ap-ylbl${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${escHtml(g.label)}</span><span class="ap-ylbl r${k}${cur}" style="top:${(Y(g.v)/H*100).toFixed(2)}%">${nf(g.v)}</span>`; }).join("")}
-    </div>
-    ${legend([
-      {type:"line", color:"#c2185b", text:"実績"},
-      G?{type:"dash", text:`計画：${AP_GOAL_FROM.getMonth()+1}/${AP_GOAL_FROM.getDate()+1} ${escHtml(apRankName(apParseRank(AP_GOAL_START.rank)))} ${AP_GOAL_START.rp} → ${apDeadline().getMonth()+1}/${apDeadline().getDate()} ${AP_GOAL.name}`}:null,
-      L.some(d=>d.move>0)?{type:"dot", color:"#1f8a4c", text:"昇格"}:null,
-      {type:"dot", color:"#e0a800", text:"最高"}
-    ])}
-    ${apDaysTable()}`;
-  const box=document.querySelector("#ap-chart .ap-lc"), out=document.querySelector("#ap-chart .ap-readout"), cur=box.querySelector(".ap-cur");
-  const pick=i=>{
-    const d=L[i];
-    box.querySelectorAll(".ap-dot").forEach(e=>e.classList.toggle("on", +e.dataset.i===i));
-    cur.setAttribute("x1", pts[i][0]); cur.setAttribute("x2", pts[i][0]); cur.setAttribute("visibility","visible");
-    out.innerHTML=`${fmtMD(d.dt)}　<strong>${escHtml(apLabel(d))}</strong>${d.diff!=null?`　<span class="${apCls(d.diff)}">${apSigned(d.diff)}</span>`:""}${apMoveTag(d)}${d.memo?`　${escHtml(d.memo)}`:""}`;
-  };
-  const near=e=>{
-    const r=box.querySelector(".ap-plot").getBoundingClientRect(), x=(e.clientX-r.left)/r.width*W;
-    let bi=0; pts.forEach((p,i)=>{ if(Math.abs(p[0]-x)<Math.abs(pts[bi][0]-x)) bi=i; }); return bi;
-  };
-  box.addEventListener("pointermove", e=>pick(near(e)));
-  box.addEventListener("pointerdown", e=>pick(near(e)));
-  pick(L.length-1);
-}
-
-/* 日別の一覧（トリマと同じく、開いたときだけ見える表。新しい順） */
-/* 通算RP → そのときのランクとRP（例：3,674 → シルバーIII 174） */
-function apFromTotal(total){
-  for(let t=6;t>=0;t--){ const T=AP_TIERS[t]; if(total>=T.start){
-    if(!T.divs) return {rank:{t,d:0}, rp:total-T.start};
-    for(let d=3;d>=0;d--) if(total>=T.base[d]) return {rank:{t,d}, rp:total-T.base[d]}; } }
-  return {rank:{t:0,d:0}, rp:total};
-}
-/* 日別の一覧：実績に、計画の「その日に稼ぐ予定のRP」と「その日の終わりのランク」を並べる。
-   今のシーズンを見ているときは、期限までの先の日も出す */
-function apDaysTable(){
-  const G=apGoalCtx(), byDay={};
-  AP.list.forEach(d=>{ byDay[d.dt.toDateString()]=d; });
-  let days=AP.list.map(d=>d.dt);
-  if(G){ const t0=today0(); for(let d=new Date(t0); d<=apDeadline(); d=new Date(d.getFullYear(), d.getMonth(), d.getDate()+1)) days.push(new Date(d)); }
-  days=[...new Map(days.map(d=>[d.toDateString(), d])).values()].sort((x,y)=>x-y);
-  const t0=today0();
-  const plan=dt=>{ if(!G || dt<=AP_GOAL_FROM) return null;
-    const v=G.fixed.at(dt), prev=G.fixed.at(new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()-1)), p=apFromTotal(Math.round(v));
-    return {gain:Math.round(v-prev), label:`${apRankName(p.rank)} ${nf(p.rp)}`}; };
-  const rows=days.map(dt=>{ const d=byDay[dt.toDateString()], p=plan(dt), fut=!d && dt>=t0;
-    return `<tr class="${fut?"ap-fut":""}${+dt===+t0?" ap-today":""}">
-      <td>${fmtMD(dt)}</td>
-      ${G?`<td class="ap-plan-c">${p?`+${nf(p.gain)}<small>${escHtml(p.label)}</small>`:"—"}</td>`:""}
-      <td>${d?`${d.rank?escHtml(apRankName(d.rank))+" ":""}${nf(d.rp)}`:""}</td>
-      <td class="${d&&d.diff!=null?apCls(d.diff):""}">${d?`${d.diff!=null?apSigned(d.diff):""}${d.move>0?" 昇格":d.move<0?" 降格":""}${d.newSeason?"開始":""}`:""}</td>
-    </tr>`; });
-  return `<details class="tm-table ap-days"><summary>日別の一覧を開く</summary>
-    <table><thead><tr><th>日付</th>${G?"<th>予定</th>":""}<th>実績</th><th>前回から</th></tr></thead><tbody>${rows.join("")}</tbody></table>
-    ${G?`<p class="kk-note-s">予定：その日に稼ぐRPと、その日の終わりに届いていたいランク（計画の点線）。</p>`:""}</details>`;
-}
-
-/* シーズン（スプリット）ごとの成績：そのシーズンの最後にいたランク。
-   Apex_シーズン別の「最終ランク」。空欄なら日別の記録の最後の日のランク。タップで日別の記録がある期間を表示 */
-function apPeriodRows(){
-  const out=[], seen=new Set();
-  AP.ss.forEach(r=>{
-    const pk=AP.seasons.find(k=>{ const d=AP.all.find(x=>x.pk===k); return d.season===r.season && (d.split??1)===(r.split??1); });
-    const L=pk?AP.all.filter(d=>d.pk===pk):[], st=L.length?apPeriodStats(L):null;
-    const best=r.final || (st && st.last.rank) || null;   // 名前は best のままだが中身は最後のランク
-    if(pk) seen.add(pk);
-    if(!best) return;
-    const split2=AP.ss.some(x=>x.season===r.season && (x.split??1)!==1);
-    out.push({ pk, st, best, season:r.season, split:r.split, name:r.name, split2 });
-  });
-  /* シートにない期間（日別だけにある） */
-  AP.seasons.filter(k=>!seen.has(k)).forEach(pk=>{ const L=AP.all.filter(d=>d.pk===pk), st=apPeriodStats(L);
-    out.push({ pk, st, best:st.last.rank, season:L[0].season, split:L[0].split, name:"", split2:apShowSplit(L[0]) }); });
-  return out.sort((x,y)=>(x.season??0)-(y.season??0) || (x.split??1)-(y.split??1));
-}
-const apShortName=r=>`S${r.season??"?"}${r.split2&&r.split!=null?`-${r.split}`:""}`;
-function apRenderPeriods(){
-  const P=apPeriodRows(), el=document.getElementById("ap-periods");
-  if(!P.length){ el.innerHTML=""; return; }
-  const R=P.filter(r=>r.best);
-  /* ---- 推移の折れ線（画面の幅に収める。横スクロールなし） ---- */
-  let chart="";
-  if(R.length>=2){
-    const lvs=R.map(r=>apLevel(r.best));
-    const lo=Math.floor(Math.min(...lvs)/4)*4, hi=Math.min(25, Math.max(...lvs)>=24?25:Math.floor(Math.max(...lvs)/4)*4+4);
-    const Y=lv=>(1-(lv-lo+0.5)/(hi-lo))*100, X=i=>R.length===1?50:2+i/(R.length-1)*96;
-    const bands=[]; for(let t=lo/4; t*4<hi; t++){ const T=AP_TIERS[t], top=t*4+(t>=6?1:4);
-      bands.push(`<div class="ap-sc-band" style="top:${(1-(Math.min(top,hi)-lo)/(hi-lo))*100}%;height:${(Math.min(top,hi)-t*4)/(hi-lo)*100}%;--c:${T.color}"><span>${escHtml(T.name)}</span></div>`); }
-    const pts=R.map((r,i)=>`${X(i).toFixed(2)},${Y(apLevel(r.best)).toFixed(2)}`).join(" ");
-    const dots=R.map((r,i)=>`<i class="ap-sc-dot" data-i="${i}" style="left:${X(i)}%;top:${Y(apLevel(r.best))}%;background:${AP_TIERS[r.best.t].color}"></i>`).join("");
-    /* 目盛り：シーズンの最初の点に、5の倍数と最初・最後のシーズンだけ */
-    const seen=new Set(), first=R[0].season, last=R[R.length-1].season;
-    const xl=R.map((r,i)=>{ if(seen.has(r.season)) return ""; seen.add(r.season);
-      const mid=r.season%5===0 && r.season-first>=4 && last-r.season>=4;   // 端の目盛りと重ならないように
-      if(!(mid || r.season===first || r.season===last)) return "";
-      return `<span class="ap-sc-x${r.season===first?" first":r.season===last?" last":""}" style="left:${X(i)}%">S${r.season}</span>`; }).join("");
-    chart=`<div class="ap-sc-read" id="ap-sc-read"></div>
-      <div class="ap-sc" role="img" aria-label="シーズンごとの最後のランクの推移">
-        <div class="ap-sc-plot">${bands.join("")}
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}"/></svg>
-          ${dots}<i class="ap-sc-cur" hidden></i></div>
-        <div class="ap-sc-xs">${xl}</div>
-      </div>`;
-  }
-  /* ---- 一覧：1シーズン1行（スプリット1・2を横に並べる）。新しい順 ---- */
-  const bySeason=[]; P.forEach(r=>{ let g=bySeason.find(x=>x.season===r.season); if(!g){ g={season:r.season, name:r.name, list:[]}; bySeason.push(g); } g.list.push(r); });
-  const cell=r=>{ if(!r) return `<span class="ap-st-c none">—</span>`;
-    const T=r.best?AP_TIERS[r.best.t]:null, tag=r.pk?"button":"span";
-    return `<${tag}${r.pk?` type="button" data-pk="${escHtml(r.pk)}"`:""} class="ap-st-c${r.pk&&r.pk===AP.season?" on":""}">${T?`<i style="background:${T.color}"></i>${escHtml(apRankName(r.best))}`:"—"}</${tag}>`; };
-  const rows=bySeason.slice().reverse().map(g=>{ const one=g.list.length===1 && g.list[0].split==null;
-    const s1=g.list.find(r=>(r.split??1)===1), s2=g.list.find(r=>r.split===2);
-    return `<div class="ap-st-r"><span class="ap-st-s">S${g.season}<small>${escHtml(g.name||"")}</small></span>${one?`<span class="ap-st-wide">${cell(g.list[0])}</span>`:cell(s1)+cell(s2)}</div>`; });
-  const head=`<div class="ap-st-r ap-st-h"><span></span><span>スプリット1</span><span>スプリット2</span></div>`;
-  el.innerHTML=chart+`<div class="ap-st">${head}${foldRows(rows, 8, "シーズン")}</div>`;
-  el.querySelectorAll(".ap-st-c[data-pk]").forEach(b=>b.onclick=()=>{
-    apShowSeason(b.dataset.pk); apTab("cur");
-    window.scrollTo({top:0, behavior:prefersReduced()?"auto":"smooth"});
-  });
-  /* タップ／なぞった点の読み出し */
-  const box=el.querySelector(".ap-sc-plot"), read=el.querySelector("#ap-sc-read");
-  if(box){
-    const cur=box.querySelector(".ap-sc-cur");
-    const pick=i=>{ const r=R[i], T=AP_TIERS[r.best.t];
-      read.innerHTML=`<b>シーズン${r.season}${r.split2&&r.split!=null?` スプリット${r.split}`:""}</b><span style="color:${T.color}">${escHtml(apRankName(r.best))}</span>${r.name?`<small>${escHtml(r.name)}</small>`:""}`;
-      cur.hidden=false; cur.style.left=(R.length===1?50:2+i/(R.length-1)*96)+"%";
-      box.querySelectorAll(".ap-sc-dot").forEach(d=>d.classList.toggle("on", +d.dataset.i===i)); };
-    const near=e=>{ const b=box.getBoundingClientRect(); return Math.max(0, Math.min(R.length-1, Math.round((e.clientX-b.left)/b.width*(R.length-1)))); };
-    box.addEventListener("pointermove", e=>pick(near(e)));
-    box.addEventListener("pointerdown", e=>pick(near(e)));
-    pick(R.length-1);
-  }
-}
-
-/* =====================================================================
-   Apex のページの中のタブ：シーズンの記録 / シーズンごとの推移
-   ===================================================================== */
-const APTAB={ tab:"cur" };
-function apTab(t){
-  APTAB.tab = t==="hist" ? "hist" : "cur";
-  document.querySelectorAll("#apex .game-tabs [data-a]").forEach(b=>{ const on=b.dataset.a===APTAB.tab; b.classList.toggle("active", on); b.setAttribute("aria-selected", on); });
-  document.getElementById("ap-pane-cur").hidden = APTAB.tab!=="cur";
-  document.getElementById("ap-pane-hist").hidden = APTAB.tab!=="hist";
-  if(APTAB.tab==="cur" && AP.list.length) apRenderChart();
-}
-document.querySelectorAll("#apex .game-tabs [data-a]").forEach(b=>b.addEventListener("click", ()=>apTab(b.dataset.a)));
-apTab("cur");
-
-/* =====================================================================
    モンハン（ハンターランク）
    列 : No / 日付 / 曜日 / HR上昇 / 累計HR / MR上昇 / 累計MR（累計はサイト側で計算し直します）
    ・MR上昇に数字が入ると、マスターランクの記録も自動で表示されます（空欄のあいだは出ません）
@@ -2033,7 +1586,6 @@ const HM_CAT = {
   bike:  { t:"自転車",     c:"#1a4db0" },
   keiken:{ t:"経県値",     c:"#d9453f" },
   gourmet:{t:"グルメ",     c:"#ea7a3b" },
-  apex:  { t:"Apex",       c:"#c2185b" },
   mh:    { t:"モンハン",   c:"#8a5a2b" }
 };
 const hmYMD = d => `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
@@ -2049,7 +1601,6 @@ function hmEvents(){
   const E=[];
   RUN.list.forEach(r=>E.push({ k:"run", dt:r.dt, main:`${r.km.toFixed(2)}km 走った`, sub:`${fmtPace(r.pace)}/km・${fmtDur(r.sec)}` }));
   BK.list.forEach(r=>E.push({ k:"bike", dt:r.dt, main:`${r.dest||"行き先なし"}へ`, sub:`${r.km.toFixed(1)}km` }));
-  AP.all.forEach(d=>E.push({ k:"apex", dt:d.dt, main:apLabel(d)+(d.move>0?"（昇格！）":d.move<0?"（降格）":""), sub:d.diff!=null?`前回から ${apSigned(d.diff)} RP`:d.newSeason?`${apPeriodName(d)}開始`:"最初の記録" }));
   MH.list.forEach(d=>{ if(d.gain>0||d.mgain>0) E.push({ k:"mh", dt:d.dt, main:[d.gain>0?`HR +${d.gain}`:"", d.mgain>0?`MR +${d.mgain}`:""].filter(Boolean).join("・"), sub:[`HR ${nf(d.hr)}`, d.mr!=null?`MR ${nf(d.mr)}`:""].filter(Boolean).join("・") }); });
   GM.list.forEach(r=>{ if(r.dt) E.push({ k:"gourmet", dt:r.dt, main:r.name, sub:[r.pref+(r.muni||""), r.genre, r.my!=null?`評価 ${r.my.toFixed(1)}`:""].filter(Boolean).join("・") }); });
   const t=today0();
@@ -2108,12 +1659,6 @@ function hmMonthHtml(){
     out.push(hmCard("gourmet","今月", nf(R.length), "軒",
       best?`いちばん良かった店<br>${escHtml(best.name)}（${best.my.toFixed(1)}）`:(R.length?"":"今月はまだ投稿なし")));
   } else out.push(hmEmptyCard("gourmet","今月"));
-  /* Apex */
-  if(HM.done.apex && AP.cur.length){
-    const last=AP.cur[AP.cur.length-1], P=apPeriodStats(AP.cur), nx=last.rank?apNext(last.rank,last.rp):null;
-    out.push(hmCard("apex", last.rank?apRankName(last.rank):"RP", nf(last.rp), "RP",
-      `${escHtml(apPeriodName(last)||"シーズン")} ${apSigned(P.gain)} RP${nx?`<br>${escHtml(nx.name)}まで あと ${nf(nx.left)}`:""}`, nx?nx.pct:null));
-  } else out.push(hmEmptyCard("apex","今月"));
   /* モンハン */
   if(HM.done.mh && MH.list.length){
     const R=MH.list.filter(d=>ymKey(d.dt)===key && d.dt<=t), g=R.reduce((s,d)=>s+d.gain,0);
@@ -2149,11 +1694,6 @@ function hmTotalHtml(){
     const tot=TM.months.reduce((s,m)=>s+m.total,0), bestM=TM.months.reduce((b,m)=>(!b||m.total>b.total)?m:b,null);
     out.push(hmCard("torima","累計", nf(tot), "P", `ベストの月：${bestM.label}（${nf(bestM.total)}P）`));
   } else out.push(hmEmptyCard("torima","累計"));
-  /* Apex */
-  if(HM.done.apex && AP.cur.length){
-    const best=apBest(AP.cur);
-    out.push(hmCard("apex", best.season!=null?`S${best.season}${apShowSplit(best)?`-${best.split}`:""}の最高`:"最高記録", best.rank?apRankName(best.rank):nf(best.rp), best.rank?`${nf(best.rp)}RP`:"RP", `${hmYMD(best.dt)}<br>記録 ${AP.cur.length}日`));
-  } else out.push(hmEmptyCard("apex","最高記録"));
   /* モンハン */
   if(HM.done.mh && MH.list.length){
     const t=today0(), cur=MH.list.filter(d=>d.dt<=t), hr=cur.length?cur[cur.length-1].hr:0;
@@ -2243,7 +1783,6 @@ hmRender();
 hmTrack("torima", loadTorima());
 hmTrack("run", loadRun());
 hmTrack("bike", loadBike());
-hmTrack("apex", loadApex());
 hmTrack("mh", loadMH());
 const pKeiken=loadKeiken();
 hmTrack("gourmet", pKeiken.then(loadGourmet));

@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=20261112e">
+<link rel="stylesheet" href="style.css?v=20261123a">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
@@ -23,7 +23,6 @@
     <button class="nav-btn" data-nav="bike" onclick="goto('bike')">自転車</button>
     <button class="nav-btn" data-nav="gourmet" onclick="goto('gourmet')">グルメ</button>
     <button class="nav-btn" data-nav="keiken" onclick="goto('keiken')">経県値</button>
-    <button class="nav-btn" data-nav="apex" onclick="goto('apex')">Apex</button>
     <button class="nav-btn" data-nav="mh" onclick="goto('mh')">モンハン</button>
   </div>
 </nav>
@@ -134,31 +133,6 @@
 </div>
 </div>
 
-<!-- ========== Apex Legends ========== -->
-<div id="apex" class="page game-page">
-<div class="container">
-  <div class="page-header"><h1>Apex Legends</h1><p>ランクポイントの記録</p></div>
-  <div class="game-tabs" role="tablist" aria-label="表示を選ぶ">
-    <button type="button" role="tab" data-a="cur">シーズンの記録</button>
-    <button type="button" role="tab" data-a="hist">シーズンごとの推移</button>
-  </div>
-  <div id="ap-pane-cur" class="game-pane">
-    <div class="trip-selbox" id="ap-season-box" hidden><select id="ap-season-sel" aria-label="シーズン・スプリットを選ぶ"></select></div>
-    <div class="hero" id="ap-hero"><div class="loading">読み込み中…</div></div>
-    <div class="card-section">
-      <div class="sec-title">日ごとのRPの推移</div>
-      <div id="ap-chart"></div>
-    </div>
-  </div>
-  <div id="ap-pane-hist" class="game-pane" hidden>
-    <div class="card-section">
-      <div class="sec-title">シーズンの最後のランク</div>
-      <div class="mlist" id="ap-periods"></div>
-    </div>
-  </div>
-</div>
-</div>
-
 <!-- ========== モンハン ========== -->
 <div id="mh" class="page game-page">
 <div class="container">
@@ -245,6 +219,6 @@
   データはGoogleスプレッドシートから取得しています。
 </footer>
 
-<script src="app.js?v=20261112e"></script>
+<script src="app.js?v=20261123a"></script>
 </body>
 </html>
